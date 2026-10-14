@@ -1,0 +1,218 @@
+[
+  {
+    "id": "true-love",
+    "title": "True Love Report",
+    "description": "Find the love that's meant for you.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/true_love_report.png",
+    "price": 99,
+    "oldPrice": 499,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "heart",
+    "features": [
+      { "label": "Compatibility Score", "icon": "heart" },
+      { "label": "Emotional Patterns", "icon": "flower-tulip" },
+      { "label": "Strengths & Challenges", "icon": "chart-bar" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What is my real compatibility score?",
+      "What are my emotional strengths and challenges?",
+      "When might I meet my life partner?",
+      "What steps can I take to build a lasting relationship?"
+    ],
+    "discoveries": [
+      { "icon": "heart", "text": "Your love compatibility analysis" },
+      { "icon": "flower-tulip", "text": "Emotional patterns and attraction style" },
+      { "icon": "timer-outline", "text": "Timeline for meeting your partner" },
+      { "icon": "star-four-points", "text": "Personalized guidance and remedies" }
+    ],
+    "testimonial": {
+      "name": "Ananya S.",
+      "city": "Delhi",
+      "avatar": "",
+      "text": "It explained our emotional patterns so well. We understand each other much better now."
+    },
+    "relatedReports": ["marriage", "past-life"]
+  },
+  {
+    "id": "marriage",
+    "title": "Marriage Report",
+    "description": "Decode your marriage destiny.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/marriage_report.png",
+    "price": 99,
+    "oldPrice": 499,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "star-four-points-outline",
+    "features": [
+      { "label": "Marriage Compatibility", "icon": "timer-outline" },
+      { "label": "Family Life", "icon": "home-outline" },
+      { "label": "Timing of Marriage", "icon": "calendar-month-outline" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "Will I have a happy and stable marriage?",
+      "What is the right time for marriage?",
+      "How compatible are we for long-term life?",
+      "What challenges may arise and how to handle them?"
+    ],
+    "discoveries": [
+      { "icon": "heart", "text": "Your marriage compatibility analysis" },
+      { "icon": "flower-tulip", "text": "Family life and harmony insights" },
+      { "icon": "timer-outline", "text": "Best timing for marriage" },
+      { "icon": "star-four-points", "text": "Guidance to overcome challenges" }
+    ],
+    "testimonial": {
+      "name": "Rohan S.",
+      "city": "Mumbai",
+      "avatar": "",
+      "text": "The report gave us clarity about our marriage timing and family life. Very detailed and accurate."
+    },
+    "relatedReports": ["true-love", "family-life"]
+  },
+  {
+    "id": "career",
+    "title": "Career Report",
+    "description": "Your 30-day work and growth forecast.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/career_report.png",
+    "price": 49,
+    "oldPrice": 299,
+    "discount": "84% OFF",
+    "frequency": "Monthly",
+    "icon": "chart-bar",
+    "features": [
+      { "label": "Career Growth", "icon": "chart-bar" },
+      { "label": "Job & Business Opportunities", "icon": "briefcase-outline" },
+      { "label": "Skills & Strengths", "icon": "target" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What are my best career opportunities?",
+      "When can I expect a job change or promotion?",
+      "Am I suited for business or a job?",
+      "What can I do to overcome career obstacles?"
+    ],
+    "discoveries": [
+      { "icon": "chart-bar", "text": "Your career potential and best fields" },
+      { "icon": "calendar-month-outline", "text": "Key opportunities and favorable periods" },
+      { "icon": "star-four-points", "text": "Skills to focus on for growth" },
+      { "icon": "shield-check-outline", "text": "Remedies for career obstacles" }
+    ],
+    "testimonial": {
+      "name": "Amit K.",
+      "city": "Bangalore",
+      "avatar": "",
+      "text": "The report highlighted my strengths and gave clear timelines. It helped me plan my next career move with confidence."
+    },
+    "relatedReports": ["finance", "kundli-milan"]
+  },
+  {
+    "id": "baby-name",
+    "title": "Baby Name Report",
+    "description": "Find the perfect name with meaning and positive energy.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/baby_name_report.png",
+    "price": 99,
+    "oldPrice": 499,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "star-four-points-outline",
+    "features": [
+      { "label": "Lucky Names", "icon": "star-outline" },
+      { "label": "Nakshatra Analysis", "icon": "flower-tulip" },
+      { "label": "Name Meanings", "icon": "book-open-outline" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What are the most auspicious names for my baby?",
+      "Which names align with their nakshatra?",
+      "What is the meaning and personality of each name?",
+      "Are there any names to avoid?"
+    ],
+    "discoveries": [
+      { "icon": "book-open-outline", "text": "Personalized name suggestions" },
+      { "icon": "flower-tulip", "text": "Meaning and personality insights" },
+      { "icon": "book-open-outline", "text": "Guidance for a bright and positive life" },
+      { "icon": "infinity", "text": "Personalized remedies and guidance" }
+    ],
+    "testimonial": {
+      "name": "Megha R.",
+      "city": "Pune",
+      "avatar": "",
+      "text": "We got a beautiful list of names with meanings. It made our decision so easy!"
+    },
+    "relatedReports": ["finance", "career"]
+  },
+  {
+    "id": "past-life",
+    "title": "Past Life Report",
+    "description": "Discover your karmic journey.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/past_life_report.png",
+    "price": 49,
+    "oldPrice": 299,
+    "discount": "84% OFF",
+    "frequency": "One time",
+    "icon": "infinity",
+    "features": [
+      { "label": "Past Life Insights", "icon": "infinity" },
+      { "label": "Karmic Lessons", "icon": "triangle-outline" },
+      { "label": "Current Life Connections", "icon": "leaf" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What were my past life experiences?",
+      "What karmic lessons am I carrying?",
+      "How do my past lives influence my current life?",
+      "What can I do to overcome past life blocks?"
+    ],
+    "discoveries": [
+      { "icon": "leaf", "text": "Your past life themes and energy levels" },
+      { "icon": "triangle-outline", "text": "Karmic patterns and lessons" },
+      { "icon": "infinity", "text": "Connections to your current life" },
+      { "icon": "flower-tulip", "text": "Guidance to resolve karmic blocks" }
+    ],
+    "testimonial": {
+      "name": "Karan M.",
+      "city": "Mumbai",
+      "avatar": "",
+      "text": "It helped me understand repeating patterns in my life. The insights felt very accurate and meaningful."
+    },
+    "relatedReports": ["true-love", "health"]
+  },
+  {
+    "id": "finance",
+    "title": "Finance Report",
+    "description": "Your 30-day money forecast.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/finance_repot.png",
+    "price": 49,
+    "oldPrice": 299,
+    "discount": "84% OFF",
+    "frequency": "Monthly",
+    "icon": "calendar-month-outline",
+    "features": [
+      { "label": "Wealth Potential", "icon": "chart-bar" },
+      { "label": "Income Opportunities", "icon": "briefcase-outline" },
+      { "label": "Savings & Investments", "icon": "trending-up" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What is my financial potential?",
+      "When can I expect better income opportunities?",
+      "Which investments are more favorable for me?",
+      "What remedies can improve my financial stability?"
+    ],
+    "discoveries": [
+      { "icon": "chart-bar", "text": "Your wealth potential and income flow" },
+      { "icon": "calendar-month-outline", "text": "Best periods for investments" },
+      { "icon": "trending-up", "text": "Savings and long-term wealth options" },
+      { "icon": "flower-tulip", "text": "Personalized remedies for prosperity" }
+    ],
+    "testimonial": {
+      "name": "Priya S.",
+      "city": "Gurgaon",
+      "avatar": "",
+      "text": "The report gave practical guidance on investments and timing. It's been very helpful for my financial planning."
+    },
+    "relatedReports": ["career", "kundli-milan"]
+  }
+]

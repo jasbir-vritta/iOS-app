@@ -1,0 +1,526 @@
+[
+  {
+    "id": "ar00",
+    "name": "The Fool",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar00.jpg"
+  },
+  {
+    "id": "ar01",
+    "name": "The Magician",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar01.jpg"
+  },
+  {
+    "id": "ar02",
+    "name": "The High Priestess",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar02.jpg"
+  },
+  {
+    "id": "ar03",
+    "name": "The Empress",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar03.jpg"
+  },
+  {
+    "id": "ar04",
+    "name": "The Emperor",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar04.jpg"
+  },
+  {
+    "id": "ar05",
+    "name": "The Hierophant",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar05.jpg"
+  },
+  {
+    "id": "ar06",
+    "name": "The Lovers",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar06.jpg"
+  },
+  {
+    "id": "ar07",
+    "name": "The Chariot",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar07.jpg"
+  },
+  {
+    "id": "ar08",
+    "name": "Strength",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar08.jpg"
+  },
+  {
+    "id": "ar09",
+    "name": "The Hermit",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar09.jpg"
+  },
+  {
+    "id": "ar10",
+    "name": "Wheel of Fortune",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar10.jpg"
+  },
+  {
+    "id": "ar11",
+    "name": "Justice",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar11.jpg"
+  },
+  {
+    "id": "ar12",
+    "name": "The Hanged Man",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar12.jpg"
+  },
+  {
+    "id": "ar13",
+    "name": "Death",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar13.jpg"
+  },
+  {
+    "id": "ar14",
+    "name": "Temperance",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar14.jpg"
+  },
+  {
+    "id": "ar15",
+    "name": "The Devil",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar15.jpg"
+  },
+  {
+    "id": "ar16",
+    "name": "The Tower",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar16.jpg"
+  },
+  {
+    "id": "ar17",
+    "name": "The Star",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar17.jpg"
+  },
+  {
+    "id": "ar18",
+    "name": "The Moon",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar18.jpg"
+  },
+  {
+    "id": "ar19",
+    "name": "The Sun",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar19.jpg"
+  },
+  {
+    "id": "ar20",
+    "name": "Judgement",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar20.jpg"
+  },
+  {
+    "id": "ar21",
+    "name": "The World",
+    "type": "major",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/ar21.jpg"
+  },
+  {
+    "id": "waac",
+    "name": "Ace of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/waac.jpg"
+  },
+  {
+    "id": "wa02",
+    "name": "Two of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa02.jpg"
+  },
+  {
+    "id": "wa03",
+    "name": "Three of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa03.jpg"
+  },
+  {
+    "id": "wa04",
+    "name": "Four of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa04.jpg"
+  },
+  {
+    "id": "wa05",
+    "name": "Five of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa05.jpg"
+  },
+  {
+    "id": "wa06",
+    "name": "Six of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa06.jpg"
+  },
+  {
+    "id": "wa07",
+    "name": "Seven of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa07.jpg"
+  },
+  {
+    "id": "wa08",
+    "name": "Eight of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa08.jpg"
+  },
+  {
+    "id": "wa09",
+    "name": "Nine of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa09.jpg"
+  },
+  {
+    "id": "wa10",
+    "name": "Ten of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wa10.jpg"
+  },
+  {
+    "id": "wapa",
+    "name": "Page of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wapa.jpg"
+  },
+  {
+    "id": "wakn",
+    "name": "Knight of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/wakn.jpg"
+  },
+  {
+    "id": "waqu",
+    "name": "Queen of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/waqu.jpg"
+  },
+  {
+    "id": "waki",
+    "name": "King of Wands",
+    "type": "minor",
+    "suit": "Wands",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/waki.jpg"
+  },
+  {
+    "id": "cuac",
+    "name": "Ace of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cuac.jpg"
+  },
+  {
+    "id": "cu02",
+    "name": "Two of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu02.jpg"
+  },
+  {
+    "id": "cu03",
+    "name": "Three of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu03.jpg"
+  },
+  {
+    "id": "cu04",
+    "name": "Four of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu04.jpg"
+  },
+  {
+    "id": "cu05",
+    "name": "Five of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu05.jpg"
+  },
+  {
+    "id": "cu06",
+    "name": "Six of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu06.jpg"
+  },
+  {
+    "id": "cu07",
+    "name": "Seven of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu07.jpg"
+  },
+  {
+    "id": "cu08",
+    "name": "Eight of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu08.jpg"
+  },
+  {
+    "id": "cu09",
+    "name": "Nine of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu09.jpg"
+  },
+  {
+    "id": "cu10",
+    "name": "Ten of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cu10.jpg"
+  },
+  {
+    "id": "cupa",
+    "name": "Page of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cupa.jpg"
+  },
+  {
+    "id": "cukn",
+    "name": "Knight of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cukn.jpg"
+  },
+  {
+    "id": "cuqu",
+    "name": "Queen of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cuqu.jpg"
+  },
+  {
+    "id": "cuki",
+    "name": "King of Cups",
+    "type": "minor",
+    "suit": "Cups",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/cuki.jpg"
+  },
+  {
+    "id": "swac",
+    "name": "Ace of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/swac.jpg"
+  },
+  {
+    "id": "sw02",
+    "name": "Two of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw02.jpg"
+  },
+  {
+    "id": "sw03",
+    "name": "Three of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw03.jpg"
+  },
+  {
+    "id": "sw04",
+    "name": "Four of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw04.jpg"
+  },
+  {
+    "id": "sw05",
+    "name": "Five of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw05.jpg"
+  },
+  {
+    "id": "sw06",
+    "name": "Six of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw06.jpg"
+  },
+  {
+    "id": "sw07",
+    "name": "Seven of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw07.jpg"
+  },
+  {
+    "id": "sw08",
+    "name": "Eight of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw08.jpg"
+  },
+  {
+    "id": "sw09",
+    "name": "Nine of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw09.jpg"
+  },
+  {
+    "id": "sw10",
+    "name": "Ten of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/sw10.jpg"
+  },
+  {
+    "id": "swpa",
+    "name": "Page of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/swpa.jpg"
+  },
+  {
+    "id": "swkn",
+    "name": "Knight of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/swkn.jpg"
+  },
+  {
+    "id": "swqu",
+    "name": "Queen of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/swqu.jpg"
+  },
+  {
+    "id": "swki",
+    "name": "King of Swords",
+    "type": "minor",
+    "suit": "Swords",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/swki.jpg"
+  },
+  {
+    "id": "peac",
+    "name": "Ace of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/peac.jpg"
+  },
+  {
+    "id": "pe02",
+    "name": "Two of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe02.jpg"
+  },
+  {
+    "id": "pe03",
+    "name": "Three of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe03.jpg"
+  },
+  {
+    "id": "pe04",
+    "name": "Four of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe04.jpg"
+  },
+  {
+    "id": "pe05",
+    "name": "Five of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe05.jpg"
+  },
+  {
+    "id": "pe06",
+    "name": "Six of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe06.jpg"
+  },
+  {
+    "id": "pe07",
+    "name": "Seven of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe07.jpg"
+  },
+  {
+    "id": "pe08",
+    "name": "Eight of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe08.jpg"
+  },
+  {
+    "id": "pe09",
+    "name": "Nine of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe09.jpg"
+  },
+  {
+    "id": "pe10",
+    "name": "Ten of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pe10.jpg"
+  },
+  {
+    "id": "pepa",
+    "name": "Page of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pepa.jpg"
+  },
+  {
+    "id": "pekn",
+    "name": "Knight of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pekn.jpg"
+  },
+  {
+    "id": "pequ",
+    "name": "Queen of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/pequ.jpg"
+  },
+  {
+    "id": "peki",
+    "name": "King of Pentacles",
+    "type": "minor",
+    "suit": "Pentacles",
+    "image": "https://storage.googleapis.com/vritta/astrology/tarot_images/peki.jpg"
+  }
+]
