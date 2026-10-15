@@ -125,10 +125,16 @@ export default function MyReports() {
 
                 <View style={{ flex: 1 }}>
                   <Text style={s.name} numberOfLines={2}>
-                    {info?.title || item.report_name || "Report"}
+                    {item.report_name || info?.title || "Report"}
                   </Text>
                   <Text style={s.meta}>
                     For: <Text style={{ color: C.ink }}>{item.profile_name || "Profile"}</Text>
+                    {!!item.partner_name && (
+                      <Text style={{ color: C.ink }}>{` & ${item.partner_name}`}</Text>
+                    )}
+                    {!!item.child_name && (
+                      <Text style={{ color: C.ink }}>{` · Child: ${item.child_name}`}</Text>
+                    )}
                   </Text>
                   <Text style={s.meta}>
                     {item.language || "English"}  •  {formatWhen(item.created_at)}

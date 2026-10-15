@@ -20,12 +20,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import reportsData from "../../../components/constants/reports.json";
 import CosmicLoader from "../../../components/CosmicLoader";
 import ConfirmReportSheet from "../../../components/reports/ConfirmReportSheet";
+import {
+    emptyPartner,
+    PartnerDraft,
+    partnerDetails,
+} from "../../../components/reports/PartnerForm";
 import WritingReportSheet from "../../../components/reports/WritingReportSheet";
 import useProfilesStore from "../../../components/stores/profilesStore";
 import {
     loadProfileReports,
     openReport as openReportPage,
+    PartnerDetails,
+    purchaseKey,
     purchaseReport,
+    ReportOptions,
     ReportPurchaseError,
     useReportsStore,
 } from "../../../components/stores/reportsStore";
@@ -97,6 +105,7 @@ const reports = reportsData as Report[];
 // time, or React re-renders forever.
 const NO_NAMES: string[] = [];
 const NO_LANGUAGES: Record<string, string> = {};
+const NO_OPTIONS: ReportOptions = { languages: [], variants: [], needsPartner: false, needsChild: false };
 
 function SectionTitle({
   title,
@@ -173,13 +182,16 @@ async function runPurchase(
   lan: string,
   setLoading: (value: boolean) => void,
   onLowBalance: () => void,
-  onFinished: () => void = () => {}
+  onFinished: () => void = () => {},
+  variant: string | null = null,
+  partner: PartnerDetails | null = null,
+  child: PartnerDetails | null = null
 ) {
   if (!profileId) return;
   setLoading(true);
 
   try {
-    const result = await purchaseReport(profileId, report.id, lan);
+    const result = await purchaseReport(profileId, report.id, lan, variant, partner, child);
 
     // Bought: no longer an unfinished journey.
     await removeIncompleteReport(profileId, report.id).catch(() => {});
@@ -255,10 +267,28 @@ export default function ReportDetailScreen() {
     });
   }, [report?.id, activeProfileId]);
 
-  // This profile's purchase of this report (null = not bought).
+  // What buying needs: languages, durations (Future), partner (Matching), child (Baby).
+  const options = useReportsStore((state) =>
+    activeProfileId && report_id
+      ? state.byProfile[String(activeProfileId)]?.options?.[report_id] || NO_OPTIONS
+      : NO_OPTIONS
+  );
+  const [chosenVariant, setChosenVariant] = useState<string | null>(null);
+  const variant = options.variants.length
+    ? chosenVariant && options.variants.some((v) => v.id === chosenVariant)
+      ? chosenVariant
+      : options.variants[0].id
+    : null;
+  // Second person's form: the partner (Matching) or the child (Baby report).
+  const personRole = options.needsPartner ? "partner" : options.needsChild ? "child" : null;
+  const [partner, setPartner] = useState<PartnerDraft>(emptyPartner);
+  const partnerReady = !personRole || partnerDetails(partner) !== null;
+  const person = personRole ? partnerDetails(partner) : null;
+
+  // This profile's purchase of this report (for the chosen duration).
   const order = useReportsStore((state) =>
     activeProfileId && report_id
-      ? state.byProfile[String(activeProfileId)]?.purchases?.[report_id]
+      ? state.byProfile[String(activeProfileId)]?.purchases?.[purchaseKey(report_id, variant)]
       : undefined
   );
   const boughtForOthers = useReportsStore((state) =>
@@ -291,7 +321,13 @@ export default function ReportDetailScreen() {
       : undefined
   );
   const [language, setLanguage] = useState("en");
-  const pendingBuy = useRef<{ reportId: string; lan: string } | null>(null);
+  const pendingBuy = useRef<{
+    reportId: string;
+    lan: string;
+    variant: string | null;
+    partner: PartnerDetails | null;
+    child: PartnerDetails | null;
+  } | null>(null);
 
   const status = order?.status;
   const purchased = status === "completed" && Boolean(order?.pdf_url || order?.html_url);
@@ -323,7 +359,10 @@ export default function ReportDetailScreen() {
             pending.lan,
             setBuyNowLoading,
             () => setSheetOpen(true),
-            () => setWritingOpen(false)
+            () => setWritingOpen(false),
+            pending.variant,
+            pending.partner,
+            pending.child
           );
         } else {
           setLanguage(pending.lan);
@@ -411,7 +450,10 @@ export default function ReportDetailScreen() {
       lan,
       setBuyNowLoading,
       () => setSheetOpen(true),
-      () => setWritingOpen(false)
+      () => setWritingOpen(false),
+      variant,
+      personRole === "partner" ? person : null,
+      personRole === "child" ? person : null
     );
 
   /** Preview: opens the sample report inside the app. */
@@ -445,7 +487,13 @@ export default function ReportDetailScreen() {
 
   // Not enough balance: recharge, then the purchase continues here.
   const addCashToBuy = () => {
-    pendingBuy.current = { reportId: report.id, lan: language };
+    pendingBuy.current = {
+      reportId: report.id,
+      lan: language,
+      variant,
+      partner: personRole === "partner" ? person : null,
+      child: personRole === "child" ? person : null,
+    };
     setSheetOpen(false);
     router.push("/(root)/profile/wallet");
   };
@@ -506,6 +554,28 @@ export default function ReportDetailScreen() {
             {report.description}
           </Text>
         </View>
+
+        {/* Future Report: how many years */}
+        {options.variants.length > 0 && (
+          <View style={s.variantBlock}>
+            <Text style={s.variantTitle}>Choose your forecast</Text>
+            <View style={s.variantRow}>
+              {options.variants.map((v) => {
+                const on = v.id === variant;
+                return (
+                  <Pressable
+                    key={v.id}
+                    onPress={() => setChosenVariant(v.id)}
+                    style={[s.variantCard, on && s.variantCardOn]}
+                  >
+                    <Text style={[s.variantLabel, on && s.variantLabelOn]}>{v.label}</Text>
+                    <Text style={[s.variantPrice, on && s.variantLabelOn]}>₹{report.price}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Bought for another profile, not this one */}
         {!purchased && !preparing && boughtForOthers.length > 0 && (
@@ -710,7 +780,15 @@ export default function ReportDetailScreen() {
         onLanguageChange={setLanguage}
         onBuy={confirmBuy}
         onAddCash={addCashToBuy}
-        ownedLanguage={purchased ? order?.lan || "en" : null}
+        allowedLanguages={options.languages}
+        variants={options.variants}
+        variant={variant}
+        onVariantChange={setChosenVariant}
+        partner={personRole ? partner : null}
+        onPartnerChange={personRole ? setPartner : undefined}
+        partnerReady={partnerReady}
+        personRole={personRole || "partner"}
+        ownedLanguage={purchased && !personRole ? order?.lan || "en" : null}
         onOpenOwned={() => {
           setSheetOpen(false);
           void openReport();
@@ -802,6 +880,22 @@ export default function ReportDetailScreen() {
 }
 
 const s = StyleSheet.create({
+  variantBlock: { marginHorizontal: 16, marginTop: 16 },
+  variantTitle: { color: C.ink, fontSize: 15, fontWeight: "800", marginBottom: 10 },
+  variantRow: { flexDirection: "row", gap: 10 },
+  variantCard: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    alignItems: "center",
+  },
+  variantCardOn: { backgroundColor: C.plum, borderColor: C.plum },
+  variantLabel: { color: C.ink, fontSize: 14, fontWeight: "700" },
+  variantPrice: { color: C.secondary, fontSize: 13, marginTop: 2 },
+  variantLabelOn: { color: C.white },
   otherHint: {
     flexDirection: "row",
     alignItems: "center",

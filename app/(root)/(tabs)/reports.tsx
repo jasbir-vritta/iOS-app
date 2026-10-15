@@ -55,13 +55,14 @@ const byId = (id: string) => reports.find((r) => r.id === id);
 const topReports = ["kundli-milan", "career", "marriage", "true-love"].map(byId).filter(Boolean) as Report[];
 const popularReports = ["true-love", "marriage", "career", "kundli-milan"].map(byId).filter(Boolean) as Report[];
 
+// Each life focus and the reports that answer it (best match first).
 const focusItems = [
-  { label: "Love", icon: "heart" },
-  { label: "Marriage", icon: "ring" },
-  { label: "Career", icon: "briefcase-outline" },
-  { label: "Money", icon: "cash-multiple" },
-  { label: "Wellness", icon: "flower-lotus" },
-  { label: "Baby", icon: "baby-face-outline" },
+  { label: "Love", icon: "heart", reports: ["true-love", "kundli-milan", "marriage"] },
+  { label: "Marriage", icon: "ring", reports: ["marriage", "kundli-milan", "true-love"] },
+  { label: "Career", icon: "briefcase-outline", reports: ["career", "travel", "future"] },
+  { label: "Money", icon: "cash-multiple", reports: ["finance", "career", "future"] },
+  { label: "Wellness", icon: "flower-lotus", reports: ["health", "future"] },
+  { label: "Baby", icon: "baby-face-outline", reports: ["baby-name"] },
 ];
 
 const tabs = [
@@ -92,9 +93,12 @@ function useReportState() {
   );
 
   return (id: string) => {
-    const order = mine?.purchases?.[id];
-    if (order?.status === "completed") return "purchased";
-    if (order?.status === "processing") return "preparing";
+    // Future Report is bought per duration ("future:10"): any of them counts.
+    const orders = Object.entries(mine?.purchases || {})
+      .filter(([key]) => key === id || key.startsWith(`${id}:`))
+      .map(([, order]) => order);
+    if (orders.some((o) => o?.status === "completed")) return "purchased";
+    if (orders.some((o) => o?.status === "processing")) return "preparing";
     if (mine?.available?.[id] === false) return "soon";
     return "buy";
   };
@@ -162,7 +166,12 @@ export default function Reports() {
   const tabSpace = useTabBarSpace();
   const stateOf = useReportState();
   const insets = useSafeAreaInsets();
-  const [focus, setFocus] = useState(0);
+  // Picked life focus (null = Popular Reports).
+  const [focus, setFocus] = useState<number | null>(null);
+  const focusPicked = focus === null ? null : focusItems[focus];
+  const shelf = focusPicked
+    ? (focusPicked.reports.map(byId).filter(Boolean) as Report[])
+    : popularReports;
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("all");
 
   const list = useMemo(() => (tab === "all" ? reports : reports.filter((r) => r.frequency === tab)), [tab]);
@@ -224,7 +233,11 @@ export default function Reports() {
           {focusItems.map((f, i) => {
             const active = i === focus;
             return (
-              <Pressable key={f.label} onPress={() => setFocus(i)} style={[s.focusTile, active && s.focusTileActive]}>
+              <Pressable
+                key={f.label}
+                onPress={() => setFocus(active ? null : i)}
+                style={[s.focusTile, active && s.focusTileActive]}
+              >
                 <Icon name={f.icon as any} size={px(27)} color={active ? "#F4C9A8" : C.TERRACOTTA} />
                 <Text style={[s.focusLabel, active && { color: "#fff" }]} numberOfLines={1}>{f.label}</Text>
               </Pressable>
@@ -232,14 +245,21 @@ export default function Reports() {
           })}
         </View>
 
-        {/* Popular Reports */}
+        {/* Popular Reports, or the picked life focus's reports */}
         <View style={[s.sectionHeader, { marginTop: px(14) }]}>
-          <Text style={s.sectionTitle}>Popular Reports</Text>
-          <SeeAll />
+          <Text style={s.sectionTitle}>{focusPicked ? `${focusPicked.label} Reports` : "Popular Reports"}</Text>
+          {focusPicked ? (
+            <Pressable onPress={() => setFocus(null)} hitSlop={8} style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={s.seeAll}>Clear</Text>
+              <Icon name="close" size={px(13)} color={C.INK} style={{ marginLeft: px(4) }} />
+            </Pressable>
+          ) : (
+            <SeeAll />
+          )}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: px(10) }} style={{ marginHorizontal: -PAD }}>
           <View style={{ width: PAD - px(10) }} />
-          {popularReports.map((r) => (
+          {shelf.map((r) => (
             <Pressable key={r.id} onPress={() => open(r)} style={s.popularCard}>
               <View>
                 <Image source={{ uri: r.image }} style={s.popularImage} resizeMode="cover" />

@@ -13,6 +13,11 @@ import {
   View,
 } from "react-native";
 
+import reportsData from "../constants/reports.json";
+
+// Reports that have their own page (others open the Reports tab).
+const REPORT_IDS = new Set((reportsData as { id: string }[]).map((r) => r.id));
+
 const C = {
   INK: "#1C1820",
   PLUM: "#2B1A3D",
@@ -31,7 +36,7 @@ const CARD_RATIO = 0.72;
 const reports = [
   {
     id: "kundli-milan",
-    title: "Kundli Milan",
+    title: "Kundli Matching",
     subtitle: "Report",
     background: require("../../assets/backgrounds/homepage_kundli_milan_report.png"),
   },
@@ -59,10 +64,11 @@ export default function RecommendedReports() {
   };
 
   const openReports = (reportId?: string) => {
-    if (reportId) {
+    if (reportId && REPORT_IDS.has(reportId)) {
+      // Straight to that report's page.
       router.push({
-        pathname: "/(root)/(tabs)/reports",
-        params: { reportId },
+        pathname: "/(root)/report/[report_id]",
+        params: { report_id: reportId },
       } as any);
     } else {
       router.push("/(root)/(tabs)/reports" as any);

@@ -17,6 +17,11 @@ export type ReportOrder = {
   refunded?: boolean;
   report_name?: string;
   lan?: string;
+  // Future Report: "5" | "10" | "15" (years).
+  variant?: string | null;
+  partner_name?: string | null;
+  // Baby report: the child it was made for.
+  child_name?: string | null;
   profile_name?: string;
   language?: string;
   created_at?: string;
@@ -32,7 +37,33 @@ type ProfileReports = {
   languages: Record<string, string>;
   // report_id -> sample report link for Preview (none = no Preview).
   samples: Record<string, string>;
+  // report_id -> what the purchase needs (languages, durations, partner).
+  options: Record<string, ReportOptions>;
 };
+
+export type ReportOptions = {
+  languages: string[];
+  variants: { id: string; label: string }[];
+  needsPartner: boolean;
+  // Baby report asks for the child's birth details.
+  needsChild: boolean;
+};
+
+/** Partner's birth details for Kundli Matching. */
+export type PartnerDetails = {
+  name: string;
+  gender: "male" | "female";
+  dateOfBirth: string; // DD/MM/YYYY
+  timeOfBirth: string; // HH:MM
+  placeOfBirth: string;
+  lat: number;
+  lon: number;
+  tzone: string;
+};
+
+/** Key of a purchase: the report, plus its duration if any ("future:10"). */
+export const purchaseKey = (reportId: string, variant?: string | null) =>
+  variant ? `${reportId}:${variant}` : reportId;
 
 type ReportsState = {
   byProfile: Record<string, ProfileReports>;
@@ -49,11 +80,14 @@ export const useReportsStore = create<ReportsState>((set) => ({
     set((state) => ({ byProfile: { ...state.byProfile, [profileId]: data } })),
   setOrder: (profileId, order) =>
     set((state) => {
-      const current = state.byProfile[profileId] || { purchases: {}, boughtForOthers: {}, available: {}, languages: {}, samples: {} };
+      const current = state.byProfile[profileId] || { purchases: {}, boughtForOthers: {}, available: {}, languages: {}, samples: {}, options: {} };
       return {
         byProfile: {
           ...state.byProfile,
-          [profileId]: { ...current, purchases: { ...current.purchases, [order.report_id]: order } },
+          [profileId]: {
+            ...current,
+            purchases: { ...current.purchases, [purchaseKey(order.report_id, order.variant)]: order },
+          },
         },
       };
     }),
@@ -87,9 +121,16 @@ export async function loadProfileReports(profileId: string): Promise<void> {
 
     const available: Record<string, boolean> = {};
     const samples: Record<string, string> = {};
+    const options: Record<string, ReportOptions> = {};
     Object.entries(json.catalogue || {}).forEach(([id, item]: [string, any]) => {
       available[id] = Boolean(item?.available);
       if (item?.sample_url) samples[id] = String(item.sample_url);
+      options[id] = {
+        languages: Array.isArray(item?.languages) ? item.languages : [],
+        variants: Array.isArray(item?.variants) ? item.variants : [],
+        needsPartner: Boolean(item?.needs_partner),
+        needsChild: Boolean(item?.needs_child),
+      };
     });
 
     store.setProfileReports(profileId, {
@@ -98,6 +139,7 @@ export async function loadProfileReports(profileId: string): Promise<void> {
       available,
       languages: json.languages || {},
       samples,
+      options,
     });
   } catch (error) {
     console.warn("Failed to load reports:", error);
@@ -118,7 +160,10 @@ export class ReportPurchaseError extends Error {
 export async function purchaseReport(
   profileId: string,
   reportId: string,
-  lan = "en"
+  lan = "en",
+  variant?: string | null,
+  partner?: PartnerDetails | null,
+  child?: PartnerDetails | null
 ): Promise<ReportOrder> {
   const store = useReportsStore.getState();
 
@@ -128,13 +173,21 @@ export async function purchaseReport(
     report_id: reportId,
     profile_id: profileId,
     status: "processing",
+    variant: variant || null,
   });
 
   try {
     const res = await fetch(`${API_URL}/reports/purchase`, {
       method: "POST",
       headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-      body: JSON.stringify({ report_id: reportId, profile_id: profileId, lan }),
+      body: JSON.stringify({
+        report_id: reportId,
+        profile_id: profileId,
+        lan,
+        variant: variant || null,
+        partner: partner || null,
+        child: child || null,
+      }),
     });
     const json = await readJson(res);
 

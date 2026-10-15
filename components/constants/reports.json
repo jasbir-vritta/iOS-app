@@ -3,7 +3,7 @@
     "id": "true-love",
     "title": "True Love Report",
     "description": "Find the love that's meant for you.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/true_love_report.png",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/true_love_report.webp",
     "price": 99,
     "oldPrice": 499,
     "discount": "80% OFF",
@@ -39,7 +39,7 @@
     "id": "marriage",
     "title": "Marriage Report",
     "description": "Decode your marriage destiny.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/marriage_report.png",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/marriage_report.webp",
     "price": 99,
     "oldPrice": 499,
     "discount": "80% OFF",
@@ -75,7 +75,7 @@
     "id": "career",
     "title": "Career Report",
     "description": "Your 30-day work and growth forecast.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/career_report.png",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/career_report.webp",
     "price": 49,
     "oldPrice": 299,
     "discount": "84% OFF",
@@ -109,31 +109,31 @@
   },
   {
     "id": "baby-name",
-    "title": "Baby Name Report",
-    "description": "Find the perfect name with meaning and positive energy.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/baby_name_report.png",
-    "price": 99,
-    "oldPrice": 499,
+    "title": "Baby Report (Bal Jyotish)",
+    "description": "A Vedic reading of your child's birth chart.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/baby_name_report.webp",
+    "price": 149,
+    "oldPrice": 699,
     "discount": "80% OFF",
     "frequency": "One time",
     "icon": "star-four-points-outline",
     "features": [
-      { "label": "Lucky Names", "icon": "star-outline" },
-      { "label": "Nakshatra Analysis", "icon": "flower-tulip" },
-      { "label": "Name Meanings", "icon": "book-open-outline" },
+      { "label": "Nature & Personality", "icon": "star-outline" },
+      { "label": "Health & Growth", "icon": "flower-tulip" },
+      { "label": "Education & Talents", "icon": "book-open-outline" },
       { "label": "Guidance & Remedies", "icon": "star-four-points" }
     ],
     "questions": [
-      "What are the most auspicious names for my baby?",
-      "Which names align with their nakshatra?",
-      "What is the meaning and personality of each name?",
-      "Are there any names to avoid?"
+      "What is my child's nature and temperament?",
+      "Which areas of health and growth need care?",
+      "Which studies and talents suit my child?",
+      "Are there any doshas, and what are the remedies?"
     ],
     "discoveries": [
-      { "icon": "book-open-outline", "text": "Personalized name suggestions" },
-      { "icon": "flower-tulip", "text": "Meaning and personality insights" },
-      { "icon": "book-open-outline", "text": "Guidance for a bright and positive life" },
-      { "icon": "infinity", "text": "Personalized remedies and guidance" }
+      { "icon": "star-outline", "text": "Your child's personality from their birth chart" },
+      { "icon": "flower-tulip", "text": "Health and growth guidance" },
+      { "icon": "book-open-outline", "text": "Education, talents and future direction" },
+      { "icon": "infinity", "text": "Doshas and personalised remedies" }
     ],
     "testimonial": {
       "name": "Megha R.",
@@ -147,7 +147,7 @@
     "id": "past-life",
     "title": "Past Life Report",
     "description": "Discover your karmic journey.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/past_life_report.png",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/past_life_report.webp",
     "price": 49,
     "oldPrice": 299,
     "discount": "84% OFF",
@@ -183,7 +183,7 @@
     "id": "finance",
     "title": "Finance Report",
     "description": "Your 30-day money forecast.",
-    "image": "https://storage.googleapis.com/vritta/astrology/report/finance_repot.png",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/finance_report.webp",
     "price": 49,
     "oldPrice": 299,
     "discount": "84% OFF",
@@ -214,5 +214,137 @@
       "text": "The report gave practical guidance on investments and timing. It's been very helpful for my financial planning."
     },
     "relatedReports": ["career", "kundli-milan"]
+  },
+  {
+    "id": "kundli-milan",
+    "title": "Kundli Matching Report",
+    "description": "See how your stars align for marriage.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/kundali_report.webp",
+    "price": 99,
+    "oldPrice": 499,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "heart-multiple-outline",
+    "features": [
+      { "label": "Guna Milan", "icon": "heart" },
+      { "label": "Manglik Check", "icon": "flower-tulip" },
+      { "label": "Compatibility", "icon": "chart-bar" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "How many gunas match between us?",
+      "Is either of us Manglik?",
+      "Where are we compatible, and where will we need effort?",
+      "What remedies can strengthen our bond?"
+    ],
+    "discoveries": [
+      { "icon": "heart", "text": "Ashtakoota guna matching score" },
+      { "icon": "flower-tulip", "text": "Manglik dosha check for both of you" },
+      { "icon": "chart-bar", "text": "Compatibility across nature, health and family" },
+      { "icon": "star-four-points", "text": "Remedies for a harmonious marriage" }
+    ],
+    "relatedReports": [
+      "marriage",
+      "true-love"
+    ]
+  },
+  {
+    "id": "future",
+    "title": "Future Report",
+    "description": "Year-by-year Vedic predictions for 5, 10 or 15 years.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/future_report.webp",
+    "price": 109,
+    "oldPrice": 549,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "crystal-ball",
+    "features": [
+      { "label": "Year by Year", "icon": "calendar-month-outline" },
+      { "label": "Career & Money", "icon": "briefcase-outline" },
+      { "label": "Love & Family", "icon": "heart" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What does each coming year hold for me?",
+      "When are the best years for career and money?",
+      "Which years need extra care?",
+      "What can I do to make the most of them?"
+    ],
+    "discoveries": [
+      { "icon": "calendar-month-outline", "text": "Predictions for every year you choose" },
+      { "icon": "briefcase-outline", "text": "Career, money and opportunities by year" },
+      { "icon": "heart", "text": "Relationships, family and health trends" },
+      { "icon": "star-four-points", "text": "Remedies and guidance for each phase" }
+    ],
+    "relatedReports": [
+      "career",
+      "finance"
+    ]
+  },
+  {
+    "id": "health",
+    "title": "Health Report",
+    "description": "Your health tendencies from your birth chart.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/health_report.webp",
+    "price": 49,
+    "oldPrice": 299,
+    "discount": "84% OFF",
+    "frequency": "One time",
+    "icon": "meditation",
+    "features": [
+      { "label": "Body & Constitution", "icon": "meditation" },
+      { "label": "Sensitive Areas", "icon": "flower-tulip" },
+      { "label": "Timing", "icon": "calendar-month-outline" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "What is my natural constitution?",
+      "Which areas of health need more care?",
+      "Which periods call for extra attention?",
+      "What lifestyle and remedies support me?"
+    ],
+    "discoveries": [
+      { "icon": "meditation", "text": "Your constitution from your birth chart" },
+      { "icon": "flower-tulip", "text": "Health areas to look after" },
+      { "icon": "calendar-month-outline", "text": "Periods that need extra care" },
+      { "icon": "star-four-points", "text": "Lifestyle tips and remedies" }
+    ],
+    "relatedReports": [
+      "career",
+      "future"
+    ]
+  },
+  {
+    "id": "travel",
+    "title": "Foreign Travel & Settlement Report",
+    "description": "Foreign travel and settling abroad, from your chart.",
+    "image": "https://storage.googleapis.com/vritta/astrology/report/webp/future_travel_report.webp",
+    "price": 99,
+    "oldPrice": 499,
+    "discount": "80% OFF",
+    "frequency": "One time",
+    "icon": "airplane",
+    "features": [
+      { "label": "Foreign Travel", "icon": "airplane" },
+      { "label": "Settling Abroad", "icon": "home-outline" },
+      { "label": "Timing", "icon": "calendar-month-outline" },
+      { "label": "Guidance & Remedies", "icon": "star-four-points" }
+    ],
+    "questions": [
+      "Will I travel abroad?",
+      "Are there chances of settling in another country?",
+      "When are the best times to go?",
+      "What helps opportunities abroad?"
+    ],
+    "discoveries": [
+      { "icon": "airplane", "text": "Foreign travel potential" },
+      { "icon": "home-outline", "text": "Chances of settling abroad" },
+      { "icon": "calendar-month-outline", "text": "Favourable periods to travel" },
+      { "icon": "star-four-points", "text": "Remedies and guidance" }
+    ],
+    "relatedReports": [
+      "career",
+      "future"
+    ]
   }
 ]

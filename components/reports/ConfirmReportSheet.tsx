@@ -1,7 +1,18 @@
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import PartnerForm, { PartnerDraft } from "./PartnerForm";
 
 // App palette: Card White sheet, Lavender panels, Deep Plum action.
 const C = {
@@ -46,6 +57,18 @@ type Props = {
   // Language this profile already owns the report in (Buy again).
   ownedLanguage?: string | null;
   onOpenOwned?: () => void;
+  // Language codes this report offers (empty = all).
+  allowedLanguages?: string[];
+  // Future Report: durations to choose from.
+  variants?: { id: string; label: string }[];
+  variant?: string | null;
+  onVariantChange?: (id: string) => void;
+  // Kundli Matching: the partner's details (Buy waits until complete).
+  partner?: PartnerDraft | null;
+  onPartnerChange?: (next: PartnerDraft) => void;
+  partnerReady?: boolean;
+  // Whose details the form asks for (Baby report: the child).
+  personRole?: "partner" | "child";
   // Enough balance: pay and make the report.
   onBuy: () => void;
   // Not enough: go and recharge (the purchase continues on return).
@@ -67,6 +90,14 @@ export default function ConfirmReportSheet({
   onAddCash,
   ownedLanguage,
   onOpenOwned,
+  allowedLanguages,
+  variants = [],
+  variant,
+  onVariantChange,
+  partner,
+  onPartnerChange,
+  partnerReady = true,
+  personRole = "partner",
 }: Props) {
   const insets = useSafeAreaInsets();
   const [picking, setPicking] = useState(false);
@@ -75,7 +106,12 @@ export default function ConfirmReportSheet({
   const owned = Boolean(ownedLanguage) && ownedLanguage === language;
   const offPercent = oldPrice && oldPrice > price ? Math.round((1 - price / oldPrice) * 100) : 0;
   const genderLetter = String(profile?.gender || "").trim().charAt(0).toUpperCase();
-  const languageList = Object.entries(languages).length ? Object.entries(languages) : [["en", "English"]];
+  const allLanguages = Object.entries(languages).length ? Object.entries(languages) : [["en", "English"]];
+  const languageList = allowedLanguages?.length
+    ? allLanguages.filter(([code]) => allowedLanguages.includes(code))
+    : allLanguages;
+  const needsPartner = Boolean(partner && onPartnerChange);
+  const blocked = needsPartner && !partnerReady;
 
   const close = () => {
     setPicking(false);
@@ -87,7 +123,10 @@ export default function ConfirmReportSheet({
       <View style={s.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
 
-        <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
+        >
           <View style={s.handle} />
 
           <View style={s.headRow}>
@@ -105,6 +144,7 @@ export default function ConfirmReportSheet({
 
           <View style={s.rule} />
 
+          <ScrollView style={s.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Who the report is for */}
           <View style={s.card}>
             <View style={s.labelRow}>
@@ -158,7 +198,33 @@ export default function ConfirmReportSheet({
                 ))}
               </View>
             )}
+
+            {variants.length > 0 && (
+              <>
+                <View style={s.cardRule} />
+                <View style={s.labelRow}>
+                  <Icon name="calendar-range" size={16} color={C.muted} />
+                  <Text style={s.label}>Duration</Text>
+                </View>
+                <View style={s.variantRow}>
+                  {variants.map((v) => (
+                    <Pressable
+                      key={v.id}
+                      onPress={() => onVariantChange?.(v.id)}
+                      style={[s.variant, v.id === variant && s.variantOn]}
+                    >
+                      <Text style={[s.variantText, v.id === variant && s.variantTextOn]}>{v.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
+
+          {needsPartner && partner && onPartnerChange && (
+            <PartnerForm value={partner} onChange={onPartnerChange} who={personRole} />
+          )}
+          </ScrollView>
 
           {/* Price and wallet */}
           <View style={s.priceRow}>
@@ -190,20 +256,27 @@ export default function ConfirmReportSheet({
           )}
 
           <Pressable
-            onPress={owned ? onOpenOwned : enough ? onBuy : onAddCash}
-            style={s.button}
+            onPress={owned ? onOpenOwned : blocked ? undefined : enough ? onBuy : onAddCash}
+            disabled={!owned && blocked}
+            style={[s.button, !owned && blocked && s.buttonOff]}
           >
             <Text style={s.buttonText}>
-              {owned ? "Open Report" : enough ? `Buy Now · ₹${price}` : "Add Cash to Buy"}
+              {owned
+                ? "Open Report"
+                : blocked
+                  ? `Add ${personRole}'s details`
+                  : enough
+                    ? `Buy Now · ₹${price}`
+                    : "Add Cash to Buy"}
             </Text>
           </Pressable>
 
-          {!owned && !enough && (
+          {!owned && !blocked && !enough && (
             <Text style={s.hint}>
               Add ₹{Math.ceil(price - walletBalance)} or more. Your report will be prepared as soon as you return.
             </Text>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -211,7 +284,14 @@ export default function ConfirmReportSheet({
 
 const s = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(43,26,61,0.45)" },
-  sheet: { backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 10 },
+  sheet: { backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 10, maxHeight: "92%" },
+  body: { flexGrow: 0 },
+  variantRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  variant: { flex: 1, height: 40, borderRadius: 12, borderWidth: 1, borderColor: C.line, backgroundColor: C.sheet, alignItems: "center", justifyContent: "center" },
+  variantOn: { backgroundColor: C.button, borderColor: C.button },
+  variantText: { color: C.ink, fontSize: 14, fontWeight: "600" },
+  variantTextOn: { color: C.white },
+  buttonOff: { opacity: 0.5 },
   handle: { alignSelf: "center", width: 44, height: 4, borderRadius: 2, backgroundColor: C.line, marginBottom: 18 },
   headRow: { flexDirection: "row", alignItems: "flex-start" },
   title: { color: C.ink, fontSize: 22, fontWeight: "800" },
