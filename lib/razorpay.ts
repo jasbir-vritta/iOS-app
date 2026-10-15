@@ -1,9 +1,10 @@
 /**
  * Razorpay Custom UI (react-native-customui): UPI app list + UPI intent payments.
  *
- * The SDK is native code, so it only exists in a development / production
- * build — not in Expo Go. `isRazorpayAvailable` is false there and the
- * wallet screen shows a message instead of crashing.
+ * Works on iPhone too: there the UPI app is named by Razorpay's identifier
+ * ("phonepe", "google_pay") instead of an Android package name. Without the
+ * native SDK (Expo Go) `isRazorpayAvailable` is false and the wallet pays on
+ * Razorpay's page instead.
  */
 import { NativeModules } from "react-native";
 

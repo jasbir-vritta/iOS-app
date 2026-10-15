@@ -1,7 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
-export type MyLifeCacheType = "today" | "past" | "future";
+import { API_URL, authHeaders } from "../../lib/auth";
+import { APP_NAME } from "../constants/app";
+
+// today/past/future: old endpoints. daily..yearly: My Life horoscope
+// ("daily" also feeds Home and Profile).
+export type MyLifeCacheType =
+  | "today"
+  | "past"
+  | "future"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly";
 
 export interface MyLifeCache<T = any> {
   profileId: string;
@@ -9,11 +21,7 @@ export interface MyLifeCache<T = any> {
   data: T;
 }
 
-export interface MyLifeStoreData {
-  today: any | null;
-  past: any | null;
-  future: any | null;
-}
+export type MyLifeStoreData = Partial<Record<MyLifeCacheType, any | null>>;
 
 type CacheTimestamps = Partial<Record<MyLifeCacheType, number>>;
 
@@ -42,11 +50,7 @@ interface MyLifeStoreState {
   clearMyLifeStore: (profileId: string) => void;
 }
 
-const EMPTY_PROFILE: MyLifeStoreData = {
-  today: null,
-  past: null,
-  future: null,
-};
+const EMPTY_PROFILE: MyLifeStoreData = {};
 
 export const useMyLifeStore = create<MyLifeStoreState>((set, get) => ({
   profiles: {},
@@ -106,11 +110,52 @@ export const useMyLifeStore = create<MyLifeStoreState>((set, get) => ({
 // (the backend used the server-side active profile), so it is discarded.
 const CACHE_VERSION = "v2";
 
-const CACHE_MAX_AGE: Record<MyLifeCacheType, number> = {
+// Old endpoints: kept for a fixed time.
+const CACHE_MAX_AGE: Partial<Record<MyLifeCacheType, number>> = {
   today: 60 * 60 * 1000, // refresh every hour
   past: 365 * 24 * 60 * 60 * 1000, // yearly
   future: 7 * 24 * 60 * 60 * 1000, // weekly
 };
+
+const ALL_TYPES: MyLifeCacheType[] = [
+  "today", "past", "future", "daily", "weekly", "monthly", "yearly",
+];
+
+// Horoscopes are kept until their period ends in IST (the backend's day,
+// week, month and year): midnight, Sunday 00:00, the 1st, 1 January.
+const IST_OFFSET = 330 * 60 * 1000;
+
+function periodEnd(type: MyLifeCacheType, cachedAt: number): number | null {
+  // UTC fields of this date read as the IST wall clock.
+  const ist = new Date(cachedAt + IST_OFFSET);
+  const y = ist.getUTCFullYear();
+  const m = ist.getUTCMonth();
+  const d = ist.getUTCDate();
+
+  switch (type) {
+    case "daily":
+      return Date.UTC(y, m, d + 1) - IST_OFFSET;
+    case "weekly": // weeks run Sunday to Saturday
+      return Date.UTC(y, m, d + 7 - ist.getUTCDay()) - IST_OFFSET;
+    case "monthly":
+      return Date.UTC(y, m + 1, 1) - IST_OFFSET;
+    case "yearly":
+      return Date.UTC(y + 1, 0, 1) - IST_OFFSET;
+    default:
+      return null;
+  }
+}
+
+function isFresh(type: MyLifeCacheType, cachedAt: number | null): boolean {
+  if (cachedAt === null || !Number.isFinite(cachedAt) || cachedAt > Date.now()) {
+    return false;
+  }
+
+  const end = periodEnd(type, cachedAt);
+  if (end !== null) return Date.now() < end;
+
+  return Date.now() - cachedAt < (CACHE_MAX_AGE[type] ?? 0);
+}
 
 const getCacheKey = (type: MyLifeCacheType, profileId: string): string =>
   `mylife_${CACHE_VERSION}_${type}_${profileId}`;
@@ -120,16 +165,11 @@ const isCacheValid = <T,>(
   type: MyLifeCacheType,
   profileId: string
 ): boolean => {
-  if (
-    cache.profileId !== profileId ||
-    typeof cache.cachedAt !== "number" ||
-    !Number.isFinite(cache.cachedAt) ||
-    cache.cachedAt > Date.now()
-  ) {
+  if (cache.profileId !== profileId || typeof cache.cachedAt !== "number") {
     return false;
   }
 
-  return Date.now() - cache.cachedAt < CACHE_MAX_AGE[type];
+  return isFresh(type, cache.cachedAt);
 };
 
 async function removeExpiredCache(
@@ -188,13 +228,7 @@ export async function getMyLifeCache<T>(
       .getState()
       .getMyLifeCacheTimestamp(profileId, type);
 
-    const valid =
-      cachedAt !== null &&
-      Number.isFinite(cachedAt) &&
-      cachedAt <= Date.now() &&
-      Date.now() - cachedAt < CACHE_MAX_AGE[type];
-
-    if (valid) return memoryData as T;
+    if (isFresh(type, cachedAt)) return memoryData as T;
 
     await removeExpiredCache(type, profileId);
     return null;
@@ -248,13 +282,65 @@ export async function clearAllMyLifeCache(
   useMyLifeStore.getState().clearMyLifeStore(profileId);
 
   try {
-    const keys = (["today", "past", "future"] as MyLifeCacheType[]).map(
+    const keys = ALL_TYPES.map(
       (type) => getCacheKey(type, profileId)
     );
     await AsyncStorage.multiRemove(keys);
   } catch (error) {
     console.warn("Failed to clear all My Life caches:", error);
   }
+}
+
+export type MyLifePeriod = "daily" | "weekly" | "monthly" | "yearly";
+
+// Requests in progress, so screens asking at the same time share one call.
+const pendingHoroscopes = new Map<string, Promise<any>>();
+
+/**
+ * The My Life horoscope for a period (cache first, then the API).
+ * My Life, Home and Profile all read the same "daily" result, so they
+ * always show the same reading.
+ */
+export function loadMyLifeHoroscope(
+  period: MyLifePeriod,
+  profileId: string
+): Promise<any> {
+  const key = `${profileId}:${period}`;
+  const pending = pendingHoroscopes.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const cached = await getMyLifeCache(period, profileId);
+    if (cached) return cached;
+
+    const headers = await authHeaders();
+    const res = await fetch(
+      `${API_URL}/astrology/mylife/horoscope?period=${period}&profile_id=${encodeURIComponent(profileId)}`,
+      { method: "POST", headers }
+    );
+
+    const raw = await res.text();
+    let json: any = null;
+
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      json = null;
+    }
+
+    if (!res.ok || !json?.horoscope) {
+      throw new Error(
+        json?.detail || `My ${APP_NAME} failed to load (status ${res.status})`
+      );
+    }
+
+    await saveMyLifeCache(period, profileId, json.horoscope);
+    return json.horoscope;
+  })();
+
+  pendingHoroscopes.set(key, request);
+  request.finally(() => pendingHoroscopes.delete(key)).catch(() => {});
+  return request;
 }
 
 export async function hasValidMyLifeCache(

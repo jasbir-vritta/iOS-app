@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import ChatWelcome from "../../../components/chat/ChatWelcome";
+import { track } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -310,6 +311,7 @@ const initialSeconds = hasValidRemainingTime
       socket.onopen = () => {
         setConnecting(false);
         setChatActive(true);
+        track("chat_started", { chat_type: "ai", reading_type: "vedic", astrologer_id: astrologerId });
       };
 
       socket.onmessage = (event) => {
@@ -323,6 +325,15 @@ const initialSeconds = hasValidRemainingTime
         }
 
         if (applyWalletUpdate(payload)) return;
+
+        // Vedic: the reply arrives message by message while it's written.
+        // "typing…" stays on until the final reply below.
+        if (payload?.type === "message_part") {
+          if (typeof payload.text === "string" && payload.text.trim()) {
+            addAssistantText(payload.text);
+          }
+          return;
+        }
 
         if (
           payload?.type === "insufficient_credits" ||
@@ -354,6 +365,12 @@ const initialSeconds = hasValidRemainingTime
         if (payload?.success === false || payload?.type === "error") {
           setLoading(false);
           addAssistantText("I couldn't get a response right now.");
+          return;
+        }
+
+        // Already shown message by message: just end "typing…".
+        if (payload?.streamed) {
+          setLoading(false);
           return;
         }
 

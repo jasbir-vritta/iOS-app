@@ -20,6 +20,7 @@ import {
   LeaderboardUser,
   useMantraStore,
 } from "../../../components/stores/mantraStore";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
 const INK = "#1C1830";
 const MUTED = "#77758A";
@@ -191,6 +192,7 @@ function RankRow({ user, last }: { user: LeaderboardUser; last: boolean }) {
 }
 
 export default function Index() {
+  const tabSpace = useTabBarSpace();
   const leaderboard = useMantraStore((state) => state.leaderboard);
   const myRank = useMantraStore((state) => state.myRank);
   const period = useMantraStore((state) => state.leaderboardPeriod);
@@ -306,7 +308,7 @@ export default function Index() {
         <>
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: tabSpace }]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

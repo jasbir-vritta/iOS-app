@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { track } from "../../../lib/analytics";
 import { useUserStore } from "../../../components/stores/userStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
 import {
@@ -32,20 +33,61 @@ import {
 } from "../../../lib/razorpay";
 
 // UPI apps always shown in the dropdown, in this order. Ones that aren't
-// installed are listed too, with an "Install" link to the Play Store.
+// installed are listed too, with an "Install" link to the store.
 // Logos are bundled (official marks) so they show even when not installed.
+// iPhone: Razorpay names the app by `razorpayApp` (not the Android package
+// name); `iosScheme` (in app.json LSApplicationQueriesSchemes) detects it.
 const ALLOWED_UPI_APPS = [
   {
     packageName: "com.phonepe.app",
     appName: "PhonePe",
     logo: require("../../../assets/images/upi/phonepe.png"),
+    iosScheme: "phonepe://",
+    razorpayApp: "phonepe",
+    appStoreUrl: "https://apps.apple.com/in/app/phonepe-secure-payments-app/id1170055821",
   },
   {
     packageName: "com.google.android.apps.nbu.paisa.user",
     appName: "Google Pay",
     logo: require("../../../assets/images/upi/googlepay.png"),
+    iosScheme: "tez://",
+    razorpayApp: "google_pay",
+    appStoreUrl: "https://apps.apple.com/in/app/google-pay-save-pay-manage/id1193357041",
   },
 ];
+
+// The PhonePe / Google Pay picker and UPI ID option need the Razorpay SDK
+// (both platforms); without it (Expo Go) the wallet pays on Razorpay's page.
+const showUpiPicker = isRazorpayAvailable;
+
+// The id Razorpay uses for an app on this platform: what the dropdown
+// selects and what's sent as `upi_app_package_name`.
+type AllowedUpiApp = (typeof ALLOWED_UPI_APPS)[number];
+const upiAppKey = (app: AllowedUpiApp) =>
+  Platform.OS === "ios" ? app.razorpayApp : app.packageName;
+
+/**
+ * Installed allowed UPI apps, keyed by `upiAppKey`. iPhone checks each
+ * app's URL scheme, so it works whatever the SDK's list returns.
+ */
+async function installedUpiApps(keyId: string): Promise<UpiApp[]> {
+  if (Platform.OS !== "ios") {
+    const apps = await getUpiApps(keyId);
+    return apps.filter((a) => ALLOWED_UPI_APPS.some((allowed) => allowed.packageName === a.packageName));
+  }
+
+  // Lets the SDK start up; its list on iPhone isn't needed.
+  await getUpiApps(keyId).catch(() => []);
+
+  const checks = await Promise.all(
+    ALLOWED_UPI_APPS.map((app) => Linking.canOpenURL(app.iosScheme).catch(() => false))
+  );
+
+  return ALLOWED_UPI_APPS.filter((_, i) => checks[i]).map((app) => ({
+    appName: app.appName,
+    packageName: app.razorpayApp,
+  }));
+}
 
 // Pseudo "app" for paying by UPI ID (UPI collect) instead of a UPI app.
 const UPI_ID_OPTION = "__upi_id__";
@@ -105,7 +147,9 @@ const sleep = (ms: number) =>
  */
 async function payInBrowser(
   orderId: string,
-  headers: HeadersInit
+  headers: HeadersInit,
+  // iPhone: pay with this UPI app ("phonepe", "google_pay") or UPI ID.
+  upi?: { app?: string; vpa?: string }
 ): Promise<number | null> {
   const checkStatus = async () => {
     const response = await fetch(
@@ -131,8 +175,13 @@ async function payInBrowser(
   });
 
   try {
+    const query = new URLSearchParams();
+    if (upi?.app) query.set("app", upi.app);
+    if (upi?.vpa) query.set("vpa", upi.vpa);
+    const suffix = query.toString() ? `?${query}` : "";
+
     await WebBrowser.openBrowserAsync(
-      `${API_URL}/wallet/topup/checkout/${orderId}`
+      `${API_URL}/wallet/topup/checkout/${orderId}${suffix}`
     );
 
     // iOS resolves only when the browser closes; Android when it opens.
@@ -189,6 +238,11 @@ export default function WalletScreen() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
+  // Razorpay needs a mobile number; Google/Apple accounts give one once.
+  const [needsContact, setNeedsContact] = useState(false);
+  const [contact, setContact] = useState("");
+  const contactValid = /^[6-9]\d{9}$/.test(contact);
+
   const plan =
     packs.find((p) => p.id === selectedPackId) ?? packs[0];
 
@@ -223,22 +277,20 @@ export default function WalletScreen() {
 
         setPacks(data.packs);
         setKeyId(data.key_id);
+        setNeedsContact(Boolean(data.needs_contact));
         setSelectedPackId(
           (data.packs.find((p: Pack) => p.popular) ?? data.packs[0])?.id ?? ""
         );
 
         // Installed copies of PhonePe / Google Pay (icons come from these).
-        const installed = await getUpiApps(data.key_id);
-        const apps = installed.filter((a) =>
-          ALLOWED_UPI_APPS.some((allowed) => allowed.packageName === a.packageName)
-        );
+        const apps = await installedUpiApps(data.key_id);
 
         if (active) {
           setUpiApps(apps);
           setSelectedApp(
-            ALLOWED_UPI_APPS.find((allowed) =>
-              apps.some((a) => a.packageName === allowed.packageName)
-            )?.packageName ?? UPI_ID_OPTION
+            ALLOWED_UPI_APPS.map(upiAppKey).find((key) =>
+              apps.some((a) => a.packageName === key)
+            ) ?? UPI_ID_OPTION
           );
         }
       } catch (error) {
@@ -315,7 +367,7 @@ export default function WalletScreen() {
     if (
       loading ||
       !plan ||
-      (isRazorpayAvailable && !app && !(payByUpiId && verifiedUpiId))
+      (showUpiPicker && !app && !(payByUpiId && verifiedUpiId))
     ) {
       return;
     }
@@ -336,15 +388,28 @@ export default function WalletScreen() {
             ...headers,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ pack_id: plan.id }),
+          body: JSON.stringify({
+            pack_id: plan.id,
+            ...(needsContact ? { contact } : {}),
+          }),
         }
       );
 
       const order = await orderResponse.json();
 
       if (!orderResponse.ok || !order.success) {
-        throw new Error(order.detail || "Could not start the payment.");
+        // No mobile number on the account yet: ask for it.
+        if (order.detail?.code === "contact_required") {
+          setNeedsContact(true);
+        }
+        throw new Error(
+          (typeof order.detail === "string" ? order.detail : order.detail?.message) ||
+            "Could not start the payment."
+        );
       }
+
+      // Saved on the account; not asked again.
+      setNeedsContact(false);
 
       // No native SDK (Expo Go): pay on Razorpay's page in an in-app browser.
       if (!isRazorpayAvailable) {
@@ -359,6 +424,12 @@ export default function WalletScreen() {
         }
 
         updateUser({ credits });
+        track("recharge_completed", {
+          amount_inr: plan.price_inr,
+          credits: plan.credits,
+          method: payByUpiId ? "upi_id" : "upi_app",
+        });
+
         setNotice({
           kind: "success",
           text: `₹${plan.credits} added to your wallet.`,
@@ -424,6 +495,12 @@ export default function WalletScreen() {
         credits: Number(result.credits ?? 0),
       });
 
+      track("recharge_completed", {
+        amount_inr: plan.price_inr,
+        credits: plan.credits,
+        method: payByUpiId ? "upi_id" : "upi_app",
+      });
+
       setNotice({
         kind: "success",
         text: `₹${plan.credits} added to your wallet.`,
@@ -446,8 +523,10 @@ export default function WalletScreen() {
   const canPay =
     Boolean(
       plan &&
-        (app || (payByUpiId && verifiedUpiId) || !isRazorpayAvailable)
-    ) && !loading;
+        (app || (payByUpiId && verifiedUpiId) || !showUpiPicker)
+    ) &&
+    (!needsContact || contactValid) &&
+    !loading;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -643,7 +722,7 @@ export default function WalletScreen() {
             Pay using UPI
           </Text>
 
-          {!isRazorpayAvailable ? (
+          {!showUpiPicker ? (
             <Text style={styles.methodEmpty}>
               You&apos;ll choose your UPI app on the secure Razorpay page.
             </Text>
@@ -652,9 +731,9 @@ export default function WalletScreen() {
             {/* PhonePe / Google Pay: a dropdown (shown even if not installed) */}
             {(() => {
               const options = ALLOWED_UPI_APPS.map((allowed) => {
-                const item = upiApps.find((a) => a.packageName === allowed.packageName);
+                const item = upiApps.find((a) => a.packageName === upiAppKey(allowed));
                 return {
-                  key: allowed.packageName,
+                  key: upiAppKey(allowed),
                   name: item?.appName || allowed.appName,
                   installed: Boolean(item),
                   // Bundled original logo (same whether installed or not).
@@ -755,13 +834,20 @@ export default function WalletScreen() {
                         {selected.name} isn&apos;t installed on this phone.
                       </Text>
                       <Pressable
-                        onPress={() =>
+                        onPress={() => {
+                          const store = ALLOWED_UPI_APPS.find((a) => upiAppKey(a) === selected.key);
+
+                          if (Platform.OS === "ios") {
+                            if (store) Linking.openURL(store.appStoreUrl);
+                            return;
+                          }
+
                           Linking.openURL(`market://details?id=${selected.key}`).catch(() =>
                             Linking.openURL(
                               `https://play.google.com/store/apps/details?id=${selected.key}`
                             )
-                          )
-                        }
+                          );
+                        }}
                         style={styles.installButton}
                       >
                         <Text style={styles.installButtonText}>Install</Text>
@@ -889,6 +975,24 @@ export default function WalletScreen() {
 
       {/* Footer */}
       <View style={styles.footer}>
+        {/* Google/Apple accounts: Razorpay needs a mobile number (asked once). */}
+        {needsContact && (
+          <View style={styles.contactBox}>
+            <Text style={styles.contactLabel}>Mobile number for UPI payment</Text>
+            <TextInput
+              value={contact}
+              onChangeText={(value) => setContact(value.replace(/\D/g, "").slice(0, 10))}
+              placeholder="10-digit mobile number"
+              placeholderTextColor={COLORS.secondary}
+              keyboardType="number-pad"
+              autoComplete="tel"
+              maxLength={10}
+              editable={!loading}
+              style={styles.contactInput}
+            />
+          </View>
+        )}
+
         <Pressable
           onPress={handlePay}
           disabled={!canPay}
@@ -1385,6 +1489,28 @@ const styles = StyleSheet.create({
   },
 
   /* Footer */
+
+  contactBox: {
+    marginBottom: 8,
+  },
+
+  contactLabel: {
+    marginBottom: 5,
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: COLORS.ink,
+  },
+
+  contactInput: {
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#FFFFFF",
+    fontSize: 14,
+    color: COLORS.ink,
+  },
 
   footer: {
     paddingHorizontal: 17,

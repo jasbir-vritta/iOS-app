@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -423,8 +424,20 @@ export default function Home() {
         !gender ||
         !language
       ) {
-        console.log(
-          "Please fill all fields"
+        Alert.alert(
+          "Missing information",
+          "Please fill in name, gender, language, birth date, birth time and birth place."
+        );
+        return;
+      }
+
+      // Coordinates come only from a picked suggestion, so cities with
+      // the same name (e.g. Aurangabad, Maharashtra / Bihar) can't be
+      // mixed up. Typing the place clears the pick (see onChangeText).
+      if (!selectedLocation) {
+        Alert.alert(
+          "Select your birth place",
+          "Please search and select your birth place from the list."
         );
         return;
       }
@@ -463,60 +476,7 @@ export default function Home() {
 
       setSaving(true);
 
-      let location =
-        selectedLocation;
-
-      /**
-       * If the user typed a place but
-       * didn't select a suggestion,
-       * perform one final search.
-       */
-      if (
-        !location ||
-        formatPlaceLabel(location).toLowerCase() !==
-          placeOfBirth
-            .trim()
-            .toLowerCase()
-      ) {
-        console.log(
-          "Finding birth place:",
-          placeOfBirth
-        );
-
-        const response =
-          await fetch(
-            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-              // The search matches city names only, so drop ", State".
-              placeOfBirth.split(",")[0].trim()
-            )}&count=1&language=en&format=json`
-          );
-
-        if (!response.ok) {
-          throw new Error(
-            "Failed to find birth place"
-          );
-        }
-
-        const data =
-          await response.json();
-
-        if (
-          !data.results ||
-          data.results.length === 0
-        ) {
-          throw new Error(
-            "Birth place not found"
-          );
-        }
-
-        location =
-          data.results[0];
-      }
-
-      console.log(
-        "Location found:",
-        location
-      );
+      const location = selectedLocation;
 
       const userData = {
         name: name.trim(),

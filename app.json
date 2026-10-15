@@ -69,7 +69,14 @@
           "microphonePermission": false
         }
       ],
-      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/app",
+        {
+          "ios": {
+            "disableSPM": true
+          }
+        }
+      ],
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
       "expo-apple-authentication",

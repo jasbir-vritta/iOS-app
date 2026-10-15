@@ -10,10 +10,8 @@ import {
     View,
 } from "react-native";
 
-import { API_URL, authHeaders } from "../../lib/auth";
 import {
-    getMyLifeCache,
-    saveMyLifeCache,
+    loadMyLifeHoroscope,
     useMyLifeStore,
 } from "../stores/myLifeStore";
 import useProfilesStore from "../stores/profilesStore";
@@ -34,7 +32,7 @@ const C = {
   GREEN: "#26843B",
 };
 
-type AreaKey = "love" | "career" | "money" | "health";
+type AreaKey = "love" | "career" | "money" | "health" | "travel";
 type Status = "Favourable" | "Neutral" | "Challenging";
 
 type GuidanceItem = {
@@ -48,6 +46,7 @@ const GUIDANCE_ITEMS: GuidanceItem[] = [
   { label: "Career", key: "career", icon: "briefcase-outline" },
   { label: "Money", key: "money", icon: "wallet-outline" },
   { label: "Health", key: "health", icon: "meditation" },
+  { label: "Travel", key: "travel", icon: "airplane" },
 ];
 
 const normalizeStatus = (value: unknown): Status => {
@@ -119,7 +118,7 @@ export default function DailyGuidance() {
 
   const today = useMyLifeStore((state) =>
     activeProfileId
-      ? state.profiles[activeProfileId]?.today
+      ? state.profiles[activeProfileId]?.daily
       : null
   );
 
@@ -142,58 +141,8 @@ export default function DailyGuidance() {
       setLoading(true);
 
       try {
-        const cachedToday = await getMyLifeCache(
-          "today",
-          activeProfileId
-        );
-
-        if (cancelled) return;
-        if (cachedToday) return;
-
-        const headers = await authHeaders();
-
-        const response = await fetch(
-          `${API_URL}/astrology/mylife/today?profile_id=${encodeURIComponent(activeProfileId)}`,
-          {
-            method: "POST",
-            headers,
-          }
-        );
-
-        const raw = await response.text();
-
-        let json: any;
-
-        try {
-          json = JSON.parse(raw);
-        } catch {
-          throw new Error("Invalid Today API response.");
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            json?.detail ||
-              `Today API failed with status ${response.status}`
-          );
-        }
-
-        const freshToday = json?.today;
-
-        if (
-          !freshToday ||
-          typeof freshToday !== "object" ||
-          Array.isArray(freshToday)
-        ) {
-          throw new Error("Today data was missing from the API response.");
-        }
-
-        if (cancelled) return;
-
-        await saveMyLifeCache(
-          "today",
-          activeProfileId,
-          freshToday
-        );
+        // Same Daily horoscope as the My Life screen.
+        await loadMyLifeHoroscope("daily", activeProfileId);
       } catch (error) {
         if (!cancelled) {
           console.error("Home Today guidance error:", error);
@@ -215,7 +164,7 @@ export default function DailyGuidance() {
   const areas = GUIDANCE_ITEMS.map((item) => ({
     ...item,
     status: normalizeStatus(
-      today?.life_areas?.[item.key]?.status
+      today?.areas?.[item.key]?.status
     ),
   }));
 
@@ -225,12 +174,12 @@ export default function DailyGuidance() {
 
   const headline = needsBirthDetails
     ? "Complete your birth details"
-    : today?.horoscope_title ||
+    : today?.title ||
       "Your day, guided by the stars.";
 
   const description = needsBirthDetails
     ? `Add the birth date, time and place for ${activeProfile?.name || "this profile"} to see today's guidance.`
-    : today?.horoscope_text ||
+    : today?.text ||
       (loading
         ? "Preparing your personal guidance..."
         : "Your daily astrology guidance will appear here.");
@@ -245,7 +194,7 @@ export default function DailyGuidance() {
       <View style={[styles.content, { padding: px(12) }]}>
         <View style={styles.left}>
           <Text style={[styles.date, { fontSize: px(8) }]}>
-            {formatDate(today?.date)}
+            {formatDate(undefined)}
           </Text>
 
           <Text style={[styles.heading, { fontSize: px(19) }]}>

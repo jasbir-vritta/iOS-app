@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>570395865015-c08mchitmll8esnhsep92rk4jpu2sq2c.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.570395865015-c08mchitmll8esnhsep92rk4jpu2sq2c</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>570395865015-b95c1o6nmme7lnrfeai5n225ua965dps.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAA-_TLQxivyfoO8zrgvT_n3HweZ9Izqok</string>
+	<key>GCM_SENDER_ID</key>
+	<string>570395865015</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.vritta.app</string>
+	<key>PROJECT_ID</key>
+	<string>vritta-new</string>
+	<key>STORAGE_BUCKET</key>
+	<string>vritta-new.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:570395865015:ios:c199c25776f6692b16c232</string>
+</dict>
+</plist>

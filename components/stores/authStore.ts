@@ -9,6 +9,7 @@ import {
     saveSession,
 } from "../../lib/auth";
 
+import { identifyUser, resetAnalytics } from "../../lib/analytics";
 import { unregisterPushNotifications } from "../../lib/notifications";
 import useProfilesStore from "./profilesStore";
 import { useUserStore } from "./userStore";
@@ -182,6 +183,13 @@ const useAuthStore = create<AuthState>((set) => ({
                 .getState()
                 .updateUser(data);
 
+            // Mixpanel: this launch's events belong to this user.
+            identifyUser(data.user_id, {
+                name: data.name,
+                phone: data.phoneNumber,
+                email: data.email,
+            });
+
             // Keep auth information in authStore
             set({
                 user: {
@@ -222,6 +230,9 @@ const useAuthStore = create<AuthState>((set) => ({
         try {
             // Stop notifications to this phone (needs the session, so first).
             await unregisterPushNotifications();
+
+            // Mixpanel: the next account on this phone starts fresh.
+            resetAnalytics();
 
             // Clear backend session
             await clearSession();

@@ -21,6 +21,7 @@ import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import tarotCards from "../../../components/constants/tarot_cards.json";
 import ChatWelcome from "../../../components/chat/ChatWelcome";
+import { track } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -182,12 +183,21 @@ type ChatItem =
       kind: "prompt";
       question: string;
       used: boolean;
+      // Cards to pick for the spread (1-3) and its name.
+      count: number;
+      label?: string;
     }
   | {
       id: string;
       kind: "card";
       card: TarotCard;
+      // e.g. "Past", "Cause", "Your answer".
+      position?: string;
     };
+
+type DrawnCard = TarotCard & { position?: string };
+
+const ORDINALS = ["1st", "2nd", "3rd"];
 
 type Phase = "pick" | "waiting" | "ready" | null;
 
@@ -198,7 +208,7 @@ type Phase = "pick" | "waiting" | "ready" | null;
 const TAROT_CARDS: TarotCard[] = tarotCards;
 
 const normalize = (s: string) =>
-  s.trim().toLowerCase().replace("judgment", "judgement");
+  s.trim().toLowerCase().replace("judgment", "judgement").replace(/^the\s+/, "");
 
 const findTarotCard = (name: string) =>
   TAROT_CARDS.find((c) => normalize(c.name) === normalize(name));
@@ -321,7 +331,11 @@ export default function TarotChat() {
   const [phase, setPhaseState] = useState<Phase>(null);
   const [fanCards, setFanCards] = useState<TarotCard[]>([]);
   const [center, setCenter] = useState(0);
-  const [revealCard, setRevealCard] = useState<TarotCard | null>(null);
+  // Cards revealed after the reading (1-3, with positions).
+  const [revealCards, setRevealCards] = useState<DrawnCard[]>([]);
+  // How many cards this spread needs, and the fan cards picked so far.
+  const [needed, setNeeded] = useState(1);
+  const [picked, setPicked] = useState<number[]>([]);
 
   /* ============================================================
    * SESSION COUNTDOWN
@@ -507,13 +521,17 @@ export default function TarotChat() {
 
           /* TAROT CARD */
           if (messageType === "tarot_card" && item?.card) {
-            const card = findTarotCard(String(item.card));
+            // The app's deck image, or DivineAPI's for a card not in it.
+            const card =
+              findTarotCard(String(item.card)) ??
+              (item.card_image ? { name: String(item.card), image: String(item.card_image) } : null);
 
             if (card) {
               loadedItems.push({
                 id: item.message_id || uid("history-card"),
                 kind: "card",
                 card,
+                position: item.card_position || undefined,
               });
             }
 
@@ -669,6 +687,11 @@ export default function TarotChat() {
         socket.onopen = () => {
           if (!mounted) return;
 
+          // Only the first connection (it reconnects automatically).
+          if (attempts === 0) {
+            track("chat_started", { chat_type: "ai", reading_type: "tarot", astrologer_id: astrologerId });
+          }
+
           attempts = 0;
           setConnected(true);
         };
@@ -687,7 +710,39 @@ export default function TarotChat() {
             // Balance update mid-reading: keep the spinner.
             if (applyWalletUpdate(data)) return;
 
+            // Cards drawn: reveal them now; the reading follows.
+            if (data?.type === "tarot_cards") {
+              const drawn: DrawnCard[] = (Array.isArray(data.cards) ? data.cards : []).map((c: any) => ({
+                ...(findTarotCard(String(c.name)) ?? {
+                  name: String(c.name),
+                  image: String(c.image || ""),
+                }),
+                position: c.position || undefined,
+              }));
+              if (drawn.length && phaseRef.current === "waiting") {
+                setRevealCards(drawn);
+                setPhase("ready");
+              }
+              return;
+            }
+
+            // The reading arrives message by message (held behind the
+            // overlay until "Back to chat").
+            if (data?.type === "message_part") {
+              if (typeof data.text === "string" && data.text.trim()) {
+                addItems([
+                  { id: uid("a"), kind: "text", text: data.text.trim(), sender: "assistant" },
+                ]);
+              }
+              return;
+            }
+
             setLoading(false);
+
+            // Already shown message by message (cards came first).
+            if (data?.streamed) {
+              return;
+            }
 
             /* Assistant response */
             if (data?.response) {
@@ -716,28 +771,40 @@ export default function TarotChat() {
                   kind: "prompt",
                   question: lastQuestionRef.current,
                   used: false,
+                  count: Math.min(3, Math.max(1, Number(data?.cards_needed) || 1)),
+                  label: data?.spread_label || undefined,
                 },
               ]);
             }
 
             /* Tarot reading returned */
             if (data?.reading_type === "tarot" && data?.card) {
-              const card = findTarotCard(String(data.card)) ?? {
-                name: String(data.card),
-                image: "",
-              };
+              // DivineAPI drew these cards: the app's deck image, else theirs.
+              const source = Array.isArray(data.cards) && data.cards.length
+                ? data.cards
+                : [{ name: data.card, image: data.card_image }];
+              const drawn: DrawnCard[] = source.map((c: any) => ({
+                ...(findTarotCard(String(c.name)) ?? {
+                  name: String(c.name),
+                  image: String(c.image || ""),
+                }),
+                position: c.position || undefined,
+              }));
 
               if (phaseRef.current === "waiting") {
-                setRevealCard(card);
+                setRevealCards(drawn);
                 setPhase("ready");
               } else {
                 setItems((prev) => [
                   ...prev,
-                  {
-                    id: uid("card"),
-                    kind: "card",
-                    card,
-                  },
+                  ...drawn.map(
+                    (card): ChatItem => ({
+                      id: uid("card"),
+                      kind: "card",
+                      card,
+                      position: card.position,
+                    })
+                  ),
                 ]);
               }
             }
@@ -861,6 +928,8 @@ export default function TarotChat() {
     activePromptRef.current = prompt.id;
     activeQuestionRef.current = prompt.question;
 
+    setNeeded(prompt.count || 1);
+    setPicked([]);
     setFanCards(shuffleCards(TAROT_CARDS).slice(0, FAN_COUNT));
     setCenter(mid);
     scrollX.setValue(mid * STEP);
@@ -872,14 +941,22 @@ export default function TarotChat() {
    * PICK CARD
    * ============================================================ */
 
-  const handlePick = (card: TarotCard) => {
+  const handlePick = (card: TarotCard, index: number) => {
     const socket = socketRef.current;
 
     if (
       !socket ||
       !connected ||
-      phaseRef.current !== "pick"
+      phaseRef.current !== "pick" ||
+      picked.includes(index)
     ) {
+      return;
+    }
+
+    // Keep picking until the spread has all its cards.
+    const nowPicked = [...picked, index];
+    setPicked(nowPicked);
+    if (nowPicked.length < needed) {
       return;
     }
 
@@ -900,6 +977,7 @@ export default function TarotChat() {
       JSON.stringify({
         type: "tarot_card_selected",
         card: card.name,
+        cards: nowPicked.map((i) => fanCards[i]?.name).filter(Boolean),
         question: activeQuestionRef.current,
       })
     );
@@ -910,7 +988,7 @@ export default function TarotChat() {
    * ============================================================ */
 
   const finishReading = () => {
-    if (!revealCard) {
+    if (!revealCards.length) {
       return;
     }
 
@@ -921,15 +999,19 @@ export default function TarotChat() {
 
     setItems((prev) => [
       ...prev,
-      {
-        id: uid("card"),
-        kind: "card",
-        card: revealCard,
-      },
+      ...revealCards.map(
+        (card): ChatItem => ({
+          id: uid("card"),
+          kind: "card",
+          card,
+          position: card.position,
+        })
+      ),
       ...queued,
     ]);
 
-    setRevealCard(null);
+    setRevealCards([]);
+    setPicked([]);
   };
 
   /* ============================================================
@@ -955,19 +1037,31 @@ export default function TarotChat() {
    * OVERLAY COPY
    * ============================================================ */
 
+  const plural = needed > 1;
+
   const overlayTitle =
     phase === "pick"
-      ? "Choose your 1st card"
+      ? plural
+        ? `Choose your ${ORDINALS[Math.min(picked.length, 2)]} card`
+        : "Choose your card"
       : phase === "waiting"
         ? `${astrologerName || "Your astrologer"} is reading`
-        : "Your card is ready";
+        : plural
+          ? "Your cards are ready"
+          : "Your card is ready";
 
   const overlaySubtitle =
     phase === "pick"
-      ? "This card will reveal your reading"
+      ? plural
+        ? `Pick ${needed} cards · ${picked.length} of ${needed} chosen`
+        : "This card will reveal your reading"
       : phase === "waiting"
-        ? "your card"
-        : "Your card";
+        ? plural
+          ? "your cards"
+          : "your card"
+        : plural
+          ? "Your cards"
+          : "Your card";
 
   /* ============================================================
    * RENDER
@@ -1151,7 +1245,20 @@ export default function TarotChat() {
                     className="mb-4 items-start"
                   >
                     <View className="w-[70%] items-center rounded-[22px] rounded-bl-[8px] border border-[#D9CEC1] bg-[#FFFDFC] px-5 py-5">
-                      <CardBack width={96} height={165} />
+                      {!!item.label && (
+                        <Text className="mb-3 text-[12px] font-semibold uppercase tracking-[1px] text-[#68616A]">
+                          {item.label}
+                        </Text>
+                      )}
+                      <View className="flex-row" style={{ gap: 8 }}>
+                        {Array.from({ length: item.count || 1 }, (_, i) => (
+                          <CardBack
+                            key={i}
+                            width={item.count > 1 ? 64 : 96}
+                            height={item.count > 1 ? 110 : 165}
+                          />
+                        ))}
+                      </View>
 
                       <Pressable
                         onPress={() => openPicker(item)}
@@ -1171,7 +1278,13 @@ export default function TarotChat() {
                               : C.card,
                           }}
                         >
-                          {item.used ? "Card picked" : "Pick your card"}
+                          {item.used
+                            ? item.count > 1
+                              ? "Cards picked"
+                              : "Card picked"
+                            : item.count > 1
+                              ? `Pick your ${item.count} cards`
+                              : "Pick your card"}
                         </Text>
                       </Pressable>
                     </View>
@@ -1198,6 +1311,15 @@ export default function TarotChat() {
                       />
                     ) : (
                       <CardBack width={150} height={258} />
+                    )}
+
+                    <Text className="mt-3 text-[14px] font-semibold text-[#1C1820]">
+                      {item.card.name}
+                    </Text>
+                    {!!item.position && (
+                      <Text className="mt-0.5 text-[12px] font-medium uppercase tracking-[1px] text-[#68616A]">
+                        {item.position}
+                      </Text>
                     )}
                   </View>
                 </View>
@@ -1258,21 +1380,29 @@ export default function TarotChat() {
             {/* PICK */}
             {phase === "pick" && (
               <>
-                <View className="mt-10 items-center">
-                  <View
-                    className="items-center justify-center rounded-[14px]"
-                    style={{
-                      width: 130,
-                      height: 220,
-                      borderWidth: 1,
-                      borderStyle: "dashed",
-                      borderColor: "rgba(217,206,193,0.5)",
-                    }}
-                  >
-                    <Text className="text-[40px] text-[#D9CEC1]">
-                      1
-                    </Text>
-                  </View>
+                <View className="mt-10 flex-row justify-center" style={{ gap: 12 }}>
+                  {Array.from({ length: needed }, (_, i) => {
+                    const slotW = needed > 1 ? 92 : 130;
+                    const slotH = needed > 1 ? 156 : 220;
+
+                    return i < picked.length ? (
+                      <CardBack key={i} width={slotW} height={slotH} />
+                    ) : (
+                      <View
+                        key={i}
+                        className="items-center justify-center rounded-[14px]"
+                        style={{
+                          width: slotW,
+                          height: slotH,
+                          borderWidth: 1,
+                          borderStyle: "dashed",
+                          borderColor: "rgba(217,206,193,0.5)",
+                        }}
+                      >
+                        <Text className="text-[34px] text-[#D9CEC1]">{i + 1}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
 
                 <View
@@ -1365,7 +1495,11 @@ export default function TarotChat() {
                             ],
                           }}
                         >
-                          <Pressable onPress={() => handlePick(card)}>
+                          <Pressable
+                            onPress={() => handlePick(card, i)}
+                            disabled={picked.includes(i)}
+                            style={{ opacity: picked.includes(i) ? 0.2 : 1 }}
+                          >
                             <CardBack
                               width={CARD_W}
                               height={CARD_H}
@@ -1424,7 +1558,15 @@ export default function TarotChat() {
             {/* WAITING */}
             {phase === "waiting" && (
               <View className="flex-1 items-center justify-center px-8">
-                <CardBack width={145} height={250} />
+                <View className="flex-row" style={{ gap: 10 }}>
+                  {Array.from({ length: needed }, (_, i) => (
+                    <CardBack
+                      key={i}
+                      width={needed > 1 ? 96 : 145}
+                      height={needed > 1 ? 166 : 250}
+                    />
+                  ))}
+                </View>
 
                 <ActivityIndicator
                   className="mt-8"
@@ -1435,26 +1577,39 @@ export default function TarotChat() {
             )}
 
             {/* READY */}
-            {phase === "ready" && revealCard && (
+            {phase === "ready" && revealCards.length > 0 && (
               <>
-                <View className="flex-1 items-center justify-center">
-                  {revealCard.image ? (
-                    <Image
-                      source={{ uri: revealCard.image }}
-                      style={{
-                        width: 190,
-                        height: 325,
-                        borderRadius: 10,
-                      }}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <CardBack width={190} height={325} />
-                  )}
+                <View className="flex-1 flex-row items-center justify-center px-3" style={{ gap: 10 }}>
+                  {revealCards.map((card, i) => {
+                    const w = revealCards.length === 1 ? 190 : revealCards.length === 2 ? 140 : 104;
+                    const h = Math.round(w * 1.71);
 
-                  <Text className="mt-4 text-[20px] font-semibold text-[#FFFDFC]">
-                    {revealCard.name}
-                  </Text>
+                    return (
+                      <View key={`${card.name}-${i}`} className="items-center" style={{ width: w }}>
+                        {!!card.position && (
+                          <Text className="mb-2 text-[12px] font-semibold uppercase tracking-[1px] text-[#D9CEC1]">
+                            {card.position}
+                          </Text>
+                        )}
+                        {card.image ? (
+                          <Image
+                            source={{ uri: card.image }}
+                            style={{ width: w, height: h, borderRadius: 10 }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <CardBack width={w} height={h} />
+                        )}
+                        <Text
+                          className="mt-3 text-center font-semibold text-[#FFFDFC]"
+                          style={{ fontSize: revealCards.length > 2 ? 14 : 18 }}
+                          numberOfLines={2}
+                        >
+                          {card.name}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
 
                 <View className="items-center px-5 pb-10">

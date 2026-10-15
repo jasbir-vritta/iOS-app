@@ -34,6 +34,8 @@ type Kind =
   | "chat"
   // Credits spent on creating an extra profile.
   | "profile"
+  // A PDF report bought from the wallet.
+  | "report"
   | "wallet"
   | "cashback"
   | "failed";
@@ -122,6 +124,15 @@ const STYLE: Record<
     tint: "#FBEBE4",
     color: TERRACOTTA,
     icon: "chat-processing-outline",
+    amount: RED,
+  },
+
+  report: {
+    dot: "#2B1A3D",
+    line: "#C9BCD6",
+    tint: "#EFE7F6",
+    color: "#2B1A3D",
+    icon: "file-document-outline",
     amount: RED,
   },
 
@@ -652,6 +663,10 @@ function normalizeTransaction(
   ) {
     kind = "profile";
   } else if (
+    rawType === "report_purchase"
+  ) {
+    kind = "report";
+  } else if (
     rawType === "chat_billing" ||
     rawType.includes("chat") ||
     rawType.includes("consult") ||
@@ -668,7 +683,7 @@ function normalizeTransaction(
 
   // Money spent (chats, extra profiles) vs money added.
   const group =
-    kind === "chat" || kind === "profile"
+    kind === "chat" || kind === "profile" || kind === "report"
       ? "orders"
       : "recharge";
 
@@ -685,6 +700,8 @@ function normalizeTransaction(
   if (!title) {
     if (kind === "profile") {
       title = "New profile created";
+    } else if (kind === "report") {
+      title = "Report purchase";
     } else if (kind === "chat") {
       title =
         transaction.astrologer_name
@@ -737,7 +754,7 @@ function normalizeTransaction(
 
   let amountPrefix = "";
 
-  if (kind === "chat" || kind === "profile") {
+  if (kind === "chat" || kind === "profile" || kind === "report") {
     amountPrefix = "-";
   } else if (
     numericAmount > 0

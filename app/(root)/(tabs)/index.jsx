@@ -23,9 +23,11 @@ import RecommendedReports from "../../../components/home/RecommendedReports";
 import VerifiedAstrologers from "../../../components/home/VerifiedAstrologers";
 import YourLifeToday from "../../../components/home/YourLifeToday";
 import ContinueYourJourney from "../../../components/home/ContinueYourJourney"
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
 
 export default function Home() {
+  const tabSpace = useTabBarSpace();
   useEffect(() => {
     const logToken = async () => {
       const token = await getAccessToken();
@@ -41,7 +43,7 @@ const activeProfileId = user?.active_profile_id;
 
 const today = useMyLifeStore((state) =>
   activeProfileId
-    ? state.profiles[activeProfileId]?.today
+    ? state.profiles[activeProfileId]?.daily
     : null
 );
 
@@ -52,7 +54,7 @@ useEffect(() => {
 
   const loadCachedToday = async () => {
     const cachedToday = await getMyLifeCache(
-      "today",
+      "daily",
       activeProfileId
     );
 
@@ -105,7 +107,7 @@ useEffect(() => {
   contentContainerStyle={{
     paddingHorizontal: px(16),
     paddingTop: insets.top + 4,
-    paddingBottom: px(120),
+    paddingBottom: tabSpace,
   }}
 >
   <TopBar />

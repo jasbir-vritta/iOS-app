@@ -21,6 +21,7 @@ import { useUserStore } from "../../../components/stores/userStore";
 import TopBar from "../../../components/TopBar";
 import { ensureChatCredits, minChatCredits } from "../../../components/constants/chat";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 /*
  * All sizes below are measured in pixels of the reference design (853px wide)
  * and scaled to the device, so the layout keeps the same proportions on any phone.
@@ -136,6 +137,7 @@ const getReadingTypeFromCategory = (category: string) => {
 };
 
 export default function Chat() {
+  const tabSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
 
   const { user } = useUserStore() as any;
@@ -466,7 +468,7 @@ if (selectedCategory !== "all") {
           paddingHorizontal: px(40),
           paddingTop:
             insets.top + 4,
-          paddingBottom: px(260),
+          paddingBottom: tabSpace + 40,
         }}
       >
         {/* =========================================================

@@ -87,6 +87,14 @@ const areas = [
     gradient: ["#E6D6FA", "#F7F1FE"],
     accent: "#D6336C",
   },
+  {
+    key: "travel",
+    title: "Travel &\nJourneys",
+    icon: "airplane",
+    deco: "map-outline",
+    gradient: ["#EAE3F3", "#F7F3FB"],
+    accent: "#2B1A3D",
+  },
 ] as const;
 
 const MY_LIFE_ROUTE = "/(root)/(tabs)/my_life";
@@ -101,10 +109,11 @@ export default function YourLifeToday() {
   );
 
   const today = useMyLifeStore((state) =>
-    activeProfileId ? state.profiles[activeProfileId]?.today : null
+    // Same Daily horoscope as the My Life screen (loaded by DailyGuidance).
+    activeProfileId ? state.profiles[activeProfileId]?.daily : null
   );
 
-  const lifeAreas = today?.life_areas;
+  const lifeAreas = today?.areas;
 
   const navigateToMyLife = () => {
     router.push(MY_LIFE_ROUTE as any);

@@ -126,10 +126,11 @@ const activeProfileId = user?.active_profile_id;
 const profile =
   profiles.find((p) => p.profile_id === activeProfileId) || user;
 
+// Same Daily horoscope as My Life and Home; it carries the birth-chart signs.
 const today = useMyLifeStore(
   (state) =>
     activeProfileId
-      ? state.profiles[activeProfileId]?.today
+      ? state.profiles[activeProfileId]?.daily
       : null
 );
 

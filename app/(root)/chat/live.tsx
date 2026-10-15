@@ -26,6 +26,7 @@ import {
   type TarotPickerPhase,
 } from "../../../components/chat/TarotPicker";
 import { ensureChatCredits } from "../../../components/constants/chat";
+import { track } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -314,6 +315,7 @@ export default function LiveChat() {
 
             case "astrologer_joined":
               setState("active");
+              track("chat_started", { chat_type: "human", reading_type: readingType, astrologer_id: astrologerId });
               setNotice("");
               break;
 

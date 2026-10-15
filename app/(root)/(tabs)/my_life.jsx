@@ -1,145 +1,127 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
-  Image,
-  ImageBackground,
+  Animated,
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  UIManager,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Reanimated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Ellipse, G, Line } from "react-native-svg";
+
+import { AUTH_FONTS, F } from "../../../components/auth/theme";
+import { VrittaLogo } from "../../../components/auth/VrittaLogo";
 import { APP_NAME } from "../../../components/constants/app";
 import {
-  getMyLifeCache,
-  saveMyLifeCache,
+  loadMyLifeHoroscope,
+  useMyLifeStore,
 } from "../../../components/stores/myLifeStore";
 import useProfilesStore from "../../../components/stores/profilesStore";
 import { useRewardsStore } from "../../../components/stores/rewardsStore";
 import { useUserStore } from "../../../components/stores/userStore";
 import { hasBirthDetails } from "../../../components/utils/birthDetails";
-import { API_URL, authHeaders } from "../../../lib/auth";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
-const BG = "#F8F6FC";
-const CARD = "#FFFFFF";
-const TEXT = "#292333";
-const MUTED = "#292333";
-const ORANGE = "#B94A2F";
-const PURPLE = "#4A285E";
-const BORDER = "#E8E2EC";
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
-const TAB = {
-  Past: { icon: "🌱", active: "#4A285E" },
-  Today: { icon: "☀️", active: ORANGE },
-  Future: { icon: "🔮", active: "#4A285E" },
+// App palette (same as Home and Profile).
+const C = {
+  INK: "#1C1820",
+  PLUM: "#2B1A3D",
+  LAVENDER: "#F4F0F8",
+  IVORY: "#F7F1E8",
+  CARD: "#FFFDFC",
+  MUTED: "#68616A",
+  BORDER: "#D9CEC1",
+  // Tiny premium accents only.
+  GOLD: "#C49A4A",
+  LINE: "rgba(217,206,193,0.6)",
 };
+
+// Functional status colors.
+const STATUS = {
+  Favourable: { label: "Favourable", color: "#2E7D4F", bg: "#E6F2EA" },
+  Neutral: { label: "Neutral", color: "#9A6A12", bg: "#F8EFD9" },
+  Challenging: { label: "Watchful", color: "#B3392F", bg: "#F8E4E1" },
+};
+
+// Each tab has its own look, built only from the locked palette:
+// two dark heroes (Deep Plum, Ink) and two light ones (Warm Ivory, soft
+// lavender). `fg` is the hero's text colour (rgb); `accent` drives the tab
+// pill, bars and icons. Solid colours only (no gradients on functional UI).
+const tint = (rgb) => (alpha) => `rgba(${rgb},${alpha})`;
+
+const LIGHT_TEXT = "255,253,252"; // Card White
+const DARK_TEXT = "28,24,32"; // Ink
+
+const THEMES = {
+  daily: {
+    accent: C.PLUM, soft: "#EFE8F7", hero: C.PLUM, heroBorder: C.PLUM, fg: LIGHT_TEXT,
+    page: C.LAVENDER,
+    tint: tint("43,26,61"),
+  },
+  weekly: {
+    accent: C.INK, soft: "#EDEAF0", hero: C.INK, heroBorder: C.INK, fg: LIGHT_TEXT,
+    page: "#EEEBF2",
+    tint: tint("28,24,32"),
+  },
+  monthly: {
+    accent: "#4A3366", soft: "#EFE8F7", hero: C.CARD, heroBorder: C.BORDER, fg: DARK_TEXT,
+    page: C.IVORY,
+    tint: tint("74,51,102"),
+  },
+  yearly: {
+    accent: C.PLUM, soft: "#EFE8F7", hero: "#EAE2F3", heroBorder: "#DCCFEA", fg: DARK_TEXT,
+    page: "#F8F5FB",
+    tint: tint("43,26,61"),
+  },
+};
+
+const PERIODS = [
+  { key: "daily", label: "Daily", kicker: "Today for you", areasTitle: "Life areas today", guidanceTitle: "Today’s guidance" },
+  { key: "weekly", label: "Weekly", kicker: "This week for you", areasTitle: "Life areas this week", guidanceTitle: "This week’s guidance" },
+  { key: "monthly", label: "Monthly", kicker: "This month for you", areasTitle: "Life areas this month", guidanceTitle: "This month’s guidance" },
+  { key: "yearly", label: "Yearly", kicker: "This year for you", areasTitle: "Life areas this year", guidanceTitle: "This year’s guidance" },
+];
 
 const AREAS = [
-  { key: "love", label: "Love", icon: "❤️" },
-  { key: "career", label: "Career", icon: "💼" },
-  { key: "money", label: "Money", icon: "🪙" },
-  { key: "health", label: "Health", icon: "🌿" },
+  { key: "love", label: "Love", icon: "heart-outline" },
+  { key: "career", label: "Career", icon: "briefcase-outline" },
+  { key: "money", label: "Money", icon: "wallet-outline" },
+  { key: "health", label: "Health", icon: "meditation" },
+  { key: "travel", label: "Travel", icon: "airplane" },
 ];
-
-const STATUS_COLOR = {
-  Favourable: "#278447",
-  Neutral: "#D9822B",
-  Challenging: "#D84E3D",
-};
-
-const STATUS_BG = {
-  Favourable: "#E3F4E7",
-  Neutral: "#FFF0DD",
-  Challenging: "#FCE4E0",
-};
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-const PAST_IMAGES = [
-  require("../../../assets/images/my_life/my_life_past_1.png"),
-  require("../../../assets/images/my_life/my_life_past_2.png"),
-  require("../../../assets/images/my_life/my_life_past_3.png"),
-  require("../../../assets/images/my_life/my_life_past_4.png"),
-];
-
-const TODAY_MOON_IMAGE_BASE =
-  "https://storage.googleapis.com/vritta/astrology/my_life_today";
-
-
-  const FUTURE_IMAGE_BASE =
-  "https://storage.googleapis.com/vritta/astrology/future";
-
-const getFutureImage = (phaseName: string) => {
-  const key = String(phaseName || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-
-  const validPhases = [
-    "sun",
-    "moon",
-    "mars",
-    "mercury",
-    "jupiter",
-    "venus",
-    "saturn",
-    "rahu",
-    "ketu",
-  ];
-
-  if (!validPhases.includes(key)) {
-    return require("../../../assets/images/my_life/my_life_future_top.png");
-  }
-
-  return {
-    uri: `${FUTURE_IMAGE_BASE}/${key}.jpg`,
-  };
-};
-
-
-const getTodayMoonImage = (moonSign: string) => {
-  const key = String(moonSign || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-
-  const validSigns = [
-    "aries",
-    "taurus",
-    "gemini",
-    "cancer",
-    "leo",
-    "virgo",
-    "libra",
-    "scorpio",
-    "sagittarius",
-    "capricorn",
-    "aquarius",
-    "pisces",
-  ];
-
-  if (!validSigns.includes(key)) {
-    return require("../../../assets/images/my_life/my_life_today_top.png");
-  }
-
-  return {
-    uri: `${TODAY_MOON_IMAGE_BASE}/${key}.jpg`,
-  };
-};
-
-
 
 const toText = (value) => {
   if (value === null || value === undefined) return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).trim();
   if (Array.isArray(value)) return value.map(toText).filter(Boolean).join("\n");
   if (typeof value === "object") {
-    return toText(value.description ?? value.text ?? value.name ?? value.title ?? value.details ?? value.tithi_name);
+    return toText(value.description ?? value.text ?? value.name ?? value.title);
   }
   return "";
 };
@@ -154,391 +136,123 @@ const normalizeStatus = (value) => {
   return "Neutral";
 };
 
-const formatDate = (value) => {
-  const match = String(value || "").match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (!match) return toText(value);
-  return `${Number(match[3])} ${MONTHS[Number(match[2]) - 1]} '${match[1].slice(2)}`;
-};
-
-const calculateAge = (dateOfBirth, dateString) => {
-  if (!dateOfBirth || !dateString) return null;
-
-  const [birthDay, birthMonth, birthYear] =
-    dateOfBirth.split("/").map(Number);
-
-  const [year, month, day] =
-    dateString.split("-").map(Number);
-
-  if (
-    !birthDay ||
-    !birthMonth ||
-    !birthYear ||
-    !year ||
-    !month ||
-    !day
-  ) {
-    return null;
-  }
-
-  let age = year - birthYear;
-
-  const birthdayHasPassed =
-    month > birthMonth ||
-    (month === birthMonth && day >= birthDay);
-
-  if (!birthdayHasPassed) {
-    age -= 1;
-  }
-
-  return age;
-};
-
-
-const ageLabel = (row, profile) => {
-  if (!profile?.dateOfBirth || !row?.start) {
-    return "";
-  }
-
-  const startAge = calculateAge(
-    profile.dateOfBirth,
-    row.start
-  );
-
-  const endAge = calculateAge(
-    profile.dateOfBirth,
-    row.end || row.start
-  );
-
-  if (startAge === null) {
-    return "";
-  }
-
-  if (
-    endAge === null ||
-    startAge === endAge
-  ) {
-    return `Age ${startAge}`;
-  }
-
-  return `Age ${startAge}–${endAge}`;
-};
-
-function areaData(today) {
+function areaData(horoscope) {
   return AREAS.map((area) => {
-    const raw = today?.life_areas?.[area.key] || {};
+    const raw = horoscope?.areas?.[area.key] || {};
+    const score = Number(raw.score);
     return {
       ...area,
       status: normalizeStatus(raw.status),
-      title: toText(raw.title) || `${area.label} today`,
-      description: toText(raw.description || raw.text),
+      score: Number.isFinite(score) ? score : null,
+      title: toText(raw.title),
+      description: toText(raw.description),
     };
   });
 }
 
+// "Good morning" etc. by the IST hour.
+const greeting = () => {
+  const hour = Math.floor(((Date.now() / 3600000) + 5.5) % 24);
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+// Sections rise in one after another when a tab opens.
+const enter = (index) => FadeInDown.delay(80 * index).duration(420);
+
+const energyLabel = (score) =>
+  score >= 80 ? "High energy" : score >= 70 ? "Balanced energy" : "Go gently";
+
+// Current tab's theme for every part of the screen.
+const ThemeContext = createContext("daily");
+const useTheme = () => THEMES[useContext(ThemeContext)];
+
 export default function MyLife() {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState("Today");
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
+  const tabSpace = useTabBarSpace();
+  const [fontsLoaded] = useFonts(AUTH_FONTS);
+  const [activeTab, setActiveTab] = useState("daily");
+  // Load errors, keyed "profileId:period".
+  const [errors, setErrors] = useState({});
 
   const completeInsightReward = useRewardsStore(
-  (state) => state.completeInsightReward
-);
+    (state) => state.completeInsightReward
+  );
 
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        completeInsightReward();
+      }, 60_000);
 
+      return () => {
+        clearTimeout(timer);
+      };
+    }, [completeInsightReward])
+  );
 
+  const user = useUserStore((state) => state.user);
+  const profiles = useProfilesStore((state) => state.profiles);
 
-useFocusEffect(
-  useCallback(() => {
-    const timer = setTimeout(() => {
-      completeInsightReward();
-    }, 60_000);
+  const activeProfileId = user?.active_profile_id;
 
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [completeInsightReward])
-);
-
-
-
-
-  const user = useUserStore(
-  (state) => state.user
-);
-
-const profiles = useProfilesStore(
-  (state) => state.profiles
-);
-
-const activeProfileId = user?.active_profile_id;
-
-const activeProfile = profiles.find(
-  (profile) =>
-    profile.profile_id === activeProfileId
-);
+  const activeProfile = profiles.find(
+    (profile) => profile.profile_id === activeProfileId
+  );
 
   // Profiles without a birth place/time can't be calculated: ask to complete them.
   const needsBirthDetails =
     Boolean(activeProfile) && !hasBirthDetails(activeProfile);
 
+  // Shared with Home and Profile through the My Life store.
+  const horoscope = useMyLifeStore((state) =>
+    activeProfileId ? state.profiles[activeProfileId]?.[activeTab] : null
+  );
+
+  const loadPeriod = useCallback(async (profileId, period) => {
+    try {
+      await loadMyLifeHoroscope(period, profileId);
+    } catch (err) {
+      console.error("MY LIFE ERROR:", err);
+      setErrors((prev) => ({
+        ...prev,
+        [`${profileId}:${period}`]:
+          err?.message || `Unable to load My ${APP_NAME}. Please try again.`,
+      }));
+    }
+  }, []);
+
+  const dataKey = `${activeProfileId}:${activeTab}`;
+  const error = errors[dataKey];
+
   useEffect(() => {
-  if (!activeProfileId || needsBirthDetails) {
-    return;
-  }
-
-  loadMyLife();
-}, [activeProfileId, needsBirthDetails]);
-
-  const loadMyLife = async () => {
-  if (!activeProfileId) {
-    setError("No active profile found.");
-    setLoading(false);
-    return;
-  }
-
-  try {
-    setLoading(true);
-    setError("");
-
-    /*
-     * ---------------------------------------------------------
-     * 1. CHECK CACHE
-     * ---------------------------------------------------------
-     */
-
-    const [cachedToday, cachedPast, cachedFuture] =
-      await Promise.all([
-        getMyLifeCache("today", activeProfileId),
-        getMyLifeCache("past", activeProfileId),
-        getMyLifeCache("future", activeProfileId),
-      ]);
-
-    /*
-     * ---------------------------------------------------------
-     * 2. USE PROFILE STORE FOR PROFILE DATA
-     * ---------------------------------------------------------
-     */
-
-    const profile =
-      activeProfile || {};
-
-    /*
-     * ---------------------------------------------------------
-     * 3. IF EVERYTHING IS CACHED
-     *    NO API CALLS
-     * ---------------------------------------------------------
-     */
-
-    if (
-      cachedToday &&
-      cachedPast &&
-      cachedFuture
-    ) {
-      console.log(
-        "MY LIFE: Using cached data",
-        activeProfileId
-      );
-
-      setData({
-        profile,
-        today: cachedToday,
-        past: cachedPast,
-        future: cachedFuture,
-      });
-
+    if (!activeProfileId || needsBirthDetails || horoscope || error) {
       return;
     }
 
-    /*
-     * ---------------------------------------------------------
-     * 4. ONLY FETCH WHAT IS MISSING / EXPIRED
-     * ---------------------------------------------------------
-     */
+    loadPeriod(activeProfileId, activeTab);
+  }, [activeProfileId, needsBirthDetails, activeTab, horoscope, error, loadPeriod]);
 
-    const headers = await authHeaders();
-
-    const requests: Promise<Response | null>[] = [
-      cachedToday
-        ? Promise.resolve(null)
-        : fetch(
-            `${API_URL}/astrology/mylife/today?profile_id=${encodeURIComponent(activeProfileId)}`,
-            {
-              method: "POST",
-              headers,
-            }
-          ),
-
-      cachedPast
-        ? Promise.resolve(null)
-        : fetch(
-            `${API_URL}/astrology/mylife/past?profile_id=${encodeURIComponent(activeProfileId)}`,
-            {
-              method: "POST",
-              headers,
-            }
-          ),
-
-      cachedFuture
-        ? Promise.resolve(null)
-        : fetch(
-            `${API_URL}/astrology/mylife/future?profile_id=${encodeURIComponent(activeProfileId)}`,
-            {
-              method: "POST",
-              headers,
-            }
-          ),
-    ];
-
-    const [
-      todayRes,
-      pastRes,
-      futureRes,
-    ] = await Promise.all(requests);
-
-    /*
-     * ---------------------------------------------------------
-     * 5. PARSE ONLY API RESPONSES THAT WERE NEEDED
-     * ---------------------------------------------------------
-     */
-
-    const parseResponse = async (
-      res: Response | null
-    ) => {
-      if (!res) {
-        return null;
-      }
-
-      const raw = await res.text();
-
-      let json = null;
-
-      try {
-        json = JSON.parse(raw);
-      } catch {
-        json = null;
-      }
-
-      if (!res.ok) {
-        throw new Error(
-          json?.detail ||
-            `My ${APP_NAME} failed to load (status ${res.status})`
-        );
-      }
-
-      return json;
-    };
-
-    const [
-      todayJson,
-      pastJson,
-      futureJson,
-    ] = await Promise.all([
-      parseResponse(todayRes),
-      parseResponse(pastRes),
-      parseResponse(futureRes),
-    ]);
-
-    /*
-     * ---------------------------------------------------------
-     * 6. GET FRESH DATA OR KEEP CACHE
-     * ---------------------------------------------------------
-     */
-
-    const today =
-      cachedToday ||
-      todayJson?.today ||
-      {};
-
-    const past =
-  cachedPast ||
-  pastJson?.past ||
-  {};
-
-const future =
-  cachedFuture ||
-  futureJson?.future ||
-  {};
-
-    /*
-     * ---------------------------------------------------------
-     * 7. SAVE NEW DATA TO CACHE
-     * ---------------------------------------------------------
-     */
-
-    await Promise.all([
-      !cachedToday && today
-        ? saveMyLifeCache(
-            "today",
-            activeProfileId,
-            today
-          )
-        : Promise.resolve(),
-
-      !cachedPast && past
-        ? saveMyLifeCache(
-            "past",
-            activeProfileId,
-            past
-          )
-        : Promise.resolve(),
-
-      !cachedFuture && future
-        ? saveMyLifeCache(
-            "future",
-            activeProfileId,
-            future
-          )
-        : Promise.resolve(),
-    ]);
-
-    /*
-     * ---------------------------------------------------------
-     * 8. UPDATE SCREEN
-     * ---------------------------------------------------------
-     */
-
-    setData({
-      profile:
-        todayJson?.profile ||
-        pastJson?.profile ||
-        futureJson?.profile ||
-        profile,
-
-      today,
-      past,
-      future,
+  // Clearing the error makes the effect above fetch again.
+  const retry = () =>
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[dataKey];
+      return next;
     });
 
-    console.log(
-      "MY LIFE: Fresh data loaded and cached",
-      activeProfileId
-    );
-  } catch (err) {
-    console.error(
-      "MY LIFE ERROR:",
-      err
-    );
-
-    setError(
-      err?.message ||
-        `Unable to load My ${APP_NAME}. Please try again.`
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+  const period = PERIODS.find((p) => p.key === activeTab) || PERIODS[0];
 
   const share = async () => {
     try {
       await Share.share({
         message: [
-          `My ${APP_NAME}`,
-          data?.profile?.name && `Name: ${data.profile.name}`,
-          data?.profile?.dateOfBirth && `DOB: ${data.profile.dateOfBirth}`,
-          data?.today?.moon_sign && `Moon Sign: ${data.today.moon_sign}`,
+          `My ${APP_NAME} · ${period.label}`,
+          activeProfile?.name && `Name: ${activeProfile.name}`,
+          horoscope?.sign && `Moon Sign: ${horoscope.sign}`,
+          toText(horoscope?.title),
+          toText(horoscope?.text),
         ].filter(Boolean).join("\n"),
       });
     } catch (err) {
@@ -546,11 +260,21 @@ const future =
     }
   };
 
+  // Brand fonts first, so text doesn't jump from the system font.
+  if (!fontsLoaded) {
+    return <View style={styles.screen} />;
+  }
+
   if (needsBirthDetails) {
     return (
-      <View style={[styles.center, { backgroundColor: BG }]}>
-        <Text style={styles.errorTitle}>Complete birth details</Text>
-        <Text style={styles.errorText}>
+      <View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" />
+        <PageBackground theme={THEMES.daily} />
+        <View style={styles.stateIcon}>
+          <Icon name="account-edit-outline" size={26} color={C.PLUM} />
+        </View>
+        <Text style={styles.stateTitle}>Complete birth details</Text>
+        <Text style={styles.stateText}>
           Add the birth date, time and place for {activeProfile?.name || "this profile"} to see My {APP_NAME}.
         </Text>
         <Pressable
@@ -560,96 +284,159 @@ const future =
               params: { profileId: activeProfileId },
             })
           }
-          style={styles.retryButton}
+          style={styles.primaryButton}
         >
-          <Text style={styles.retryText}>Complete Profile</Text>
+          <Text style={styles.primaryButtonText}>Complete Profile</Text>
         </Pressable>
       </View>
     );
   }
-
-  if (loading) {
-    return (
-      <View style={[styles.center, { paddingTop: insets.top, backgroundColor: BG }]}>
-        <ActivityIndicator size="large" color={ORANGE} />
-        <Text style={styles.loadingText}>Preparing My {APP_NAME}...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.center, { backgroundColor: BG }]}>
-        <Text style={styles.errorTitle}>Unable to load My {APP_NAME}</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable onPress={loadMyLife} style={styles.retryButton}>
-          <Text style={styles.retryText}>Try Again</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  const profile = data?.profile || {};
-  const today = data?.today || {};
-
-
-  const handleBack = () => {
-  if (router.canGoBack()) {
-    router.back();
-  } else {
-    router.replace("/(root)/(tabs)");
-  }
-};
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable style={styles.headerButton} onPress={handleBack}>
-          <Text style={styles.backIcon}>‹</Text>
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>My {APP_NAME}</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {profile.dateOfBirth || ""} {profile.placeOfBirth ? `· ${profile.placeOfBirth}` : ""}  ⓘ
-          </Text>
+    <ThemeContext.Provider value={activeTab}>
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" />
+        <PageBackground theme={THEMES[activeTab]} />
+
+        <View style={styles.header}>
+          <View style={styles.brand}>
+            <View style={styles.logoBadge}>
+              <VrittaLogo size={22} />
+            </View>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.title}>My {APP_NAME}</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {greeting()}
+                {activeProfile?.name ? `, ${String(activeProfile.name).split(" ")[0]}` : ""}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            style={styles.iconButton}
+            onPress={share}
+            hitSlop={8}
+            accessibilityLabel="Share reading"
+          >
+            <Icon name="share-variant-outline" size={19} color={C.INK} />
+          </Pressable>
         </View>
-        <Pressable
-  style={styles.headerButton}
-  onPress={share}
-  hitSlop={10}
->
-  <MaterialCommunityIcons
-    name="share-variant-outline"
-    size={21}
-    color={TEXT}
-  />
-</Pressable>
+
+        <TabBar active={activeTab} onChange={setActiveTab} />
+
+        {horoscope ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scroll, { paddingBottom: tabSpace }]}
+          >
+            <HoroscopeScreen key={activeTab} horoscope={horoscope} period={period} />
+          </ScrollView>
+        ) : error ? (
+          <View style={styles.center}>
+            <View style={styles.stateIcon}>
+              <Icon name="cloud-alert-outline" size={26} color={C.PLUM} />
+            </View>
+            <Text style={styles.stateTitle}>Unable to load My {APP_NAME}</Text>
+            <Text style={styles.stateText}>{error}</Text>
+            <Pressable onPress={retry} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Try Again</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={THEMES[activeTab].accent} />
+            <Text style={styles.loadingText}>
+              Reading the stars for your {period.label.toLowerCase()} guidance…
+            </Text>
+          </View>
+        )}
       </View>
+    </ThemeContext.Provider>
+  );
+}
 
-      <TabBar active={activeTab} onChange={setActiveTab} />
+/* ------------------------------ background ------------------------------ */
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
-        {activeTab === "Today" && <TodayScreen today={today} onFuture={() => setActiveTab("Future")} />}
-        {activeTab === "Past" && <PastScreen profile={profile} timeline={data?.past?.timeline || []} />}
-        {activeTab === "Future" && <FutureScreen future={data?.future || {}} />}
-      </ScrollView>
+const SKY_DOTS = [
+  [0.12, 0.05, 1.3], [0.27, 0.11, 0.9], [0.46, 0.04, 1.1], [0.63, 0.13, 0.8],
+  [0.83, 0.07, 1.4], [0.92, 0.19, 0.9], [0.06, 0.24, 0.8], [0.38, 0.27, 0.7],
+  [0.74, 0.31, 1.0], [0.18, 0.55, 0.8], [0.88, 0.5, 0.9], [0.55, 0.62, 0.7],
+  [0.08, 0.78, 1.0], [0.7, 0.84, 0.8], [0.94, 0.72, 1.1], [0.32, 0.9, 0.8],
+];
+
+const CONSTELLATION = [[0.62, 0.035], [0.71, 0.075], [0.79, 0.06], [0.86, 0.105], [0.94, 0.09]];
+
+/* Lavender canvas with a soft wash of the tab's colour and faint line art. */
+function PageBackground({ theme }) {
+  const { width, height } = useWindowDimensions();
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <LinearGradient
+        colors={[theme.page, theme.page]}
+        locations={[0, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+        <G stroke={theme.accent} fill="none">
+          <Ellipse cx={width * 0.96} cy={height * 0.02} rx={width * 0.62} ry={width * 0.3} strokeOpacity={0.08} transform={`rotate(-14 ${width * 0.96} ${height * 0.02})`} />
+          <Ellipse cx={width * 0.96} cy={height * 0.02} rx={width * 0.44} ry={width * 0.2} strokeOpacity={0.1} transform={`rotate(-14 ${width * 0.96} ${height * 0.02})`} />
+          <Circle cx={width * 0.1} cy={height * 0.7} r={width * 0.34} strokeOpacity={0.06} strokeDasharray="2 7" />
+        </G>
+        <G stroke={theme.accent} strokeOpacity={0.16} strokeWidth={0.8}>
+          {CONSTELLATION.slice(1).map(([x, y], i) => {
+            const [px, py] = CONSTELLATION[i];
+            return <Line key={i} x1={px * width} y1={py * height} x2={x * width} y2={y * height} />;
+          })}
+        </G>
+        {CONSTELLATION.map(([x, y], i) => (
+          <Circle key={`c${i}`} cx={x * width} cy={y * height} r={i === 2 ? 2 : 1.4} fill={theme.accent} opacity={0.3} />
+        ))}
+        {SKY_DOTS.map(([x, y, r], i) => (
+          <Circle key={`d${i}`} cx={x * width} cy={y * height} r={r} fill={theme.accent} opacity={0.16} />
+        ))}
+      </Svg>
     </View>
   );
 }
 
+/* ------------------------------ tabs ------------------------------ */
+
 function TabBar({ active, onChange }) {
+  const t = useTheme();
+  const [width, setWidth] = useState(0);
+  const index = PERIODS.findIndex((p) => p.key === active);
+  // Created once; animated to the selected tab below.
+  const [x] = useState(() => new Animated.Value(index));
+
+  useEffect(() => {
+    Animated.spring(x, { toValue: index, useNativeDriver: true, speed: 18, bounciness: 4 }).start();
+  }, [index, x]);
+
+  const tabWidth = width / PERIODS.length;
+
   return (
-    <View style={styles.tabs}>
-      {Object.keys(TAB).map((name) => {
-        const selected = name === active;
+    <View style={styles.tabs} onLayout={(e) => setWidth(e.nativeEvent.layout.width - 8)}>
+      {width > 0 && (
+        <Animated.View
+          style={[
+            styles.tabIndicator,
+            { width: tabWidth, shadowColor: t.accent, transform: [{ translateX: Animated.multiply(x, tabWidth) }] },
+          ]}
+        >
+          <View style={[StyleSheet.absoluteFill, { borderRadius: 999, backgroundColor: t.accent }]} />
+        </Animated.View>
+      )}
+      {PERIODS.map((p) => {
+        const selected = p.key === active;
         return (
           <Pressable
-            key={name}
-            onPress={() => onChange(name)}
-            style={[styles.tab, selected && { backgroundColor: TAB[name].active }]}
+            key={p.key}
+            onPress={() => onChange(p.key)}
+            style={styles.tab}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
           >
-            <Text style={styles.tabIcon}>{TAB[name].icon}</Text>
-            <Text style={[styles.tabText, selected && styles.tabTextActive]}>{name}</Text>
+            <Text style={[styles.tabText, selected && styles.tabTextActive]}>{p.label}</Text>
           </Pressable>
         );
       })}
@@ -657,1679 +444,652 @@ function TabBar({ active, onChange }) {
   );
 }
 
-function TodayScreen({ today, onFuture }) {
-  const areas = areaData(today);
-  const dos = toList(today.guidance?.dos);
-  const donts = toList(today.guidance?.donts);
-  const moon = toText(today.moon_sign);
+/* ------------------------------ building blocks ------------------------------ */
 
-  const heroImage = getTodayMoonImage(moon);
+function SectionTitle({ children, note, overline }) {
+  const t = useTheme();
+  return (
+    <View style={styles.sectionWrap}>
+      {!!overline && <Text style={[styles.overline, { color: t.accent }]}>{overline}</Text>}
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>{children}</Text>
+        <View style={[styles.sectionRule, { backgroundColor: t.tint(0.25) }]} />
+        {!!note && <Text style={styles.sectionNote}>{note}</Text>}
+      </View>
+    </View>
+  );
+}
+
+/* White card with a faint wash of the tab colour and orbit art in the corner. */
+function Card({ children, style, contentStyle, art = true, tone = "white" }) {
+  const t = useTheme();
+  // Ivory cards on an ivory page would blend in: use Card White there.
+  const ivory = tone === "ivory" && t.page !== C.IVORY;
+  const colors = ivory ? [C.IVORY, C.IVORY] : [C.CARD, C.CARD];
 
   return (
-    <View style={styles.todayPage}>
-      <View style={styles.todayTop}>
-        <View style={styles.dateLine}>
-          <Text style={styles.dateText}>{toText(today.date) || "TODAY"}</Text>
-          {!!moon && (
-            <View style={styles.moonPill}>
-              <Text style={styles.moonGlyph}>☾</Text>
-              <Text style={styles.moonText}>Moon in {moon}</Text>
+    <View style={[styles.card, { shadowColor: t.accent }, style]}>
+      <View style={styles.cardClip}>
+        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        {art && (
+          <Svg width={140} height={100} style={styles.cardArt} pointerEvents="none">
+            <Circle cx={140} cy={0} r={86} stroke={t.accent} strokeOpacity={0.1} fill="none" />
+            <Circle cx={140} cy={0} r={60} stroke={t.accent} strokeOpacity={0.12} fill="none" strokeDasharray="2 5" />
+            <Circle cx={96} cy={20} r={1.5} fill={t.accent} opacity={0.35} />
+            <Circle cx={124} cy={54} r={1} fill={t.accent} opacity={0.25} />
+          </Svg>
+        )}
+        <View style={styles.cardHighlight} />
+        <View style={[styles.cardContent, contentStyle]}>{children}</View>
+      </View>
+    </View>
+  );
+}
+
+/* Round icon badge: soft tint with a fine ring, or the solid tab colour. */
+function Medallion({ icon, size = 42, active = false }) {
+  const t = useTheme();
+  return (
+    <View style={[styles.medal, { width: size, height: size, borderRadius: size / 2, backgroundColor: t.soft, borderColor: t.tint(0.35) }]}>
+      {active && (
+        <View style={[StyleSheet.absoluteFill, { borderRadius: size / 2, backgroundColor: t.accent }]} />
+      )}
+      <Icon name={icon} size={size * 0.44} color={active ? C.CARD : t.accent} />
+    </View>
+  );
+}
+
+/* Progress ring with the score in the middle. */
+function Ring({ score, size, color, track, stroke = 4, textStyle }) {
+  const r = (size - stroke) / 2;
+  const length = 2 * Math.PI * r;
+  const filled = (Math.max(0, Math.min(100, score)) / 100) * length;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={track} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${length}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <Text style={[styles.ringText, { color }, textStyle]}>{score}</Text>
+    </View>
+  );
+}
+
+function ScoreRing({ score, size = 56 }) {
+  const fg = tint(useTheme().fg);
+  return <Ring score={score} size={size} color={fg(1)} track={fg(0.2)} />;
+}
+
+/* Zodiac wheel (from the login sky) in fine white lines. */
+const WHEEL = 300;
+const WC = WHEEL / 2;
+const wheelPoint = (deg, r) => {
+  const a = (deg * Math.PI) / 180;
+  return { x: WC + r * Math.sin(a), y: WC - r * Math.cos(a) };
+};
+
+function ZodiacWheel() {
+  const fg = tint(useTheme().fg);
+  const ticks = Array.from({ length: 72 }, (_, i) => {
+    const long = i % 6 === 0;
+    const a = wheelPoint(i * 5, 148);
+    const b = wheelPoint(i * 5, long ? 136 : 143);
+    return <Line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+  });
+
+  const dots = Array.from({ length: 12 }, (_, k) => {
+    const p = wheelPoint(15 + k * 30, 124);
+    return (
+      <Circle
+        key={k}
+        cx={p.x}
+        cy={p.y}
+        r={k % 4 === 0 ? 2.2 : 1.2}
+        fill={k % 4 === 0 ? C.GOLD : fg(0.5)}
+      />
+    );
+  });
+
+  return (
+    <Svg width={WHEEL} height={WHEEL}>
+      <G stroke={fg(0.2)} strokeWidth={1} fill="none">
+        <Circle cx={WC} cy={WC} r={148} />
+        <Circle cx={WC} cy={WC} r={133} stroke={fg(0.12)} />
+        <Circle cx={WC} cy={WC} r={108} stroke={fg(0.1)} strokeDasharray="2 6" />
+        {ticks}
+      </G>
+      {dots}
+    </Svg>
+  );
+}
+
+/* ------------------------------ screen ------------------------------ */
+
+function HoroscopeScreen({ horoscope, period }) {
+  const areas = areaData(horoscope);
+  const scored = areas.filter((a) => a.score !== null);
+  const overall = scored.length
+    ? Math.round(scored.reduce((sum, a) => sum + a.score, 0) / scored.length)
+    : null;
+
+  return (
+    <View>
+      <Reanimated.View entering={enter(0)}>
+        <Hero horoscope={horoscope} period={period} overall={overall} areas={areas} />
+      </Reanimated.View>
+
+      <Reanimated.View entering={enter(1)}>
+        <SectionTitle overline="INSIGHTS" note="Tap to read">{period.areasTitle}</SectionTitle>
+        <AreaList areas={areas} />
+      </Reanimated.View>
+
+      <Reanimated.View entering={enter(2)}>
+        <Guidance
+          title={period.guidanceTitle}
+          dos={toList(horoscope.guidance?.dos)}
+          donts={toList(horoscope.guidance?.donts)}
+        />
+      </Reanimated.View>
+
+      {period.key === "daily" && Array.isArray(horoscope.timing) && horoscope.timing.length > 0 && (
+        <Reanimated.View entering={enter(3)}>
+          <BestWindow timing={horoscope.timing} />
+        </Reanimated.View>
+      )}
+
+      <Reanimated.View entering={enter(4)}>
+        <Lucky lucky={horoscope.lucky} />
+      </Reanimated.View>
+
+      <Reanimated.View entering={enter(5)}>
+        <Tips tips={horoscope.tips} />
+      </Reanimated.View>
+    </View>
+  );
+}
+
+/* The one rich card: the tab's deep gradient with a slowly turning wheel. */
+function Hero({ horoscope, period, overall, areas }) {
+  const t = useTheme();
+  const sign = toText(horoscope.sign);
+  const fg = tint(t.fg);
+  const still = useReducedMotion();
+  const turn = useSharedValue(0);
+
+  useEffect(() => {
+    if (still) return;
+    // One turn every 144 s, as on the login screen.
+    turn.value = withRepeat(withTiming(360, { duration: 144000, easing: Easing.linear }), -1);
+  }, [still, turn]);
+
+  const wheelStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${turn.value}deg` }],
+  }));
+
+  return (
+    <View style={[styles.hero, { shadowColor: t.accent, backgroundColor: t.hero }]}>
+      <View style={[styles.heroClip, { backgroundColor: t.hero, borderColor: t.heroBorder }]}>
+        <Reanimated.View style={[styles.heroWheel, wheelStyle]} pointerEvents="none">
+          <ZodiacWheel />
+        </Reanimated.View>
+
+        <View style={styles.heroContent}>
+          <View style={styles.heroMeta}>
+            <Text style={[styles.heroDate, { color: fg(0.72) }]} numberOfLines={1}>{toText(horoscope.label)}</Text>
+            {!!sign && (
+              <View style={[styles.heroChip, { backgroundColor: fg(0.1), borderColor: fg(0.24) }]}>
+                <Icon name="moon-waning-crescent" size={12} color={fg(1)} />
+                <Text style={[styles.heroChipText, { color: fg(1) }]}>Moon in {sign}</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={[styles.heroKicker, { color: fg(0.72) }]}>{period.kicker}</Text>
+          <Text style={[styles.heroTitle, { color: fg(1) }]}>{toText(horoscope.title)}</Text>
+          <Text style={[styles.heroText, { color: fg(0.86) }]}>{toText(horoscope.text)}</Text>
+
+          {overall !== null && (
+            <View style={[styles.energyRow, { borderTopColor: fg(0.16) }]}>
+              <ScoreRing score={overall} />
+              <View style={{ marginLeft: 14, flex: 1 }}>
+                <Text style={[styles.energyLabel, { color: fg(0.72) }]}>Overall energy</Text>
+                <Text style={[styles.energyValue, { color: fg(1) }]}>{energyLabel(overall)}</Text>
+              </View>
+            </View>
+          )}
+
+          {areas.some((a) => a.score !== null) && (
+            <View style={[styles.glance, { backgroundColor: fg(0.07), borderColor: fg(0.14) }]}>
+              {areas.map((area) => (
+                <View key={area.key} style={styles.glanceItem}>
+                  <Icon name={area.icon} size={17} color={fg(0.85)} />
+                  <Text style={[styles.glanceScore, { color: fg(1) }]}>
+                    {area.score !== null ? area.score : "–"}
+                  </Text>
+                  <Text style={[styles.glanceLabel, { color: fg(0.65) }]} numberOfLines={1}>
+                    {area.label}
+                  </Text>
+                </View>
+              ))}
             </View>
           )}
         </View>
-
-        <ImageBackground
-        source={heroImage}          
-style={styles.hero}
-          imageStyle={styles.heroImage}
-          resizeMode="cover"
-        >
-          <Text style={styles.heroKicker}>TODAY FOR YOU</Text>
-          <Text style={styles.heroTitle}>{toText(today.horoscope_title) || "Steady progress with thoughtful choices."}</Text>
-          <Text style={styles.heroText}>{toText(today.horoscope_text) || "Your work moves forward today, with supportive conversations and clearer direction."}</Text>
-        </ImageBackground>
-      </View>
-
-      <View style={styles.todayBody}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Life areas today</Text>
-          <Text style={styles.linkText}>See details ›</Text>
-        </View>
-
-        <View style={styles.areaGrid}>
-          {areas.map((area) => (
-            <View key={area.key} style={styles.areaCard}>
-              <View style={styles.areaCircle}><Text style={styles.areaEmoji}>{area.icon}</Text></View>
-              <View style={styles.areaInfo}>
-                <Text style={styles.areaName}>{area.label}</Text>
-                <Text style={[styles.areaStatus, { color: STATUS_COLOR[area.status], backgroundColor: STATUS_BG[area.status] }]}>
-                  {area.status === "Challenging" ? "Watchful" : area.status}
-                </Text>
-              </View>
-              <Text style={styles.rowChevron}>›</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.guidanceCard}>
-          <View style={styles.sectionHead}>
-            <View style={styles.guidanceHeading}>
-              <Text style={styles.spark}>✦</Text>
-              <Text style={styles.sectionTitle}>Today’s guidance</Text>
-            </View>
-            <Text style={styles.linkText}>See all ›</Text>
-          </View>
-          {dos.map((item, index) => (
-            <GuidanceRow key={`do-${index}`} text={item} positive />
-          ))}
-          {donts.map((item, index) => (
-            <GuidanceRow key={`dont-${index}`} text={item} />
-          ))}
-        </View>
-
-        <BestWindow timing={today.timing} />
-
-        <Pressable style={styles.futureLink} onPress={onFuture}>
-          <View style={styles.futureLinkIcon}><Text>🔮</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.futureLinkSmall}>GO DEEPER</Text>
-            <Text style={styles.futureLinkText}>Explore what’s ahead in your dasha</Text>
-          </View>
-          <Text style={styles.rowChevron}>›</Text>
-        </Pressable>
       </View>
     </View>
   );
 }
 
-function BestWindow({ timing }) {
-  // The backend currently returns timing: [] for this profile.
-  // Keep the section visible to match the Today design, while using real
-  // backend timing automatically as soon as it becomes available.
-  const hasApiTiming = Array.isArray(timing) && timing.length > 0;
+function AreaList({ areas }) {
+  const t = useTheme();
+  const [open, setOpen] = useState(null);
 
-  const fallback = [
-    { time: "12 AM", status: "Avoid" },
-    { time: "6 AM", status: "Neutral" },
-    { time: "10 AM – 1 PM", status: "Best" },
-    { time: "6 PM", status: "Neutral" },
-    { time: "12 AM", status: "Avoid" },
-  ];
-
-  const slots = hasApiTiming
-    ? timing.slice(0, 5).map((slot) => ({
-        time: toText(slot?.time),
-        status: toText(slot?.status),
-      }))
-    : fallback;
+  const toggle = (key) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((current) => (current === key ? null : key));
+  };
 
   return (
-    <View style={styles.windowBlock}>
-      <Text style={styles.windowTitle}>◷  Your best window</Text>
-
-      <View style={styles.windowTrack}>
-        {slots.map((slot, index) => {
-          const isBest =
-            String(slot.status).toLowerCase() === "best" ||
-            String(slot.status).toLowerCase() === "favourable";
-
-          const isAvoid =
-            String(slot.status).toLowerCase() === "avoid";
-
-          return (
-            <View key={index} style={styles.windowItem}>
-              <View
-                style={[
-                  styles.windowBar,
-                  {
-                    backgroundColor: isBest
-                      ? ORANGE
-                      : isAvoid
-                        ? "#F0DCE3"
-                        : "#E8E3EA",
-                  },
-                ]}
-              />
-              {isBest && <View style={styles.windowSun}><Text>☀</Text></View>}
-              <Text
-                style={[
-                  styles.windowTime,
-                  isBest && styles.windowTimeBest,
-                ]}
-              >
-                {slot.time}
-              </Text>
-              <Text
-                style={[
-                  styles.windowStatus,
-                  isBest && styles.windowStatusBest,
-                  isAvoid && styles.windowStatusAvoid,
-                ]}
-              >
-                {slot.status}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function GuidanceRow({ text, positive = false }) {
-  return (
-    <View style={styles.guidanceRow}>
-      {positive ? (
-        <View style={styles.guidanceCheck}><Text style={styles.guidanceCheckText}>✓</Text></View>
-      ) : (
-        <View style={styles.guidanceEmpty} />
-      )}
-      <Text style={styles.guidanceText}>{text}</Text>
-    </View>
-  );
-}
-
-function PastScreen({ profile, timeline }) {
-  return (
-    <View style={styles.timelinePage}>
-      <Text style={styles.timelineTitle}>Your story so far</Text>
-
-      <Text style={styles.timelineSubtitle}>
-        Key turning points from your chart, explained in simple language.
-      </Text>
-
-      <PastTimeline
-        rows={timeline}
-        profile={profile}
-      />
-
-      <View style={styles.shapedSection}>
-        <Text style={styles.shapedTitle}>What shaped you</Text>
-
-        <Text style={styles.shapedSubtitle}>
-          Core themes that have influenced your journey so far.
-        </Text>
-
-        <View style={styles.shapedGrid}>
-          <View style={styles.shapedCard}>
-            <View
-              style={[
-                styles.shapedIcon,
-                { backgroundColor: "#E7F5EA" },
-              ]}
-            >
-              <Text style={styles.shapedEmoji}>🌿</Text>
-            </View>
-
-            <Text style={styles.shapedCardTitle}>
-              Independence
-            </Text>
-
-            <Text style={styles.shapedCardText}>
-              You’ve learned to rely on yourself and make your own
-              decisions.
-            </Text>
-          </View>
-
-          <View style={styles.shapedCard}>
-            <View
-              style={[
-                styles.shapedIcon,
-                { backgroundColor: "#FDE9EC" },
-              ]}
-            >
-              <Text style={styles.shapedEmoji}>❤️</Text>
-            </View>
-
-            <Text style={styles.shapedCardTitle}>
-              Relationships
-            </Text>
-
-            <Text style={styles.shapedCardText}>
-              Deep bonds and important lessons in trust and boundaries.
-            </Text>
-          </View>
-
-          <View style={styles.shapedCard}>
-            <View
-              style={[
-                styles.shapedIcon,
-                { backgroundColor: "#FFF0E3" },
-              ]}
-            >
-              <Text style={styles.shapedEmoji}>⚙️</Text>
-            </View>
-
-            <Text style={styles.shapedCardTitle}>
-              Work ethic
-            </Text>
-
-            <Text style={styles.shapedCardText}>
-              You’ve shown discipline and the ability to learn from
-              challenges.
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function PastTimeline({ rows, profile }) {
-  const visibleRows = rows.slice(0, 4);
-
-  return (
-    <View style={styles.pastTimelineWrap}>
-      {visibleRows.map((row, index) => {
-        const imageSource = PAST_IMAGES[index];
-
-        const dates = row?.start
-  ? `(${formatDate(row.start)} – ${formatDate(
-      row.end || row.start
-    )})`
-  : "";
-
-        const age = ageLabel(row, profile);
+    <Card contentStyle={styles.areaList}>
+      {areas.map((area, index) => {
+        const isOpen = open === area.key;
+        const status = STATUS[area.status];
 
         return (
-          <View
-            key={`${row?.start || "past"}-${index}`}
-            style={styles.pastTimelineRow}
-          >
-            {/* Timeline rail */}
-            <View style={styles.pastRail}>
-              <View style={styles.pastRailDot} />
+          <View key={area.key} style={index > 0 && styles.divider}>
+            <Pressable
+              onPress={() => toggle(area.key)}
+              style={styles.areaRow}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isOpen }}
+              accessibilityLabel={`${area.label}: ${status.label}`}
+            >
+              <Medallion icon={area.icon} size={46} active={isOpen} />
 
-              {index < visibleRows.length - 1 && (
-                <View style={styles.pastRailLine} />
+              <View style={styles.areaBody}>
+                <View style={styles.areaTop}>
+                  <Text style={styles.areaName}>{area.label}</Text>
+                  <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
+                    <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+                    <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+                  </View>
+                </View>
+                {!!area.title && (
+                  <Text style={styles.areaTitle} numberOfLines={isOpen ? undefined : 1}>
+                    {area.title}
+                  </Text>
+                )}
+              </View>
+
+              {area.score !== null && (
+                <Ring
+                  score={area.score}
+                  size={46}
+                  stroke={3.5}
+                  color={t.accent}
+                  track={t.soft}
+                  textStyle={styles.areaRingText}
+                />
               )}
-            </View>
 
-            {/* Story card */}
-            <View style={styles.pastCardWrap}>
-              <Pressable style={styles.pastStoryCard}>
-                <View style={styles.pastStoryImageColumn}>
-                  <View style={styles.pastCategoryIcon}>
-                    <Text style={styles.pastCategoryEmoji}>
-                      {index === 0
-                        ? "🌿"
-                        : index === 1
-                        ? "📖"
-                        : index === 2
-                        ? "❤️"
-                        : "📖"}
-                    </Text>
-                  </View>
+              <View style={[styles.chevron, { backgroundColor: isOpen ? t.accent : t.soft }, isOpen && styles.chevronOpen]}>
+                <Icon name="chevron-down" size={18} color={isOpen ? C.CARD : t.accent} />
+              </View>
+            </Pressable>
 
-                  <Image
-                    source={imageSource}
-                    style={styles.pastStoryImage}
-                    resizeMode="cover"
-                  />
-                </View>
-
-                <View style={styles.pastStoryCopy}>
-                  <View style={styles.pastAgeRow}>
-                    <Text style={styles.pastAge}>
-                      {age || `Age ${index + 1}`}
-                    </Text>
-
-                    {!!dates && (
-  <Text style={styles.pastYears}>
-    {dates}
-  </Text>
-)}
-                  </View>
-
-                  <Text style={styles.pastStoryTitle}>
-                    {toText(row?.title)}
-                  </Text>
-
-                  <Text
-                    style={styles.pastStoryDescription}
-                    numberOfLines={4}
-                  >
-                    {toText(row?.description)}
-                  </Text>
-                </View>
-
-                <Text style={styles.pastStoryArrow}>
-                  ›
-                </Text>
-              </Pressable>
-            </View>
+            {isOpen && !!area.description && (
+              <View style={[styles.areaDetail, { borderLeftColor: t.tint(0.4) }]}>
+                <Text style={styles.areaDescription}>{area.description}</Text>
+              </View>
+            )}
           </View>
         );
       })}
-    </View>
+    </Card>
   );
 }
 
+function Guidance({ title, dos, donts }) {
+  const t = useTheme();
+  if (!dos.length && !donts.length) return null;
 
-
-function Timeline({ rows, profile, tone }) {
-  const [open, setOpen] = useState(null);
-  const isPast = tone === "past";
   return (
-    <View style={styles.timelineWrap}>
-      {rows.map((row, index) => (
-        <View key={`${row.start}-${index}`} style={styles.timelineRow}>
-          <View style={styles.rail}>
-            <View style={[styles.railDot, isPast ? styles.railPast : styles.railFuture]}>
-              <Text style={styles.railEmoji}>{index % 2 === 0 ? "🌿" : "❤️"}</Text>
+    <>
+      <SectionTitle overline="GUIDANCE">{title}</SectionTitle>
+      <View style={styles.guideRow}>
+        {dos.length > 0 && (
+          <Card style={{ flex: 1 }} contentStyle={styles.guideCard} art={false}>
+            <View style={[styles.guideAccent, { backgroundColor: t.accent }]} />
+            <View style={styles.guideHead}>
+              <Medallion icon="check" size={28} active />
+              <Text style={styles.guideHeading}>Do</Text>
             </View>
-            {index < rows.length - 1 && <View style={[styles.railLine, isPast ? styles.railPastLine : styles.railFutureLine]} />}
-          </View>
-          <View style={styles.timelineMain}>
-            <Text style={styles.ageText}>{ageLabel(row, profile)} {row.start ? `(${row.start.slice(0, 4)} – ${row.end?.slice(0, 4) || ""})` : ""}</Text>
-            <Pressable onPress={() => setOpen(open === index ? null : index)} style={styles.storyCard}>
-              <View style={styles.storyImagePlaceholder}>
-                <Text style={{ fontSize: 34 }}>{index % 3 === 0 ? "🌅" : index % 3 === 1 ? "🌱" : "🌇"}</Text>
+            {dos.map((item, index) => (
+              <View key={`do-${index}`} style={styles.guideItem}>
+                <Icon name="star-four-points" size={10} color={t.accent} style={{ marginTop: 5, marginRight: 8 }} />
+                <Text style={styles.guideText}>{item}</Text>
               </View>
-              <View style={styles.storyCopy}>
-                <Text style={styles.storyTitle}>{toText(row.title)}</Text>
-                <Text numberOfLines={open === index ? undefined : 3} style={styles.storyDescription}>{toText(row.description)}</Text>
+            ))}
+          </Card>
+        )}
+        {donts.length > 0 && (
+          <Card style={{ flex: 1 }} contentStyle={styles.guideCard} art={false} tone="ivory">
+            <View style={styles.guideHead}>
+              <Medallion icon="close" size={28} />
+              <Text style={styles.guideHeading}>Avoid</Text>
+            </View>
+            {donts.map((item, index) => (
+              <View key={`dont-${index}`} style={styles.guideItem}>
+                <View style={styles.avoidDash} />
+                <Text style={styles.guideText}>{item}</Text>
               </View>
-              <Text style={styles.storyArrow}>{open === index ? "⌃" : "›"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
-    </View>
+            ))}
+          </Card>
+        )}
+      </View>
+    </>
   );
 }
 
-function getDaysRemaining(endDate) {
-  if (!endDate) return null;
+// Minutes after midnight in IST (the timing slots are in IST).
+const istMinutes = () => Math.floor((Date.now() / 60000 + 330) % 1440);
 
-  const end = new Date(`${endDate}T23:59:59`);
-  const now = new Date();
+// The day's planetary hours from the current one on. The backend sends the
+// whole day once; "now" is worked out here and moves every minute.
+function useCurrentSlots(timing, count = 6) {
+  const [now, setNow] = useState(istMinutes);
 
-  const diff =
-    end.getTime() - now.getTime();
+  useEffect(() => {
+    const timer = setInterval(() => setNow(istMinutes()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
-  if (diff <= 0) {
-    return 0;
+  const rows = timing.filter((slot) => Number.isFinite(slot?.start) && Number.isFinite(slot?.end));
+  if (!rows.length) {
+    // Older saved readings: already a window with "current" marked.
+    return timing.slice(0, count).map((slot) => ({ ...slot, current: Boolean(slot?.current) }));
   }
 
-  return Math.ceil(
-    diff / (1000 * 60 * 60 * 24)
-  );
-}
-
-
-function getPhaseProgress(startDate, endDate) {
-  if (!startDate || !endDate) {
-    return 60;
-  }
-
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T23:59:59`);
-  const now = new Date();
-
-  const total =
-    end.getTime() - start.getTime();
-
-  if (total <= 0) {
-    return 100;
-  }
-
-  const elapsed =
-    now.getTime() - start.getTime();
-
-  return Math.max(
-    0,
-    Math.min(100, (elapsed / total) * 100)
-  );
-}
-
-
-function getPhaseTitle(phase) {
-  const first = toText(phase?.ahead?.[0]);
-
-  if (first) {
-    const cleaned = first
-      .replace(/^you are currently in (a |the )?/i, "")
-      .replace(/^this phase (is |will be )?/i, "")
-      .trim();
-
-    if (cleaned.length > 0) {
-      const sentenceEnd = cleaned.search(/[.!?]/);
-
-      if (
-        sentenceEnd > 0 &&
-        sentenceEnd < 75
-      ) {
-        return cleaned.slice(0, sentenceEnd);
-      }
-
-      if (cleaned.length <= 75) {
-        return cleaned;
-      }
-    }
-  }
-
-  if (phase?.major && phase?.sub) {
-    return `${phase.major}–${phase.sub} phase`;
-  }
-
-  return "A new phase is unfolding.";
-}
-
-
-function getPhaseDescription(phase, areas) {
-  const currentArea = areas.find(
-    (area) =>
-      toText(area.event?.description).length > 0
-  );
-
-  if (currentArea?.event?.description) {
-    return toText(
-      currentArea.event.description
-    );
-  }
-
-  const second =
-    toText(phase?.ahead?.[1]);
-
-  if (second) {
-    return second;
-  }
-
-  return "This is a time to stay focused, work through what matters and build stronger foundations for what comes next.";
-}
-
-
-function buildPrepareItems(phase, areas) {
-  const items = [];
-
-  const ahead = Array.isArray(phase?.ahead)
-    ? phase.ahead
-    : [];
-
-  ahead.forEach((item) => {
-    const text = toText(item);
-
-    if (text && items.length < 4) {
-      const cleaned = text
-        .replace(/^you are currently in /i, "")
-        .replace(/^this phase encourages /i, "")
-        .trim();
-
-      if (cleaned) {
-        items.push(cleaned);
-      }
-    }
+  const index = rows.findIndex((slot) => {
+    const length = (slot.end - slot.start + 1440) % 1440 || 60;
+    return (now - slot.start + 1440) % 1440 < length;
   });
+  const start = Math.max(0, (index === -1 ? 0 : index) - 1);
 
-  areas.forEach((area) => {
-    const description = toText(
-      area.event?.description
-    );
-
-    if (
-      description &&
-      items.length < 4
-    ) {
-      items.push(
-        `${area.label}: stay mindful and consistent.`
-      );
-    }
-  });
-
-  const fallback = [
-    "Stay focused on your responsibilities",
-    "Plan important decisions carefully",
-    "Protect time for meaningful growth",
-    "Stay grounded and avoid impulsive choices",
-  ];
-
-  while (items.length < 4) {
-    items.push(fallback[items.length]);
-  }
-
-  return items.slice(0, 4);
+  return rows.slice(start, start + count).map((slot, i) => ({
+    ...slot,
+    current: start + i === index,
+  }));
 }
 
-
-function buildLeanIntoItems(phase, areas) {
-  const items = [];
-
-  const reflections = Array.isArray(
-    phase?.reflections
-  )
-    ? phase.reflections
-    : [];
-
-  reflections.forEach((item) => {
-    const text = toText(item)
-      .replace(/^I am /i, "")
-      .replace(/^I need to /i, "")
-      .replace(/^I /i, "")
-      .trim();
-
-    if (text && items.length < 4) {
-      items.push(
-        text.charAt(0).toUpperCase() +
-          text.slice(1)
-      );
-    }
-  });
-
-  if (items.length < 4) {
-    const statusAreas = areas.filter(
-      (area) =>
-        normalizeStatus(
-          area.data?.status
-        ) !== "Challenging"
-    );
-
-    statusAreas.forEach((area) => {
-      if (items.length < 4) {
-        items.push(
-          `Strengthen your ${area.label.toLowerCase()}`
-        );
-      }
-    });
-  }
-
-  const fallback = [
-    "Consistency over speed",
-    "Practical planning",
-    "Building long-term skills",
-    "Strengthening key relationships",
-  ];
-
-  while (items.length < 4) {
-    items.push(fallback[items.length]);
-  }
-
-  return items.slice(0, 4);
-}
-
-
-function buildAvoidItems(phase, areas) {
-  const items = [];
-
-  const challengingAreas =
-    areas.filter(
-      (area) =>
-        normalizeStatus(
-          area.data?.status
-        ) === "Challenging"
-    );
-
-  challengingAreas.forEach((area) => {
-    if (items.length < 4) {
-      items.push(
-        `Neglecting your ${area.label.toLowerCase()}`
-      );
-    }
-  });
-
-  const fallback = [
-    "Impulsive spending",
-    "Taking unnecessary risks",
-    "Overcommitting",
-    "Ignoring rest and recovery",
-  ];
-
-  while (items.length < 4) {
-    items.push(fallback[items.length]);
-  }
-
-  return items.slice(0, 4);
-}
-
-function FutureProgress({
-  phase,
-  timeline,
-  daysLeft,
-}) {
-  const points = [
-    {
-      label: "Current",
-      value:
-        daysLeft !== null
-          ? `${daysLeft} days`
-          : "Now",
-    },
-    {
-      label: "Next",
-      value: getNextDuration(
-        timeline,
-        phase
-      ),
-    },
-    {
-      label: "Later",
-      value: "1–2 years",
-    },
-    {
-      label: "Long term",
-      value: "2+ years",
-    },
-  ];
-
-  return (
-    <View style={styles.futureProgress}>
-      <View style={styles.futureProgressLine} />
-
-      {points.map((point, index) => (
-        <View
-          key={point.label}
-          style={styles.futurePoint}
-        >
-          <View
-            style={[
-              styles.futureDot,
-              index === 0 &&
-                styles.futureDotActive,
-            ]}
-          />
-
-          <Text
-            style={[
-              styles.futurePointLabel,
-              index === 0 &&
-                styles.futurePointActive,
-            ]}
-          >
-            {point.label}
-          </Text>
-
-          <Text style={styles.futurePointValue}>
-            {point.value}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-
-function getNextDuration(timeline, phase) {
-  if (
-    !Array.isArray(timeline) ||
-    timeline.length === 0
-  ) {
-    return "Next";
-  }
-
-  const next = timeline.find(
-    (item) =>
-      item?.start &&
-      phase?.end &&
-      item.start > phase.end
-  );
-
-  if (!next) {
-    return "Next";
-  }
-
-  const start = new Date(
-    `${next.start}T00:00:00`
-  );
-
-  const end = new Date(
-    `${next.end || next.start}T00:00:00`
-  );
-
-  const months = Math.max(
-    1,
-    Math.round(
-      (end - start) /
-        (1000 * 60 * 60 * 24 * 30)
-    )
-  );
-
-  return `${months} month${months === 1 ? "" : "s"}`;
-}
-
-
-
-function FutureScreen({ future }) {
-  const phase = future?.phase || {};
-  const timeline = Array.isArray(future?.timeline)
-    ? future.timeline
-    : [];
-
-
-    const futureHeroImage = getFutureImage(
-    phase.major
-  );
-
-  const areas = [
-    {
-      key: "career",
-      label: "Career",
-      icon: "💼",
-    },
-    {
-      key: "money",
-      label: "Money",
-      icon: "🪙",
-    },
-    {
-      key: "health",
-      label: "Health",
-      icon: "🌿",
-    },
-    {
-      key: "love",
-      label: "Relationships",
-      icon: "❤️",
-    },
-  ].map((area) => ({
-    ...area,
-    data: phase.areas?.[area.key] || {},
-    event:
-      phase.areas?.[area.key]?.events?.find(
-        (event) => event.state === "current"
-      ) ||
-      phase.areas?.[area.key]?.events?.[0] ||
-      {},
+function BestWindow({ timing }) {
+  const t = useTheme();
+  const slots = useCurrentSlots(timing).map((slot) => ({
+    time: toText(slot?.time),
+    status: toText(slot?.status).toLowerCase(),
+    current: slot.current,
   }));
 
-  const daysLeft = getDaysRemaining(phase.end);
-
-  const progress = getPhaseProgress(
-    phase.start,
-    phase.end
-  );
-
-  const phaseTitle = getPhaseTitle(phase);
-
-  const phaseDescription = getPhaseDescription(
-    phase,
-    areas
-  );
-
-  const prepareItems = buildPrepareItems(
-    phase,
-    areas
-  );
-
-  const leanIntoItems = buildLeanIntoItems(
-    phase,
-    areas
-  );
-
-  const avoidItems = buildAvoidItems(
-    phase,
-    areas
-  );
-
   return (
-    <View style={styles.futurePage}>
-      {/* Heading */}
-      <Text style={styles.timelineTitle}>
-        What’s ahead
-      </Text>
+    <>
+      <SectionTitle overline="TIMING" note="Planetary hours">Your best window</SectionTitle>
+      <Card art={false}>
+        <View style={styles.windowTrack}>
+          {slots.map((slot, index) => {
+            const isBest = slot.status === "best" || slot.status === "favourable";
+            const isAvoid = slot.status === "avoid";
 
-      <Text style={styles.timelineSubtitle}>
-        The next phases of your chart, translated into practical guidance.
-      </Text>
-
-      {/* Progress */}
-      <FutureProgress
-        phase={phase}
-        timeline={timeline}
-        daysLeft={daysLeft}
-      />
-
-      {/* Main phase card */}
-      <ImageBackground
-  source={futureHeroImage}
-  style={styles.futurePhaseHero}
-  imageStyle={styles.futurePhaseHeroImage}
-  resizeMode="cover"
->
-        <View style={styles.futurePhaseContent}>
-          <View style={styles.futurePhaseMetaRow}>
-            <Text style={styles.futurePhaseKicker}>
-              {phase.major || "Current"} phase
-            </Text>
-
-            <Text style={styles.futurePhaseDot}>
-              •
-            </Text>
-
-            <Text style={styles.futurePhaseDays}>
-              {daysLeft !== null
-                ? `${daysLeft} days`
-                : ""}
-            </Text>
-          </View>
-
-          <Text style={styles.futurePhaseDate}>
-            {formatDate(phase.start)}
-            {phase.start && phase.end ? " – " : ""}
-            {formatDate(phase.end)}
-          </Text>
-
-          <Text style={styles.futurePhaseTitle}>
-            {phaseTitle}
-          </Text>
-
-          <Text style={styles.futurePhaseDescription}>
-            {phaseDescription}
-          </Text>
-
-          <View style={styles.futurePhaseBottom}>
-            <View style={styles.futurePhaseProgressTrack}>
-              <View
-                style={[
-                  styles.futurePhaseProgressFill,
-                  {
-                    width: `${Math.max(
-                      5,
-                      Math.min(100, progress)
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-
-            <Text style={styles.futurePhaseRemaining}>
-              {daysLeft !== null
-                ? `${daysLeft} days left`
-                : "Current phase"}
-            </Text>
-          </View>
+            return (
+              <View key={index} style={styles.windowItem}>
+                <Text style={[styles.windowNow, { color: t.accent }, !slot.current && { opacity: 0 }]}>NOW</Text>
+                <View style={[styles.windowBar, slot.current && [styles.windowBarCurrent, { borderColor: t.accent }]]}>
+                  {isBest ? (
+                    <View style={[StyleSheet.absoluteFill, { borderRadius: 12, backgroundColor: t.accent }]} />
+                  ) : (
+                    <View
+                      style={[
+                        StyleSheet.absoluteFill,
+                        { borderRadius: 12, backgroundColor: isAvoid ? STATUS.Challenging.bg : t.soft },
+                      ]}
+                    />
+                  )}
+                  {isBest && <Icon name="white-balance-sunny" size={15} color={C.CARD} />}
+                </View>
+                <Text style={[styles.windowTime, isBest && { color: t.accent, fontFamily: F.bold }]}>{slot.time}</Text>
+                <Text style={[styles.windowStatus, isBest && { color: t.accent, fontFamily: F.bold }]}>
+                  {isBest ? "Best" : isAvoid ? "Avoid" : "Neutral"}
+                </Text>
+              </View>
+            );
+          })}
         </View>
-      </ImageBackground>
-
-      {/* Where this phase may show up */}
-      <Text style={styles.futureSectionTitle}>
-        Where this phase may show up
-      </Text>
-
-      <View style={styles.futureAreasCard}>
-        {areas.map((area, index) => (
-          <View
-            key={area.key}
-            style={[
-              styles.futureAreaRow,
-              index === areas.length - 1 && {
-                borderBottomWidth: 0,
-              },
-            ]}
-          >
-            <View style={styles.futureAreaCircle}>
-              <Text style={styles.futureAreaEmoji}>
-                {area.icon}
-              </Text>
-            </View>
-
-            <View style={styles.futureAreaNameWrap}>
-              <Text style={styles.futureAreaName}>
-                {area.label}
-              </Text>
-            </View>
-
-            <View style={styles.futureAreaDescriptionWrap}>
-              <Text
-                numberOfLines={2}
-                style={styles.futureAreaText}
-              >
-                {toText(
-                  area.event?.description ||
-                    area.event?.title ||
-                    area.data?.description
-                ) ||
-                  "This phase may bring important developments in this area."}
-              </Text>
-            </View>
-
-            <Text style={styles.futureAreaChevron}>
-              ›
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Prepare for it */}
-      <Text style={styles.futureSectionTitle}>
-        Prepare for it
-      </Text>
-
-      <View style={styles.prepareCard}>
-        {prepareItems.map((item, index) => (
-          <View
-            key={`${item}-${index}`}
-            style={[
-              styles.prepareRow,
-              index === prepareItems.length - 1 && {
-                borderBottomWidth: 0,
-              },
-            ]}
-          >
-            <View style={styles.prepareCheck}>
-              <Text style={styles.prepareCheckText}>
-                ✓
-              </Text>
-            </View>
-
-            <Text style={styles.prepareText}>
-              {item}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Lean into / avoid */}
-      <View style={styles.leanAvoidRow}>
-        <View
-          style={[
-            styles.leanAvoidCard,
-            styles.leanCard,
-          ]}
-        >
-          <View style={styles.leanAvoidHeader}>
-            <Text style={styles.leanAvoidIcon}>
-              ☀️
-            </Text>
-
-            <Text style={styles.leanAvoidTitle}>
-              What to lean into
-            </Text>
-          </View>
-
-          {leanIntoItems.map((item, index) => (
-            <View
-              key={`${item}-${index}`}
-              style={styles.bulletRow}
-            >
-              <View
-                style={[
-                  styles.bullet,
-                  styles.leanBullet,
-                ]}
-              />
-
-              <Text style={styles.bulletText}>
-                {item}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View
-          style={[
-            styles.leanAvoidCard,
-            styles.avoidCard,
-          ]}
-        >
-          <View style={styles.leanAvoidHeader}>
-            <Text style={styles.leanAvoidIcon}>
-              🌙
-            </Text>
-
-            <Text style={styles.leanAvoidTitle}>
-              What to avoid
-            </Text>
-          </View>
-
-          {avoidItems.map((item, index) => (
-            <View
-              key={`${item}-${index}`}
-              style={styles.bulletRow}
-            >
-              <View
-                style={[
-                  styles.bullet,
-                  styles.avoidBullet,
-                ]}
-              />
-
-              <Text style={styles.bulletText}>
-                {item}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </View>
+      </Card>
+    </>
   );
 }
 
+function LuckyTile({ watermark, label, children }) {
+  const t = useTheme();
+  return (
+    <Card style={{ flex: 1 }} contentStyle={styles.luckyTile} art={false}>
+      <Icon name={watermark} size={64} color={t.accent} style={styles.luckyWatermark} />
+      <Text style={styles.luckyLabel}>{label}</Text>
+      {children}
+    </Card>
+  );
+}
 
+function Lucky({ lucky }) {
+  const t = useTheme();
+  const colours = Array.isArray(lucky?.colours) ? lucky.colours : [];
+  const numbers = toList(lucky?.numbers);
+  const letters = toList(lucky?.letters);
 
+  if (!colours.length && !numbers.length && !letters.length) return null;
+
+  return (
+    <>
+      <SectionTitle overline="LUCK">Lucky for you</SectionTitle>
+      <View style={styles.luckyRow}>
+        {colours.length > 0 && (
+          <LuckyTile watermark="palette-outline" label="Colours">
+            <View style={styles.swatches}>
+              {colours.slice(0, 3).map((c, i) => (
+                <View
+                  key={`${c?.name}-${i}`}
+                  style={[styles.swatch, { backgroundColor: c?.hex || t.soft, marginLeft: i ? -9 : 0 }]}
+                />
+              ))}
+            </View>
+            <Text style={styles.luckyValue} numberOfLines={2}>
+              {colours.map((c) => toText(c?.name)).filter(Boolean).join(", ")}
+            </Text>
+          </LuckyTile>
+        )}
+
+        {numbers.length > 0 && (
+          <LuckyTile watermark="numeric" label="Numbers">
+            <Text style={[styles.luckyBig, { color: t.accent }]}>{numbers.slice(0, 3).join(" · ")}</Text>
+          </LuckyTile>
+        )}
+
+        {letters.length > 0 && (
+          <LuckyTile watermark="alphabetical-variant" label="Letters">
+            <Text style={[styles.luckyBig, { color: t.accent }]}>{letters.slice(0, 3).join(" · ")}</Text>
+          </LuckyTile>
+        )}
+      </View>
+    </>
+  );
+}
+
+function Tips({ tips }) {
+  const t = useTheme();
+  const cosmic = toText(tips?.cosmic);
+  const people = [
+    { key: "singles", icon: "account-outline", label: "For singles" },
+    { key: "couples", icon: "account-multiple-outline", label: "For couples" },
+  ].filter((row) => toText(tips?.[row.key]));
+
+  if (!cosmic && !people.length) return null;
+
+  return (
+    <Card tone="ivory" style={{ marginTop: 30 }} contentStyle={{ paddingVertical: 4 }}>
+      {!!cosmic && (
+        <View style={styles.quote}>
+          <Text style={[styles.quoteMark, { color: t.accent }]}>“</Text>
+          <View style={styles.quoteHead}>
+            <Icon name="star-four-points" size={12} color={C.GOLD} />
+            <Text style={[styles.quoteLabel, { color: t.accent }]}>Cosmic tip</Text>
+          </View>
+          <Text style={styles.quoteText}>{cosmic}</Text>
+        </View>
+      )}
+
+      {people.map((row, index) => (
+        <View key={row.key} style={[styles.tipRow, (cosmic || index > 0) && styles.divider]}>
+          <Medallion icon={row.icon} size={34} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.tipLabel}>{row.label}</Text>
+            <Text style={styles.tipText}>{toText(tips[row.key])}</Text>
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+/* ------------------------------ styles ------------------------------ */
+
+const softShadow = {
+  shadowOpacity: 0.08,
+  shadowRadius: 22,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 3,
+};
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BG },
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
+  scroll: { paddingHorizontal: 16, paddingTop: 6 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 28 },
-  loadingText: { marginTop: 12, color: MUTED, fontSize: 14 },
-  errorTitle: { color: TEXT, fontSize: 21, fontWeight: "800", marginBottom: 8 },
-  errorText: { color: MUTED, fontSize: 14, textAlign: "center", lineHeight: 21, marginBottom: 20 },
-  retryButton: { backgroundColor: ORANGE, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
-  retryText: { color: "#fff", fontWeight: "800" },
-  header: { height: 68, backgroundColor: "#FBFAFF", flexDirection: "row", alignItems: "center", paddingHorizontal: 10 },
-  headerButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
-  backIcon: { color: TEXT, fontSize: 34, fontWeight: "300", lineHeight: 38 },
-  shareIcon: { color: TEXT, fontSize: 25 },
-  headerCenter: { flex: 1, alignItems: "center" },
-  headerTitle: { color: TEXT, fontSize: 17, fontWeight: "800" },
-  headerSubtitle: { color: MUTED, fontSize: 10.5, marginTop: 2 },
-  tabs: { flexDirection: "row", gap: 6, paddingHorizontal: 16, paddingBottom: 8, backgroundColor: "#FBFAFF" },
-  tab: { flex: 1, height: 39, borderRadius: 12, backgroundColor: "#F1EDF7", alignItems: "center", justifyContent: "center", flexDirection: "row" },
-  tabIcon: { fontSize: 16 },
-  tabText: { color: TEXT, fontSize: 12.5, fontWeight: "700", marginLeft: 5 },
-  tabTextActive: { color: "#fff" },
 
-  todayPage: { backgroundColor: "#F5F2FF" },
-  todayTop: { paddingHorizontal: 16, paddingTop: 7, paddingBottom: 15 },
-  dateLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 9 },
-  dateText: { color: TEXT, fontSize: 19, fontWeight: "800" },
-  moonPill: { flexDirection: "row", alignItems: "center", backgroundColor: "#F9F6FF", borderWidth: 1, borderColor: "#E7E0EF", borderRadius: 15, paddingHorizontal: 9, paddingVertical: 6 },
-  moonGlyph: { color: "#79527D", fontSize: 14, marginRight: 5 },
-  moonText: { color: "#665E6D", fontSize: 10.5, fontWeight: "700" },
-hero: {
-  minHeight: 220,
-  borderRadius: 20,
-  overflow: "hidden",
-  paddingHorizontal: 20,
-  paddingVertical: 24,
-  justifyContent: "center",
-},
-  heroImage: { borderRadius: 17 },
-  heroKicker: { color: "#B54429", fontSize: 10.5, fontWeight: "800", letterSpacing: 0.5 },
-  heroTitle: {
-  color: "#272046",
-  fontSize: 21,
-  lineHeight: 24,
-  fontWeight: "800",
-  width: "67%",
-  marginTop: 6,
-},
-
-heroText: {
-  color: TEXT,
-  fontSize: 12,
-  lineHeight: 17,
-  width: "100%",
-  marginTop: 8,
-  fontWeight:"500"
-},
-  todayBody: { backgroundColor: "#FBFAFF", borderTopLeftRadius: 26, borderTopRightRadius: 26, marginTop: -1, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 30 },
-  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  sectionTitle: { color: TEXT, fontSize: 17, fontWeight: "800" },
-  linkText: { color: ORANGE, fontSize: 10.5, fontWeight: "800" },
-  areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  areaCard: { width: "48.7%", minHeight: 67, borderRadius: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, padding: 9, flexDirection: "row", alignItems: "center" },
-  areaCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFF0E8", alignItems: "center", justifyContent: "center" },
-  areaEmoji: { fontSize: 18 },
-  areaInfo: { flex: 1, marginLeft: 8 },
-  areaName: { color: "#3A3340", fontSize: 12.5, fontWeight: "800" },
-  areaStatus: { alignSelf: "flex-start", fontSize: 8.5, fontWeight: "800", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, marginTop: 4, overflow: "hidden" },
-  rowChevron: { color: TEXT, fontSize: 20, marginLeft: 4 },
-  guidanceCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 15, padding: 13, marginTop: 20 },
-  guidanceHeading: { flexDirection: "row", alignItems: "center" },
-  spark: { color: "#E58B2E", fontSize: 19, marginRight: 7 },
-  guidanceRow: { flexDirection: "row", alignItems: "center", marginTop: 11 },
-  guidanceCheck: { width: 19, height: 19, borderRadius: 10, backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" },
-  guidanceCheckText: { color: "#fff", fontSize: 11, fontWeight: "900" },
-  guidanceEmpty: { width: 19, height: 19, borderRadius: 10, borderWidth: 1.5, borderColor: "#BFC1CA" },
-  guidanceText: { flex: 1, color: TEXT, fontSize: 12, marginLeft: 10, lineHeight: 17 },
-  windowBlock: { marginTop: 20 },
-  windowTitle: { color: TEXT, fontSize: 15, fontWeight: "800", marginBottom: 9 },
-  windowTrack: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  windowItem: { width: "19%", alignItems: "center", position: "relative" },
-  windowBar: { width: "100%", height: 7, borderRadius: 5 },
-  windowSun: { position: "absolute", top: -10, width: 24, height: 24, alignItems: "center", justifyContent: "center" },
-  windowTime: { color: TEXT, fontSize: 8.5, marginTop: 7, textAlign: "center" },
-  windowTimeBest: { color: "#B94A2F", fontWeight: "800" },
-  windowStatus: { color: TEXT, fontSize: 8, marginTop: 2, textAlign: "center" },
-  windowStatusBest: { color: "#B94A2F", fontWeight: "800" },
-  windowStatusAvoid: { color: TEXT },
-  futureLink: { marginTop: 20, borderRadius: 15, backgroundColor: "#F7EFEA", borderWidth: 1, borderColor: "#EAD8CE", padding: 12, flexDirection: "row", alignItems: "center" },
-  futureLinkIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#F6DCCF", alignItems: "center", justifyContent: "center", marginRight: 10 },
-  futureLinkSmall: { color: "#9A6655", fontSize: 8.5, fontWeight: "800", letterSpacing: 0.6 },
-  futureLinkText: { color: TEXT, fontSize: 12.5, fontWeight: "800", marginTop: 2 },
-
-  timelinePage: { backgroundColor: BG, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 35 },
-  timelineTitle: { color: TEXT, fontSize: 23, fontWeight: "800", lineHeight: 28 },
-  timelineSubtitle: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  timelineWrap: { marginTop: 17 },
-  timelineRow: { flexDirection: "row" },
-  rail: { width: 32, alignItems: "center" },
-  railDot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2 },
-  railPast: { backgroundColor: "#E9F3E9" },
-  railFuture: { backgroundColor: "#F0E6FA" },
-  railEmoji: { fontSize: 13 },
-  railLine: { flex: 1, width: 1.5, marginTop: -1 },
-  railPastLine: { backgroundColor: "#C35A36" },
-  railFutureLine: { backgroundColor: "#BBA3CB" },
-  timelineMain: { flex: 1, paddingLeft: 8, paddingBottom: 12 },
-  ageText: { color: "#6E6675", fontSize: 10, marginBottom: 5 },
-  storyCard: { backgroundColor: CARD, borderRadius: 15, borderWidth: 1, borderColor: BORDER, padding: 10, flexDirection: "row", minHeight: 110 },
-  storyImagePlaceholder: { width: 76, height: 76, borderRadius: 38, backgroundColor: "#F4E9DE", alignItems: "center", justifyContent: "center", alignSelf: "center" },
-  storyCopy: { flex: 1, marginLeft: 10, paddingRight: 5 },
-  storyTitle: { color: TEXT, fontSize: 14, fontWeight: "800", lineHeight: 18 },
-  storyDescription: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 4 },
-  storyArrow: { color: TEXT, fontSize: 19, alignSelf: "center" },
-
-  futurePage: {
-  backgroundColor: BG,
-  paddingHorizontal: 18,
-  paddingTop: 16,
-  paddingBottom: 35,
-},
-
-futureProgress: {
-  height: 67,
-  marginTop: 15,
-  flexDirection: "row",
-  justifyContent: "space-between",
-  position: "relative",
-},
-
-futureProgressLine: {
-  position: "absolute",
-  left: 7,
-  right: 7,
-  top: 7,
-  height: 1,
-  backgroundColor: "#B9A2C3",
-},
-
-futurePoint: {
-  width: "24%",
-  alignItems: "center",
-},
-
-futureDot: {
-  width: 10,
-  height: 10,
-  borderRadius: 5,
-  backgroundColor: "#B5B0BC",
-  borderWidth: 2,
-  borderColor: BG,
-},
-
-futureDotActive: {
-  backgroundColor: "#7B225D",
-},
-
-futurePointLabel: {
-  color: TEXT,
-  fontSize: 9,
-  fontWeight: "700",
-  marginTop: 5,
-},
-
-futurePointActive: {
-  color: "#7B225D",
-},
-
-futurePointValue: {
-  color: "#8C8590",
-  fontSize: 8.5,
-  marginTop: 2,
-},
-
-futurePhaseHero: {
-  minHeight: 185,
-  borderRadius: 16,
-  overflow: "hidden",
-},
-
-futurePhaseHeroImage: {
-  borderRadius: 16,
-},
-
-futurePhaseContent: {
-  flex: 1,
-  paddingHorizontal: 14,
-  paddingTop: 14,
-  paddingBottom: 12,
-  justifyContent: "flex-start",
-},
-
-futurePhaseMetaRow: {
-  flexDirection: "row",
-  alignItems: "center",
-},
-
-futurePhaseKicker: {
-  color: "#F1C7AD",
-  fontSize: 10,
-  fontWeight: "800",
-},
-
-futurePhaseDot: {
-  color: "#EAD5C8",
-  fontSize: 11,
-  marginHorizontal: 6,
-},
-
-futurePhaseDays: {
-  color: "#F4DED3",
-  fontSize: 10,
-  fontWeight: "700",
-},
-
-futurePhaseDate: {
-  color: "#E1D4E4",
-  fontSize: 9,
-  marginTop: 3,
-},
-
-futurePhaseTitle: {
-  color: "#FFFFFF",
-  fontSize: 20,
-  lineHeight: 23,
-  fontWeight: "800",
-  width: "72%",
-  marginTop: 13,
-},
-
-futurePhaseDescription: {
-  color: "#E9DFEC",
-  fontSize: 10.5,
-  lineHeight: 15,
-  width: "78%",
-  marginTop: 7,
-  fontWeight:"500"
-},
-
-futurePhaseBottom: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginTop: 13,
-},
-
-futurePhaseProgressTrack: {
-  flex: 1,
-  height: 6,
-  borderRadius: 4,
-  backgroundColor: "rgba(255,255,255,0.25)",
-  overflow: "hidden",
-},
-
-futurePhaseProgressFill: {
-  height: 6,
-  borderRadius: 4,
-  backgroundColor: "#FFFFFF",
-},
-
-futurePhaseRemaining: {
-  color: "#FFFFFF",
-  fontSize: 9,
-  fontWeight: "700",
-  marginLeft: 10,
-},
-
-futureSectionTitle: {
-  color: TEXT,
-  fontSize: 16,
-  fontWeight: "800",
-  marginTop: 18,
-  marginBottom: 8,
-},
-
-futureAreasCard: {
-  backgroundColor: CARD,
-  borderWidth: 1,
-  borderColor: BORDER,
-  borderRadius: 15,
-  overflow: "hidden",
-},
-
-futureAreaRow: {
-  minHeight: 61,
-  flexDirection: "row",
-  alignItems: "center",
-  paddingHorizontal: 10,
-  borderBottomWidth: 1,
-  borderBottomColor: "#EEE9F0",
-},
-
-futureAreaCircle: {
-  width: 35,
-  height: 35,
-  borderRadius: 18,
-  backgroundColor: "#FFF0E8",
-  alignItems: "center",
-  justifyContent: "center",
-  marginRight: 9,
-},
-
-futureAreaEmoji: {
-  fontSize: 17,
-},
-
-futureAreaNameWrap: {
-  width: 74,
-},
-
-futureAreaName: {
-  color: TEXT,
-  fontSize: 12,
-  fontWeight: "800",
-},
-
-futureAreaDescriptionWrap: {
-  flex: 1,
-},
-
-futureAreaText: {
-  color: MUTED,
-  fontSize: 9.5,
-  fontWeight:"600",
-  lineHeight: 13,
-},
-
-futureAreaChevron: {
-  color: TEXT,
-  fontSize: 21,
-  marginLeft: 5,
-},
-
-prepareCard: {
-  backgroundColor: CARD,
-  borderWidth: 1,
-  borderColor: BORDER,
-  borderRadius: 15,
-  paddingHorizontal: 11,
-},
-
-prepareRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  minHeight: 34,
-  borderBottomWidth: 1,
-  borderBottomColor: "#F0ECF2",
-},
-
-prepareCheck: {
-  width: 18,
-  height: 18,
-  borderRadius: 9,
-  backgroundColor: ORANGE,
-  alignItems: "center",
-  justifyContent: "center",
-  marginRight: 8,
-},
-
-prepareCheckText: {
-  color: "#FFFFFF",
-  fontSize: 10,
-  fontWeight: "900",
-},
-
-prepareText: {
-  flex: 1,
-  color: TEXT,
-  fontSize: 10,
-  lineHeight: 14,
-  paddingVertical: 8,
-  fontWeight:"600"
-},
-
-leanAvoidRow: {
-  flexDirection: "row",
-  gap: 7,
-  marginTop: 8,
-},
-
-leanAvoidCard: {
-  flex: 1,
-  borderRadius: 15,
-  paddingHorizontal: 11,
-  paddingVertical: 11,
-  minHeight: 112,
-},
-
-leanCard: {
-  backgroundColor: "#FFF4E7",
-},
-
-avoidCard: {
-  backgroundColor: "#FDE8ED",
-},
-
-leanAvoidHeader: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginBottom: 6,
-},
-
-leanAvoidIcon: {
-  fontSize: 17,
-  marginRight: 6,
-},
-
-leanAvoidTitle: {
-  flex: 1,
-  color: TEXT,
-  fontSize: 11.5,
-  fontWeight: "800",
-},
-
-bulletRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginTop: 4,
-},
-
-bullet: {
-  width: 5,
-  height: 5,
-  borderRadius: 3,
-  marginRight: 7,
-},
-
-leanBullet: {
-  backgroundColor: "#E85F2D",
-},
-
-avoidBullet: {
-  backgroundColor: "#D83D55",
-},
-
-bulletText: {
-  flex: 1,
-  color: TEXT,
-  fontSize: 9.5,
-  lineHeight: 13,
-  fontWeight:"500"
-},
-
-
-  pastTimelineWrap: {
-  marginTop: 18,
-  paddingBottom: 2,
-},
-
-pastTimelineRow: {
-  flexDirection: "row",
-  minHeight: 145,
-},
-
-pastRail: {
-  width: 28,
-  alignItems: "center",
-  position: "relative",
-},
-
-pastRailDot: {
-  width: 13,
-  height: 13,
-  borderRadius: 7,
-  backgroundColor: ORANGE,
-  marginTop: 20,
-  zIndex: 2,
-},
-
-pastRailLine: {
-  position: "absolute",
-  top: 32,
-  bottom: -1,
-  width: 1.5,
-  backgroundColor: "#C95A38",
-},
-
-pastCardWrap: {
-  flex: 1,
-  paddingLeft: 5,
-  paddingBottom: 12,
-},
-
-pastStoryCard: {
-  minHeight: 140,
-  borderRadius: 18,
-  backgroundColor: "#FBFAFF",
-  borderWidth: 1,
-  borderColor: "#E8E3EE",
-  padding: 12,
-  flexDirection: "row",
-  alignItems: "center",
-},
-
-pastStoryImageColumn: {
-  width: 84,
-  alignItems: "center",
-  alignSelf: "stretch",
-  justifyContent: "center",
-},
-
-pastCategoryIcon: {
-  position: "absolute",
-  top: -3,
-  left: 1,
-  width: 34,
-  height: 34,
-  borderRadius: 17,
-  backgroundColor: "#E9F5EA",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 3,
-},
-
-pastCategoryEmoji: {
-  fontSize: 15,
-},
-
-pastStoryImage: {
-  width: 76,
-  height: 76,
-  borderRadius: 38,
-  marginTop: 10,
-},
-
-pastStoryCopy: {
-  flex: 1,
-  marginLeft: 10,
-  paddingRight: 3,
-  alignSelf: "stretch",
-  justifyContent: "center",
-},
-
-pastAgeRow: {
-  flexDirection: "row",
-  alignItems: "baseline",
-  flexWrap: "wrap",
-  marginBottom: 5,
-},
-
-pastAge: {
-  color: TEXT,
-  fontSize: 14,
-  fontWeight: "800",
-},
-
-pastYears: {
-  color: TEXT,
-  fontSize: 11,
-  marginLeft: 8,
-},
-
-pastStoryTitle: {
-  color: TEXT,
-  fontSize: 14,
-  lineHeight: 18,
-  fontWeight: "800",
-},
-
-pastStoryDescription: {
-  color: MUTED,
-  fontSize: 10.5,
-  lineHeight: 14.5,
-  marginTop: 4,
-  fontWeight:"500"
-},
-
-pastStoryArrow: {
-  color: "#5D5664",
-  fontSize: 25,
-  lineHeight: 28,
-  marginLeft: 3,
-  alignSelf: "center",
-},
-
-shapedSection: {
-  marginTop: 2,
-  paddingBottom: 8,
-},
-
-shapedTitle: {
-  color: TEXT,
-  fontSize: 21,
-  lineHeight: 26,
-  fontWeight: "800",
-},
-
-shapedSubtitle: {
-  color: MUTED,
-  fontSize: 11.5,
-  lineHeight: 16,
-  marginTop: 3,
-  marginBottom: 10,
-  fontWeight:"500"
-},
-
-shapedGrid: {
-  flexDirection: "row",
-  gap: 7,
-},
-
-shapedCard: {
-  flex: 1,
-  minHeight: 128,
-  backgroundColor: CARD,
-  borderWidth: 1,
-  borderColor: BORDER,
-  borderRadius: 15,
-  padding: 10,
-},
-
-shapedIcon: {
-  width: 35,
-  height: 35,
-  borderRadius: 18,
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 7,
-},
-
-shapedEmoji: {
-  fontSize: 17,
-},
-
-shapedCardTitle: {
-  color: TEXT,
-  fontSize: 10.5,
-  lineHeight: 13,
-  fontWeight: "800",
-},
-
-shapedCardText: {
-  color: MUTED,
-  fontSize: 8.8,
-  lineHeight: 12,
-  fontWeight:"500",
-  marginTop: 4,
-},
+  stateIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: C.CARD, borderWidth: 1, borderColor: C.BORDER, alignItems: "center", justifyContent: "center", marginBottom: 18 },
+  stateTitle: { color: C.INK, fontSize: 24, fontFamily: F.bold, marginBottom: 8, textAlign: "center" },
+  stateText: { color: C.MUTED, fontSize: 14, fontFamily: F.regular, textAlign: "center", lineHeight: 21, marginBottom: 24 },
+  loadingText: { marginTop: 16, color: C.MUTED, fontSize: 14, fontFamily: F.medium, textAlign: "center" },
+  primaryButton: { backgroundColor: C.PLUM, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999 },
+  primaryButtonText: { color: C.CARD, fontSize: 15, fontFamily: F.semibold },
+
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  brand: { flex: 1, flexDirection: "row", alignItems: "center" },
+  logoBadge: { width: 42, height: 42, borderRadius: 21, backgroundColor: C.PLUM, alignItems: "center", justifyContent: "center" },
+  title: { color: C.INK, fontSize: 26, fontFamily: F.bold, letterSpacing: -0.4 },
+  subtitle: { color: C.MUTED, fontSize: 13, fontFamily: F.regular, marginTop: 1 },
+  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: C.CARD, borderWidth: 1, borderColor: C.BORDER, alignItems: "center", justifyContent: "center", marginLeft: 12 },
+
+  tabs: { flexDirection: "row", marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 999, backgroundColor: C.CARD, borderWidth: 1, borderColor: C.BORDER },
+  tabIndicator: { position: "absolute", top: 4, bottom: 4, left: 4, borderRadius: 999, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  tab: { flex: 1, height: 40, alignItems: "center", justifyContent: "center" },
+  tabText: { color: C.MUTED, fontSize: 13.5, fontFamily: F.semibold },
+  tabTextActive: { color: C.CARD },
+
+  card: { borderRadius: 28, backgroundColor: C.CARD, ...softShadow },
+  cardClip: { borderRadius: 28, overflow: "hidden", borderWidth: 1, borderColor: "rgba(217,206,193,0.6)" },
+  cardArt: { position: "absolute", top: 0, right: 0 },
+  cardHighlight: { position: "absolute", top: 0, left: 20, right: 20, height: 1, backgroundColor: "#FFFFFF" },
+  cardContent: { padding: 16 },
+  divider: { borderTopWidth: 1, borderTopColor: C.LINE },
+
+  sectionWrap: { marginTop: 34, marginBottom: 14, paddingHorizontal: 2 },
+  overline: { fontSize: 11, fontFamily: F.bold, letterSpacing: 1.6, marginBottom: 4 },
+  glance: { flexDirection: "row", marginTop: 18, paddingVertical: 12, borderRadius: 18, borderWidth: 1 },
+  glanceItem: { flex: 1, alignItems: "center", gap: 3 },
+  glanceScore: { fontSize: 16, fontFamily: F.bold, marginTop: 2 },
+  glanceLabel: { fontSize: 10.5, fontFamily: F.medium },
+  areaRingText: { fontSize: 13 },
+  sectionHead: { flexDirection: "row", alignItems: "center", marginTop: 32, marginBottom: 14, paddingHorizontal: 2 },
+  sectionTitle: { color: C.INK, fontSize: 22, fontFamily: F.bold, letterSpacing: -0.3 },
+  sectionRule: { flex: 1, height: 1, marginHorizontal: 12 },
+  sectionNote: { color: C.MUTED, fontSize: 12, fontFamily: F.medium },
+
+  medal: { alignItems: "center", justifyContent: "center", borderWidth: 1, overflow: "hidden" },
+  ringText: { color: C.CARD, fontSize: 16, fontFamily: F.bold },
+
+  hero: { borderRadius: 26, backgroundColor: C.PLUM, shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 6 },
+  heroClip: { borderRadius: 26, overflow: "hidden", borderWidth: 1 },
+  heroWheel: { position: "absolute", top: -WHEEL * 0.42, right: -WHEEL * 0.38, width: WHEEL, height: WHEEL },
+  heroContent: { padding: 20 },
+  heroMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 18, paddingRight: 60 },
+  heroDate: { flexShrink: 1, color: "rgba(255,253,252,0.75)", fontSize: 11.5, fontFamily: F.semibold, letterSpacing: 1, textTransform: "uppercase" },
+  heroChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "rgba(255,253,252,0.16)", borderWidth: 1, borderColor: "rgba(255,253,252,0.3)" },
+  heroChipText: { color: C.CARD, fontSize: 11.5, fontFamily: F.semibold },
+  heroKicker: { color: "rgba(255,253,252,0.75)", fontSize: 12, fontFamily: F.semibold, letterSpacing: 1, textTransform: "uppercase" },
+  heroTitle: { color: C.CARD, fontSize: 32, lineHeight: 37, fontFamily: F.bold, letterSpacing: -0.6, marginTop: 8, marginBottom: 12, paddingRight: 16 },
+  heroText: { color: "rgba(255,253,252,0.88)", fontSize: 15, lineHeight: 23, fontFamily: F.regular },
+  energyRow: { flexDirection: "row", alignItems: "center", marginTop: 20, paddingTop: 18, borderTopWidth: 1, borderTopColor: "rgba(255,253,252,0.18)" },
+  energyLabel: { color: "rgba(255,253,252,0.75)", fontSize: 12, fontFamily: F.medium },
+  energyValue: { color: C.CARD, fontSize: 18, fontFamily: F.bold, marginTop: 2 },
+
+  areaList: { paddingHorizontal: 18, paddingVertical: 6 },
+  areaRow: { flexDirection: "row", alignItems: "center", paddingVertical: 20 },
+  areaBody: { flex: 1, marginLeft: 16 },
+  areaTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  areaName: { color: C.INK, fontSize: 16, fontFamily: F.semibold },
+  statusPill: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontFamily: F.semibold },
+  areaTitle: { color: C.MUTED, fontSize: 13.5, lineHeight: 19, fontFamily: F.regular, marginTop: 6 },
+  barRow: { flexDirection: "row", alignItems: "center", marginTop: 14 },
+  barTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
+  barFill: { height: 6, borderRadius: 3 },
+  barValue: { width: 46, textAlign: "right", fontSize: 12.5, fontFamily: F.bold },
+  chevron: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", marginLeft: 14 },
+  chevronOpen: { transform: [{ rotate: "180deg" }] },
+  areaDetail: { marginLeft: 62, marginRight: 8, marginTop: -4, marginBottom: 20, paddingLeft: 14, borderLeftWidth: 2 },
+  areaDescription: { color: C.MUTED, fontSize: 14, lineHeight: 22, fontFamily: F.regular },
+
+  guideRow: { flexDirection: "row", gap: 10 },
+  guideCard: { padding: 14, paddingTop: 18 },
+  guideAccent: { position: "absolute", top: 0, left: 16, right: 16, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3 },
+  guideHead: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  guideHeading: { color: C.INK, fontSize: 18, fontFamily: F.bold, marginLeft: 9 },
+  guideItem: { flexDirection: "row", alignItems: "flex-start", marginTop: 11 },
+  avoidDash: { width: 8, height: 2, borderRadius: 1, backgroundColor: C.MUTED, marginTop: 9, marginRight: 8 },
+  guideText: { flex: 1, color: C.INK, fontSize: 13.5, lineHeight: 20, fontFamily: F.medium },
+
+  windowTrack: { flexDirection: "row", justifyContent: "space-between" },
+  windowItem: { width: "15.5%", alignItems: "center" },
+  windowNow: { fontSize: 9.5, fontFamily: F.bold, letterSpacing: 0.8, marginBottom: 5 },
+  windowBar: { width: "100%", height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  windowBarCurrent: { borderWidth: 2, borderRadius: 13 },
+  windowTime: { color: C.INK, fontSize: 10.5, fontFamily: F.semibold, marginTop: 8, textAlign: "center" },
+  windowStatus: { color: C.MUTED, fontSize: 10.5, fontFamily: F.medium, marginTop: 1, textAlign: "center" },
+
+  luckyRow: { flexDirection: "row", gap: 10 },
+  luckyTile: { minHeight: 128, padding: 14, justifyContent: "space-between" },
+  luckyWatermark: { position: "absolute", right: -10, bottom: -12, opacity: 0.07 },
+  luckyLabel: { color: C.MUTED, fontSize: 11, fontFamily: F.semibold, letterSpacing: 1, textTransform: "uppercase" },
+  swatches: { flexDirection: "row", marginTop: 14, marginBottom: 8 },
+  swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2.5, borderColor: C.CARD },
+  luckyValue: { color: C.INK, fontSize: 12.5, lineHeight: 17, fontFamily: F.semibold },
+  luckyBig: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.3, marginTop: 14 },
+
+  quote: { paddingTop: 16, paddingBottom: 18 },
+  quoteMark: { position: "absolute", right: 0, top: -20, fontFamily: F.bold, fontSize: 120, opacity: 0.14 },
+  quoteHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  quoteLabel: { fontSize: 11, fontFamily: F.semibold, letterSpacing: 1, textTransform: "uppercase" },
+  quoteText: { color: C.INK, fontSize: 19, lineHeight: 27, fontFamily: F.medium, fontStyle: "italic", paddingRight: 20 },
+  tipRow: { flexDirection: "row", alignItems: "flex-start", paddingVertical: 15 },
+  tipLabel: { color: C.MUTED, fontSize: 12, fontFamily: F.semibold },
+  tipText: { color: C.INK, fontSize: 14, lineHeight: 21, fontFamily: F.regular, marginTop: 3 },
 });

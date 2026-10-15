@@ -3,13 +3,16 @@ import { Slot, router, usePathname } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import "../../../global.css";
+
+const BACKGROUND = "#F7F1E8";
 
 const COLORS = {
-  ACTIVE: "#9B3F1F",
-  INACTIVE: "#68616A",
   BAR: "#FFFDFC",
-  BACKGROUND: "#F7F1E8",
+  BAR_EDGE: "#FFFDFC",
+  ACTIVE_BG: "#9B3F1F",
+  ACTIVE_ICON: "#FFFFFF",
+  ACTIVE_LABEL: "#9B3F1F",
+  INACTIVE: "#68616A",
 };
 
 const tabs = [
@@ -53,24 +56,14 @@ function CustomTabBar() {
 
   return (
     <View
-      style={{
-        backgroundColor: COLORS.BAR,
-        borderTopLeftRadius: 28,
-        borderTopRightRadius: 28,
-        overflow: "hidden",
-        paddingTop: 8,
-        paddingBottom: 8 + insets.bottom,
-        paddingHorizontal: 4,
-
-        shadowColor: "#000",
-        shadowOffset: {
-          width: 0,
-          height: -2,
+      style={[
+        styles.bar,
+        {
+          backgroundColor: COLORS.BAR,
+          borderColor: COLORS.BAR_EDGE,
+          paddingBottom: 8 + insets.bottom,
         },
-        shadowOpacity: 0.04,
-        shadowRadius: 8,
-        elevation: 8,
-      }}
+      ]}
     >
       <View
         style={{
@@ -103,13 +96,13 @@ function CustomTabBar() {
                   background colour), with fixed StyleSheet styles, so its
                   rounded shape survives re-renders after a tab press. */}
               <View style={styles.iconWrap}>
-                {active && <View style={styles.activeCircle} />}
+                {active && <View style={[styles.activeCircle, { backgroundColor: COLORS.ACTIVE_BG }]} />}
                 <MaterialCommunityIcons
                   name={tab.icon as any}
                   size={23}
                   color={
                     active
-                      ? "#FFFFFF"
+                      ? COLORS.ACTIVE_ICON
                       : COLORS.INACTIVE
                   }
                 />
@@ -121,7 +114,7 @@ function CustomTabBar() {
                   fontSize: 12,
                   lineHeight: 15,
                   color: active
-                    ? COLORS.ACTIVE
+                    ? COLORS.ACTIVE_LABEL
                     : COLORS.INACTIVE,
                   fontWeight: active
                     ? "700"
@@ -143,11 +136,12 @@ export default function TabLayout() {
     <View
       style={{
         flex: 1,
-        backgroundColor: COLORS.BACKGROUND,
+        backgroundColor: BACKGROUND,
       }}
     >
       <Slot />
 
+      {/* Floats over the screen; screens leave room via useTabBarSpace(). */}
       <CustomTabBar />
     </View>
   );
@@ -156,6 +150,25 @@ export default function TabLayout() {
 const ICON_SIZE = 38;
 
 const styles = StyleSheet.create({
+  bar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    overflow: "hidden",
+    paddingTop: 8,
+    paddingHorizontal: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 8,
+  },
   iconWrap: {
     width: ICON_SIZE,
     height: ICON_SIZE,
@@ -171,6 +184,5 @@ const styles = StyleSheet.create({
     height: ICON_SIZE,
     borderRadius: ICON_SIZE / 2,
     overflow: "hidden",
-    backgroundColor: COLORS.ACTIVE,
   },
 });

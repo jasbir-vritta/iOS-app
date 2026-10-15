@@ -1,0 +1,36 @@
+# Push to develop/staging: internal iOS build for registered iPhones (only
+# if native code changed) + an over-the-air update on the "preview" channel.
+name: Deploy to preview (iOS)
+
+on:
+  push:
+    branches: ['develop', 'staging']
+
+jobs:
+  fingerprint:
+    name: Fingerprint
+    type: fingerprint
+    environment: preview
+  get_ios_build:
+    name: Check for existing iOS build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      profile: preview
+  build_ios:
+    name: Build iOS
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview
+  publish_ios_update:
+    name: Publish iOS update
+    needs: [get_ios_build, build_ios]
+    if: ${{ needs.get_ios_build.outputs.build_id || needs.build_ios.outputs.build_id }}
+    type: update
+    params:
+      channel: preview
+      platform: ios

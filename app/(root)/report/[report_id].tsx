@@ -1,13 +1,15 @@
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+    Alert,
     Dimensions,
     Image,
     NativeScrollEvent,
     NativeSyntheticEvent,
     Pressable,
     ScrollView,
+    Share,
     StatusBar,
     StyleSheet,
     Text,
@@ -16,7 +18,18 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import reportsData from "../../../components/constants/reports.json";
-import { useUserStore } from "../../../components/stores/userStore";
+import CosmicLoader from "../../../components/CosmicLoader";
+import ConfirmReportSheet from "../../../components/reports/ConfirmReportSheet";
+import WritingReportSheet from "../../../components/reports/WritingReportSheet";
+import useProfilesStore from "../../../components/stores/profilesStore";
+import {
+    loadProfileReports,
+    openReport as openReportPage,
+    purchaseReport,
+    ReportPurchaseError,
+    useReportsStore,
+} from "../../../components/stores/reportsStore";
+import { refreshWalletCredits, useUserStore } from "../../../components/stores/userStore";
 import {
     addIncompleteReport,
     removeIncompleteReport,
@@ -79,6 +92,11 @@ type Report = {
 };
 
 const reports = reportsData as Report[];
+
+// Shared empty values: store selectors must return the same object each
+// time, or React re-renders forever.
+const NO_NAMES: string[] = [];
+const NO_LANGUAGES: Record<string, string> = {};
 
 function SectionTitle({
   title,
@@ -145,6 +163,53 @@ function TestimonialCard({ item }: { item: Testimonial }) {
   );
 }
 
+/**
+ * Pays from the wallet and makes the report, then tells the user the result.
+ * `onLowBalance` reopens the Confirm Details sheet.
+ */
+async function runPurchase(
+  profileId: string,
+  report: Report,
+  lan: string,
+  setLoading: (value: boolean) => void,
+  onLowBalance: () => void,
+  onFinished: () => void = () => {}
+) {
+  if (!profileId) return;
+  setLoading(true);
+
+  try {
+    const result = await purchaseReport(profileId, report.id, lan);
+
+    // Bought: no longer an unfinished journey.
+    await removeIncompleteReport(profileId, report.id).catch(() => {});
+
+    if (result.status === "completed") {
+      onFinished();
+      Alert.alert("Your report is ready", `${report.title} has been added to your reports.`, [
+        { text: "Later", style: "cancel" },
+        { text: "Open", onPress: () => void openReportPage(result) },
+      ]);
+    } else if (result.status === "failed") {
+      onFinished();
+      Alert.alert(
+        "Couldn't prepare your report",
+        "We couldn't prepare your report right now. The amount has been refunded to your wallet."
+      );
+    }
+  } catch (error) {
+    onFinished();
+    if (error instanceof ReportPurchaseError && error.status === 402) {
+      await refreshWalletCredits();
+      onLowBalance();
+    } else {
+      Alert.alert("Couldn't buy the report", (error as Error)?.message || "Please try again.");
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
 export default function ReportDetailScreen() {
   const insets = useSafeAreaInsets();
   const { report_id } = useLocalSearchParams<{ report_id: string }>();
@@ -190,6 +255,93 @@ export default function ReportDetailScreen() {
     });
   }, [report?.id, activeProfileId]);
 
+  // This profile's purchase of this report (null = not bought).
+  const order = useReportsStore((state) =>
+    activeProfileId && report_id
+      ? state.byProfile[String(activeProfileId)]?.purchases?.[report_id]
+      : undefined
+  );
+  const boughtForOthers = useReportsStore((state) =>
+    activeProfileId && report_id
+      ? state.byProfile[String(activeProfileId)]?.boughtForOthers?.[report_id] || NO_NAMES
+      : NO_NAMES
+  );
+  const available = useReportsStore((state) =>
+    activeProfileId && report_id
+      ? state.byProfile[String(activeProfileId)]?.available?.[report_id] !== false
+      : true
+  );
+  const activeProfile = useProfilesStore((state) =>
+    state.profiles.find((p) => p.profile_id === activeProfileId)
+  );
+  const activeProfileName = activeProfile?.name || "";
+  const walletBalance = Number(useUserStore((state) => state.user?.credits) ?? 0);
+  const languages = useReportsStore((state) =>
+    activeProfileId ? state.byProfile[String(activeProfileId)]?.languages || NO_LANGUAGES : NO_LANGUAGES
+  );
+
+  // Confirm Details sheet, and a purchase waiting for a wallet recharge.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // "Writing your report…" after paying (the user may close it and leave).
+  const [writingOpen, setWritingOpen] = useState(false);
+  // Preview: a sample report link set on the backend (none = no Preview).
+  const sampleUrl = useReportsStore((state) =>
+    activeProfileId && report_id
+      ? state.byProfile[String(activeProfileId)]?.samples?.[report_id]
+      : undefined
+  );
+  const [language, setLanguage] = useState("en");
+  const pendingBuy = useRef<{ reportId: string; lan: string } | null>(null);
+
+  const status = order?.status;
+  const purchased = status === "completed" && Boolean(order?.pdf_url || order?.html_url);
+  const preparing = status === "processing";
+
+  useEffect(() => {
+    if (activeProfileId) void loadProfileReports(String(activeProfileId));
+  }, [activeProfileId]);
+
+  // Back from the wallet after "Add Cash to Buy": buy if the balance is
+  // now enough, otherwise show the sheet again.
+  useFocusEffect(
+    useCallback(() => {
+      const pending = pendingBuy.current;
+      if (!pending || pending.reportId !== report_id || !report) return;
+
+      void (async () => {
+        await refreshWalletCredits();
+        const credits = Number(useUserStore.getState().user?.credits ?? 0);
+        pendingBuy.current = null;
+
+        if (credits >= report.price) {
+          setLanguage(pending.lan);
+          setSheetOpen(false);
+          setWritingOpen(true);
+          await runPurchase(
+            String(activeProfileId),
+            report,
+            pending.lan,
+            setBuyNowLoading,
+            () => setSheetOpen(true),
+            () => setWritingOpen(false)
+          );
+        } else {
+          setLanguage(pending.lan);
+          setSheetOpen(true);
+        }
+      })();
+    }, [report_id, report, activeProfileId])
+  );
+
+  // A report still being made finishes on the server; check back until ready.
+  useEffect(() => {
+    if (!preparing || !activeProfileId || buyNowLoading) return;
+    const timer = setInterval(() => {
+      void loadProfileReports(String(activeProfileId));
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [preparing, activeProfileId, buyNowLoading]);
+
   if (!report) {
     return (
       <View style={s.notFound}>
@@ -231,40 +383,71 @@ export default function ReportDetailScreen() {
     );
   };
 
-  /**
-   * Remove the report from the active profile's journey when
-   * Buy Now is tapped.
-   *
-   * Connect your actual checkout/payment flow here.
-   */
-  const handleBuyNow = async () => {
-    if (buyNowLoading || !report.id || !activeProfileId) return;
-
-    setBuyNowLoading(true);
-
+  const openReport = async () => {
     try {
-      await removeIncompleteReport(
-        String(activeProfileId),
-        report.id
-      );
-
-      // TODO: Navigate to your actual checkout/payment screen.
-      // Example:
-      //
-      // router.push({
-      //   pathname: "/(root)/checkout",
-      //   params: { report_id: report.id },
-      // });
-
-      console.log("Buy report:", report.id);
-    } catch (error) {
-      console.error(
-        "Failed to remove report from journey:",
-        error
-      );
-    } finally {
-      setBuyNowLoading(false);
+      await openReportPage(order);
+    } catch {
+      Alert.alert("Couldn't open the report", "Please try again.");
     }
+  };
+
+  const shareReport = async () => {
+    const link = order?.pdf_url || order?.html_url;
+    if (!link) return;
+    try {
+      await Share.share({
+        message: `My ${report.title}: ${link}`,
+        url: link,
+      });
+    } catch (error) {
+      console.log("Share report error:", error);
+    }
+  };
+
+  const buy = (lan: string) =>
+    runPurchase(
+      String(activeProfileId),
+      report,
+      lan,
+      setBuyNowLoading,
+      () => setSheetOpen(true),
+      () => setWritingOpen(false)
+    );
+
+  /** Preview: opens the sample report inside the app. */
+  const previewSample = async () => {
+    if (!sampleUrl) return;
+    try {
+      await openReportPage({
+        order_id: "sample",
+        report_id: report.id,
+        profile_id: "",
+        status: "completed",
+        html_url: sampleUrl,
+      });
+    } catch {
+      Alert.alert("Couldn't open the sample", "Please try again.");
+    }
+  };
+
+  /** Opens "Confirm Details" before paying from the wallet. */
+  const handleBuyNow = () => {
+    if (buyNowLoading || preparing || !report.id || !activeProfileId) return;
+    void refreshWalletCredits();
+    setSheetOpen(true);
+  };
+
+  const confirmBuy = () => {
+    setSheetOpen(false);
+    setWritingOpen(true);
+    void buy(language);
+  };
+
+  // Not enough balance: recharge, then the purchase continues here.
+  const addCashToBuy = () => {
+    pendingBuy.current = { reportId: report.id, lan: language };
+    setSheetOpen(false);
+    router.push("/(root)/profile/wallet");
   };
 
   return (
@@ -296,14 +479,11 @@ export default function ReportDetailScreen() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={() => {
-            // Optional: connect your report preview action here.
-          }}
-          style={s.previewButton}
-        >
-          <Text style={s.previewText}>Preview</Text>
-        </Pressable>
+        {sampleUrl ? (
+          <Pressable onPress={() => void previewSample()} style={s.previewButton}>
+            <Text style={s.previewText}>Preview</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <ScrollView
@@ -326,6 +506,19 @@ export default function ReportDetailScreen() {
             {report.description}
           </Text>
         </View>
+
+        {/* Bought for another profile, not this one */}
+        {!purchased && !preparing && boughtForOthers.length > 0 && (
+          <View style={s.otherHint}>
+            <Icon name="account-multiple-outline" size={20} color={C.plum} />
+            <Text style={s.otherHintText}>
+              You bought this for {boughtForOthers.join(", ")}.{" "}
+              {activeProfileName
+                ? `Get it for ${activeProfileName} too?`
+                : "Get it for this profile too?"}
+            </Text>
+          </View>
+        )}
 
         {/* Features */}
         {features.length > 0 && (
@@ -501,6 +694,29 @@ export default function ReportDetailScreen() {
         )}
       </ScrollView>
 
+      <WritingReportSheet visible={writingOpen} onClose={() => setWritingOpen(false)} />
+
+
+
+      <ConfirmReportSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        profile={activeProfile}
+        price={report.price}
+        oldPrice={report.oldPrice}
+        walletBalance={walletBalance}
+        languages={languages}
+        language={language}
+        onLanguageChange={setLanguage}
+        onBuy={confirmBuy}
+        onAddCash={addCashToBuy}
+        ownedLanguage={purchased ? order?.lan || "en" : null}
+        onOpenOwned={() => {
+          setSheetOpen(false);
+          void openReport();
+        }}
+      />
+
       {/* Fixed purchase bar */}
       <View
         style={[
@@ -508,54 +724,133 @@ export default function ReportDetailScreen() {
           { paddingBottom: Math.max(insets.bottom, 10) },
         ]}
       >
-        <View style={s.priceColumn}>
-          <View style={s.discountBadge}>
-            <Text style={s.discountText}>
-              {report.discount}
-            </Text>
+        {purchased ? (
+          <>
+            <View style={s.priceColumn}>
+              <View style={s.purchasedBadge}>
+                <Icon name="check-decagram" size={14} color={C.plum} />
+                <Text style={s.purchasedText}>Purchased</Text>
+              </View>
+              <Text style={s.frequency}>
+                {activeProfileName ? `For ${activeProfileName}` : "Ready to read"}
+              </Text>
+              <Pressable onPress={handleBuyNow} hitSlop={8}>
+                <Text style={s.buyAgain}>Buy again ›</Text>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={shareReport} hitSlop={8} style={s.shareButton}>
+              <Icon name="share-variant-outline" size={20} color={C.plum} />
+            </Pressable>
+
+            <Pressable onPress={openReport} style={s.buyButton}>
+              <Text style={s.buyButtonText}>Open Report</Text>
+              <Icon name="file-pdf-box" size={20} color={C.white} />
+            </Pressable>
+          </>
+        ) : preparing || buyNowLoading ? (
+          <View style={s.preparingRow}>
+            <CosmicLoader size={52} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={s.preparingTitle}>Preparing your report…</Text>
+              <Text style={s.frequency}>Usually ready in 2 - 5 minutes. You can leave this page.</Text>
+            </View>
           </View>
-
-          <View style={s.priceRow}>
-            <Text style={s.price}>
-              ₹{report.price}
-            </Text>
-
-            <Text style={s.oldPrice}>
-              ₹{report.oldPrice}
-            </Text>
+        ) : !available ? (
+          <View style={s.preparingRow}>
+            <Icon name="clock-outline" size={22} color={C.secondary} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={s.preparingTitle}>Coming soon</Text>
+              <Text style={s.frequency}>This report will be available shortly.</Text>
+            </View>
           </View>
+        ) : (
+          <>
+            <View style={s.priceColumn}>
+              <View style={s.discountBadge}>
+                <Text style={s.discountText}>
+                  {report.discount}
+                </Text>
+              </View>
 
-          <Text style={s.frequency}>
-            {report.frequency}
-          </Text>
-        </View>
+              <View style={s.priceRow}>
+                <Text style={s.price}>
+                  ₹{report.price}
+                </Text>
 
-        <Pressable
-          onPress={handleBuyNow}
-          disabled={buyNowLoading}
-          style={[
-            s.buyButton,
-            buyNowLoading && s.buyButtonDisabled,
-          ]}
-        >
-          <Text style={s.buyButtonText}>
-            {buyNowLoading ? "Please wait..." : "Buy Now"}
-          </Text>
+                <Text style={s.oldPrice}>
+                  ₹{report.oldPrice}
+                </Text>
+              </View>
 
-          {!buyNowLoading && (
-            <Icon
-              name="arrow-right"
-              size={20}
-              color={C.white}
-            />
-          )}
-        </Pressable>
+              <Text style={s.frequency}>
+                {status === "failed" ? "Last attempt failed · refunded" : report.frequency}
+              </Text>
+            </View>
+
+            <Pressable onPress={handleBuyNow} style={s.buyButton}>
+              <Text style={s.buyButtonText}>
+                {status === "failed" ? "Try Again" : "Buy Now"}
+              </Text>
+              <Icon name="arrow-right" size={20} color={C.white} />
+            </Pressable>
+          </>
+        )}
       </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
+  otherHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#EFE8F7",
+  },
+  otherHintText: { flex: 1, color: C.ink, fontSize: 13.5, lineHeight: 19, fontWeight: "600" },
+  purchasedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#EFE8F7",
+  },
+  purchasedText: { color: C.plum, fontSize: 12, fontWeight: "800" },
+  shareButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  preparingRow: { flex: 1, flexDirection: "row", alignItems: "center", paddingVertical: 6 },
+  preparingTitle: { color: C.ink, fontSize: 15, fontWeight: "800" },
+  samplePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    alignSelf: "center",
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#EFE8F7",
+    borderWidth: 1,
+    borderColor: "#DCCFEA",
+  },
+  samplePillText: { color: C.plum, fontSize: 14, fontWeight: "700" },
+  buyAgain: { color: C.plum, fontSize: 13, fontWeight: "700", marginTop: 4, textDecorationLine: "underline" },
   screen: {
     flex: 1,
     backgroundColor: PAGE_BG,

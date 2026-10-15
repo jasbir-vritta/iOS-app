@@ -14,6 +14,7 @@ import {
 } from "react-native";
 
 import { useRewardsStore } from "../../../components/stores/rewardsStore";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
 const REWARDS_TODAY_TOP =
   "https://storage.googleapis.com/vritta/astrology/rewards/rewards_today_top.png";
@@ -28,6 +29,7 @@ const PURPLE = "#54228C";
 const ORANGE = "#E27A45";
 
 export default function Index() {
+  const tabSpace = useTabBarSpace();
   const rewards = useRewardsStore((state) => state.rewards);
   const loading = useRewardsStore((state) => state.loading);
   const fetchRewards = useRewardsStore((state) => state.fetchRewards);
@@ -97,7 +99,7 @@ export default function Index() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabSpace }]}
       >
         {/* HEADER */}
 

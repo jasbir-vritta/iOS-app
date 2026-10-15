@@ -1,14 +1,17 @@
 // app/(root)/(tabs)/reports.tsx
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Dimensions, Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import TopBar from "../../../components/TopBar";
 import reportsData from "../../../components/constants/reports.json";
+import { loadProfileReports, loadReportHistory, useReportsStore } from "../../../components/stores/reportsStore";
+import { useUserStore } from "../../../components/stores/userStore";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
 
 /* Sizes are measured in pixels of the reference design (477px wide) and scaled to the device. */
@@ -76,7 +79,88 @@ const open = (r: Report) => {
   });
 };
 
+/* Bought for the active profile: no price, just a badge. Otherwise the price. */
+function useReportState() {
+  const profileId = useUserStore((state) => state.user?.active_profile_id);
+  const mine = useReportsStore((state) => (profileId ? state.byProfile[String(profileId)] : undefined));
+
+  // Refresh whenever the tab is opened (after a purchase, or another profile).
+  useFocusEffect(
+    useCallback(() => {
+      if (profileId) void loadProfileReports(String(profileId));
+    }, [profileId])
+  );
+
+  return (id: string) => {
+    const order = mine?.purchases?.[id];
+    if (order?.status === "completed") return "purchased";
+    if (order?.status === "processing") return "preparing";
+    if (mine?.available?.[id] === false) return "soon";
+    return "buy";
+  };
+}
+
+function StatusPill({ state }: { state: string }) {
+  if (state === "purchased") {
+    return (
+      <View style={s.ownedPill}>
+        <Icon name="check-decagram" size={px(12)} color={C.PLUM} />
+        <Text style={s.ownedText} numberOfLines={1}>Purchased</Text>
+      </View>
+    );
+  }
+  if (state === "preparing") {
+    return (
+      <View style={s.ownedPill}>
+        <Icon name="progress-clock" size={px(12)} color={C.PLUM} />
+        <Text style={s.ownedText} numberOfLines={1}>Preparing</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[s.ownedPill, { backgroundColor: C.IVORY }]}>
+      <Icon name="clock-outline" size={px(12)} color={C.MUTED} />
+      <Text style={[s.ownedText, { color: C.MUTED }]} numberOfLines={1}>Coming soon</Text>
+    </View>
+  );
+}
+
+/* Entry to My Reports: only shown once the account has bought a report. */
+function MyReportsCard() {
+  const [count, setCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadReportHistory().then((rows) => setCount(rows.length));
+    }, [])
+  );
+
+  if (count === 0) return null;
+
+  return (
+    <Pressable onPress={() => router.push("/report/my-reports")} style={s.myReports}>
+      <View style={s.myReportsIcon}>
+        <Icon name="book-open-page-variant-outline" size={px(26)} color={C.TERRACOTTA} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: px(8) }}>
+          <Text style={s.myReportsTitle}>My Reports</Text>
+          <View style={s.boughtTag}>
+            <Text style={s.boughtText}>BOUGHT</Text>
+          </View>
+        </View>
+        <Text style={s.myReportsSub}>
+          See your purchased reports
+        </Text>
+      </View>
+      <Icon name="chevron-right" size={px(24)} color={C.INK} />
+    </Pressable>
+  );
+}
+
 export default function Reports() {
+  const tabSpace = useTabBarSpace();
+  const stateOf = useReportState();
   const insets = useSafeAreaInsets();
   const [focus, setFocus] = useState(0);
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("all");
@@ -87,7 +171,7 @@ export default function Reports() {
     <View style={{ flex: 1, backgroundColor: C.BG }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: PAD, paddingTop: insets.top + 4, paddingBottom: px(260) }}
+        contentContainerStyle={{ paddingHorizontal: PAD, paddingTop: insets.top + 4, paddingBottom: tabSpace + 40 }}
       >
         <TopBar />
 
@@ -100,6 +184,8 @@ export default function Reports() {
           <Text style={s.title}>Reports</Text>
           <Text style={s.subtitle}>Guidance for a more aligned tomorrow</Text>
         </ImageBackground>
+
+        <MyReportsCard />
 
         {/* Top carousel */}
         <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} decelerationRate="fast">
@@ -157,14 +243,22 @@ export default function Reports() {
             <Pressable key={r.id} onPress={() => open(r)} style={s.popularCard}>
               <View>
                 <Image source={{ uri: r.image }} style={s.popularImage} resizeMode="cover" />
-                <View style={[s.pill, s.popularPill]}><Text style={s.pillText}>{r.discount}</Text></View>
+                {stateOf(r.id) === "buy" && (
+                  <View style={[s.pill, s.popularPill]}><Text style={s.pillText}>{r.discount}</Text></View>
+                )}
               </View>
               <View style={s.popularBody}>
                 <Text style={s.popularTitle} numberOfLines={1}>{r.title}</Text>
                 <Text style={s.popularDesc} numberOfLines={2}>{r.description}</Text>
                 <View style={s.popularPriceRow}>
-                  <Text style={s.price}>₹{r.price}</Text>
-                  <Text style={s.oldPrice} numberOfLines={1}>₹{r.oldPrice}</Text>
+                  {stateOf(r.id) === "buy" ? (
+                    <>
+                      <Text style={s.price}>₹{r.price}</Text>
+                      <Text style={s.oldPrice} numberOfLines={1}>₹{r.oldPrice}</Text>
+                    </>
+                  ) : (
+                    <StatusPill state={stateOf(r.id)} />
+                  )}
                   <View style={{ flex: 1 }} />
                   <View style={[s.circleArrow, { flexShrink: 0, marginRight: -px(5) }]}>
                     <Icon name="chevron-right" size={px(15)} color={C.MUTED} />
@@ -205,10 +299,16 @@ export default function Reports() {
                 </View>
               </View>
 
-              <View style={s.rowPrice}>
-                <Text style={s.rowPriceText}>₹{r.price}</Text>
-                <Text style={s.rowOld}>₹{r.oldPrice}</Text>
-                <View style={[s.pill, { marginTop: px(3), marginLeft: 0 }]}><Text style={s.pillText}>{r.discount}</Text></View>
+              <View style={[s.rowPrice, stateOf(r.id) !== "buy" && s.rowPriceWide]}>
+                {stateOf(r.id) === "buy" ? (
+                  <>
+                    <Text style={s.rowPriceText}>₹{r.price}</Text>
+                    <Text style={s.rowOld}>₹{r.oldPrice}</Text>
+                    <View style={[s.pill, { marginTop: px(3), marginLeft: 0 }]}><Text style={s.pillText}>{r.discount}</Text></View>
+                  </>
+                ) : (
+                  <StatusPill state={stateOf(r.id)} />
+                )}
               </View>
 
               <View style={[s.circleArrow, { width: px(28), height: px(28), borderRadius: px(14), marginLeft: px(6) }]}>
@@ -232,6 +332,42 @@ function SeeAll() {
 }
 
 const s = StyleSheet.create({
+  myReports: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: px(12),
+    marginBottom: px(14),
+    padding: px(14),
+    borderRadius: px(18),
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.BORDER,
+  },
+  myReportsIcon: {
+    width: px(48),
+    height: px(48),
+    borderRadius: px(14),
+    backgroundColor: C.PEACH,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  myReportsTitle: { fontSize: fs(17), fontWeight: "800", color: C.INK },
+  myReportsSub: { fontSize: fs(12.5), color: C.MUTED, marginTop: px(3) },
+  boughtTag: { paddingHorizontal: px(7), paddingVertical: px(2), borderRadius: px(8), backgroundColor: "#E3F4E7" },
+  boughtText: { fontSize: fs(9.5), fontWeight: "800", color: "#278447", letterSpacing: 0.5 },
+  ownedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    flexShrink: 0,
+    gap: px(4),
+    paddingHorizontal: px(8),
+    paddingVertical: px(4),
+    borderRadius: px(12),
+    backgroundColor: "#EFE8F7",
+  },
+  ownedText: { fontSize: fs(10.5), fontWeight: "800", color: C.PLUM, flexShrink: 0 },
+  rowPriceWide: { width: undefined, minWidth: px(62) },
   header: { height: px(60), marginTop: px(2), justifyContent: "flex-start" },
   title: { fontSize: fs(29), lineHeight: px(33), fontWeight: "700", color: C.INK },
   subtitle: { marginTop: px(1), fontSize: fs(13.5), lineHeight: px(18), color: C.MUTED },

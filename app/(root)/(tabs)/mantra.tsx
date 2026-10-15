@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import mantrasData from "../../../components/constants/mantra.json";
+import { useTabBarSpace } from "../../../components/utils/tabBar";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCALE = Math.min(SCREEN_WIDTH / 430, 1);
@@ -65,6 +66,7 @@ const CATEGORIES = [
 
 
 export default function MantraScreen() {
+  const tabSpace = useTabBarSpace();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -194,7 +196,7 @@ const openMantra = (mantra: Mantra) => {
         {/* Mantra list */}
         <ScrollView
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabSpace }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >

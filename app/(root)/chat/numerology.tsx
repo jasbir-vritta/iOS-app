@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import ChatWelcome from "../../../components/chat/ChatWelcome";
+import { track } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
     applyWalletUpdate,
@@ -456,6 +457,7 @@ export default function NumerologyChat() {
         socket.onopen = () => {
           if (!cancelled) {
             setConnected(true);
+            track("chat_started", { chat_type: "ai", reading_type: "numerology", astrologer_id: astrologerId });
           }
         };
 
@@ -485,11 +487,25 @@ export default function NumerologyChat() {
             return;
           }
 
+          // The reply arrives message by message while it's written.
+          if (payload?.type === "message_part") {
+            if (typeof payload.text === "string" && payload.text.trim()) {
+              addAssistantText(payload.text);
+            }
+            return;
+          }
+
           if (payload?.success === false) {
             setLoading(false);
             addAssistantText(
               "Sorry, I couldn't connect to the astrology service. Please try again."
             );
+            return;
+          }
+
+          // Already shown message by message: just stop the typing indicator.
+          if (payload?.streamed) {
+            setLoading(false);
             return;
           }
 
