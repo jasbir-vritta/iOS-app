@@ -18,6 +18,7 @@ import type { LegalDocument } from "../constants/legal";
 
 // Shared layout for Privacy Policy and Terms & Conditions:
 // header with share, "Last updated" card, numbered expandable sections.
+// Same header and colours as the other profile screens.
 
 type Props = {
   document: LegalDocument;
@@ -29,13 +30,22 @@ type Props = {
 };
 
 const C = {
-  bg: "#F7F3FA",
+  bg: "#F4F0F8",
   card: "#FFFDFC",
   ink: "#1C1820",
   plum: "#2B1A3D",
+  gold: "#C49A4A",
   muted: "#68616A",
-  line: "#EEE7F4",
-  cardTint: "#F1EBF7",
+  line: "#EFE9F2",
+  border: "rgba(217,206,193,0.7)",
+};
+
+const shadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.06,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
 };
 
 export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last updated" }: Props) {
@@ -68,24 +78,29 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
         <View style={styles.header}>
           <Pressable
             onPress={() => router.back()}
-            hitSlop={12}
+            hitSlop={10}
             accessibilityLabel="Back"
             style={styles.headerButton}
           >
-            <Icon name="chevron-left" size={30} color={C.ink} />
+            <Icon name="chevron-left" size={24} color={C.ink} />
           </Pressable>
 
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {document.title}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {document.title}
+            </Text>
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {`${document.sections.length} sections · tap one to read`}
+            </Text>
+          </View>
 
           <Pressable
             onPress={share}
-            hitSlop={12}
+            hitSlop={10}
             accessibilityLabel={`Share ${document.title}`}
             style={styles.headerButton}
           >
-            <Icon name="export-variant" size={24} color={C.ink} />
+            <Icon name="export-variant" size={19} color={C.plum} />
           </Pressable>
         </View>
 
@@ -100,6 +115,8 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
               <Text style={styles.infoValue}>{document.lastUpdated}</Text>
             </View>
           </View>
+
+          <Text style={styles.overline}>{`${document.sections.length} SECTIONS`}</Text>
 
           {/* Sections */}
           <View style={styles.list}>
@@ -121,7 +138,7 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
 
                     <Text style={styles.rowTitle}>{section.title}</Text>
 
-                    <Icon name={expanded ? "chevron-up" : "chevron-down"} size={22} color={C.ink} />
+                    <Icon name={expanded ? "chevron-up" : "chevron-down"} size={22} color={C.muted} />
                   </Pressable>
 
                   {expanded && (
@@ -163,27 +180,34 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    gap: 12,
+    paddingHorizontal: 16,
     paddingTop: 6,
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
-  headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: "700",
-    color: C.plum,
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  content: { paddingHorizontal: 18, paddingBottom: 40 },
+  headerTitle: { fontSize: 21, fontWeight: "700", color: C.ink, letterSpacing: -0.3 },
+  headerSub: { marginTop: 1, fontSize: 12.5, color: C.muted },
+  content: { paddingHorizontal: 16, paddingBottom: 40 },
   infoCard: {
-    marginTop: 8,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: C.cardTint,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...shadow,
   },
   infoIcon: {
     width: 48,
@@ -193,13 +217,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   infoText: { marginLeft: 14, flex: 1 },
-  infoTitle: { fontSize: 14, fontWeight: "500", color: C.ink },
-  infoValue: { marginTop: 2, fontSize: 14, color: C.muted },
+  infoTitle: { fontSize: 14.5, fontWeight: "700", color: C.ink },
+  infoValue: { marginTop: 2, fontSize: 13, color: C.muted },
+  overline: { marginTop: 20, marginBottom: 8, fontSize: 11, fontWeight: "700", letterSpacing: 1.3, color: C.gold },
   list: {
-    marginTop: 16,
-    borderRadius: 18,
+    borderRadius: 20,
     overflow: "hidden",
     backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   rowDivider: { borderTopWidth: 1, borderTopColor: C.line },
   row: {
@@ -209,22 +235,22 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   number: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
-  numberText: { fontSize: 15, fontWeight: "600", color: C.ink },
+  numberText: { fontSize: 14, fontWeight: "700", color: C.plum },
   rowTitle: {
     flex: 1,
-    marginLeft: 14,
+    marginLeft: 12,
     marginRight: 8,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 14.5,
+    lineHeight: 20,
     fontWeight: "600",
     color: C.ink,
   },
-  body: { paddingHorizontal: 16, paddingBottom: 16 },
-  paragraph: { fontSize: 14, lineHeight: 21, color: C.muted },
+  body: { paddingHorizontal: 16, paddingBottom: 16, paddingLeft: 58 },
+  paragraph: { fontSize: 13.5, lineHeight: 20, color: C.muted },
 });

@@ -6,7 +6,6 @@ import {
     ActivityIndicator,
     Alert,
     Image,
-    ImageBackground,
     Platform,
     Pressable,
     ScrollView,
@@ -16,6 +15,7 @@ import {
 } from "react-native";
 
 import { Text } from "../../../components/ui/BrandText";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -31,10 +31,6 @@ import {
     type PickedPhoto,
 } from "../../../components/utils/useAvatarUpload";
 
-const MANAGE_PROFILE_BG = require(
-  "../../../assets/images/profile/manage_profile.png"
-);
-
 const C = {
   INK: "#1C1820",
   PLUM: "#2B1A3D",
@@ -44,7 +40,13 @@ const C = {
   CARD: "#FFFDFC",
   MUTED: "#68616A",
   BORDER: "#D9CEC1",
+  LINE: "rgba(217,206,193,0.7)",
+  SOFT: "#EFE8F7",
+  SUCCESS: "#2E7D4F",
 };
+
+// "Relation" choices (the backend accepts only these).
+const RELATIONS = ["Parent", "Child", "Spouse", "Partner", "Sibling", "In-Law", "Grandparent", "Grandchild", "Relative", "Friend", "Other"];
 
 type PlaceResult = {
   name: string;
@@ -134,6 +136,45 @@ export default function AddProfile() {
 
   const [maritalStatus, setMaritalStatus] =
     useState("Single");
+
+  const [relation, setRelation] = useState("");
+  const [relationOpen, setRelationOpen] = useState(false);
+
+  // Price of a new profile, from the backend (shown on the button).
+  const [pricing, setPricing] = useState<{ price: number; oldPrice: number; charged: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/user/profiles`, { headers: await authHeaders() });
+        const data = await response.json();
+        if (!response.ok || cancelled) return;
+        const count = Array.isArray(data?.profiles) ? data.profiles.length : 0;
+        const free = Number(data?.free_profiles ?? 2);
+        const max = Number(data?.max_profiles) || 0;
+        // Already has the one extra profile: say so before the form is filled in.
+        if (max && count >= max) {
+          Alert.alert(
+            "Profile limit reached",
+            "You can add only one profile besides your own. Delete it in Manage profiles to add someone else.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
+          return;
+        }
+        setPricing({
+          price: Number(data?.profile_price) || 0,
+          oldPrice: Number(data?.profile_old_price) || 0,
+          charged: count >= free,
+        });
+      } catch {
+        // Price stays hidden; the backend still decides when saving.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [dateOfBirth, setDateOfBirth] =
     useState("");
@@ -287,6 +328,14 @@ export default function AddProfile() {
         return;
       }
 
+      if (!relation) {
+        Alert.alert(
+          "Missing information",
+          "Please select the relation."
+        );
+        return;
+      }
+
       if (!gender) {
         Alert.alert(
           "Missing information",
@@ -328,6 +377,7 @@ export default function AddProfile() {
           name: name.trim(),
           gender,
           maritalStatus,
+          relation,
           dateOfBirth,
           timeOfBirth,
 
@@ -357,7 +407,19 @@ export default function AddProfile() {
         const data =
           await response.json();
 
-        // Extra profiles cost credits (the first ones are free).
+        // Only one profile besides the user's own.
+        if (response.status === 403) {
+          Alert.alert(
+            "Profile limit reached",
+            typeof data?.detail === "string"
+              ? data.detail
+              : "You can add only one profile besides your own.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
+          return;
+        }
+
+        // A new profile costs credits.
         if (response.status === 402) {
           Alert.alert(
             "Add funds",
@@ -445,788 +507,567 @@ export default function AddProfile() {
       }
     };
 
+  const genders = [
+    { value: "male", label: "Male", icon: "gender-male" },
+    { value: "female", label: "Female", icon: "gender-female" },
+    { value: "other", label: "Other", icon: "gender-non-binary" },
+  ] as const;
+
+  const charged = Boolean(pricing?.charged && pricing.price > 0);
+
+  // "81% OFF" from the crossed-out price.
+  const offPercent =
+    pricing && pricing.oldPrice > pricing.price
+      ? Math.round((1 - pricing.price / pricing.oldPrice) * 100)
+      : 0;
+
   return (
-    <ImageBackground
-      source={MANAGE_PROFILE_BG}
-      resizeMode="cover"
-      style={styles.screenBackground}
-      imageStyle={
-        styles.screenBackgroundImage
-      }
-    >
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop:
-              insets.top + 4,
-          },
-        ]}
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel="Go back">
+          <Icon name="chevron-left" size={24} color={C.INK} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Add a loved one</Text>
+          <Text style={styles.subtitle}>Their Kundli, horoscope and reports in one place</Text>
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <Icon
-                name="chevron-left"
-                size={30}
-                color={C.INK}
-              />
-            </Pressable>
+        {/* Photo (outside the cards), name and price */}
+        <Reanimated.View entering={FadeInDown.duration(420)} style={styles.photoSection}>
+          <View style={styles.photoWrap}>
+            <Text style={[styles.photoStar, { top: 6, left: -18 }]}>✦</Text>
+            <Text style={[styles.photoStar, { bottom: 14, right: -20, fontSize: 9 }]}>✦</Text>
 
-            <View
-              style={styles.headerText}
-            >
-              <Text style={styles.title}>
-                Add New Profile
-              </Text>
-
-              <Text
-                style={styles.subtitle}
-              >
-                Create a new profile for family
-                or loved ones.
-              </Text>
-            </View>
-
-            <View
-              style={styles.headerSpacer}
-            />
-          </View>
-
-          {/* Profile Avatar */}
-          <View
-            style={styles.avatarSection}
-          >
             <Pressable
               onPress={async () => {
-                const picked =
-                  await pickAvatarImage();
-
-                if (picked) {
-                  setPhoto(picked);
-                }
+                const picked = await pickAvatarImage();
+                if (picked) setPhoto(picked);
               }}
               disabled={saving}
-              style={styles.avatar}
+              style={styles.avatarRing}
+              accessibilityLabel="Add a photo"
             >
-              {photo ? (
-                <Image
-                  source={{ uri: photo.uri }}
-                  style={styles.avatarImage}
-                />
-              ) : (
-                <Icon
-                  name="camera"
-                  size={28}
-                  color={C.PLUM}
-                />
-              )}
+              <View style={styles.avatar}>
+                {photo ? (
+                  <Image source={{ uri: photo.uri }} style={styles.avatarImage} />
+                ) : name.trim() ? (
+                  <Text style={styles.avatarInitial}>{name.trim()[0].toUpperCase()}</Text>
+                ) : (
+                  <Icon name="camera-plus-outline" size={30} color={C.PLUM} />
+                )}
+              </View>
+              <View style={styles.cameraBadge}>
+                <Icon name={photo ? "pencil" : "plus"} size={14} color={C.CARD} />
+              </View>
             </Pressable>
+          </View>
 
-            <View
-              style={styles.avatarSparkleLeft}
-            >
-              <Text
-                style={
-                  styles.sparkleText
-                }
-              >
-                ✦
-              </Text>
-            </View>
+          <Text style={styles.photoName} numberOfLines={1}>
+            {name.trim() || "New profile"}
+          </Text>
+          <Text style={styles.photoSub} numberOfLines={1}>
+            {relation ? `${relation} · ` : ""}
+            {photo ? "Tap the photo to change it" : "Add a photo (optional)"}
+          </Text>
 
-            <View
-              style={styles.avatarSparkleRight}
-            >
-              <Text
-                style={
-                  styles.sparkleText
-                }
-              >
-                ✦
-              </Text>
+          {pricing && (
+            <View style={styles.pricePill}>
+              {charged ? (
+                <>
+                  {pricing.oldPrice > pricing.price && <Text style={styles.pillOld}>₹{pricing.oldPrice}</Text>}
+                  <Text style={styles.pillText}>₹{pricing.price} one-time</Text>
+                  {offPercent > 0 && (
+                    <View style={styles.offBadge}>
+                      <Text style={styles.offText}>{offPercent}% OFF</Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.pillText}>Free profile</Text>
+              )}
             </View>
+          )}
+        </Reanimated.View>
+
+        {/* About them */}
+        <Reanimated.View entering={FadeInDown.delay(80).duration(420)} style={styles.card}>
+          <View style={styles.cardHead}>
+            <View style={styles.cardIcon}>
+              <Icon name="account-heart-outline" size={18} color={C.PLUM} />
+            </View>
+            <Text style={styles.cardTitle}>About them</Text>
           </View>
 
           {/* Full Name */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Full Name
-            </Text>
-
+          <Text style={styles.label}>Full name</Text>
+          <View style={styles.inputRow}>
+            <Icon name="account-outline" size={19} color={C.MUTED} />
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Enter name"
+              placeholder="Enter full name"
               placeholderTextColor={C.MUTED}
-              style={styles.input}
+              style={styles.inputText}
               returnKeyType="next"
             />
           </View>
 
-          {/* Gender */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Gender
-            </Text>
+          {/* Relation */}
+          <Text style={styles.label}>Relation</Text>
+          <Pressable
+            onPress={() => setRelationOpen((open) => !open)}
+            style={[styles.inputRow, relationOpen && styles.inputRowActive]}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: relationOpen }}
+          >
+            <Icon name="family-tree" size={19} color={C.MUTED} />
+            <Text style={[styles.inputText, !relation && { color: C.MUTED }]}>{relation || "Select"}</Text>
+            <Icon name={relationOpen ? "chevron-up" : "chevron-down"} size={20} color={C.MUTED} />
+          </Pressable>
 
-            <View
-              style={styles.optionRow}
-            >
-              {[
-                {
-                  value: "male",
-                  label: "Male",
-                },
-                {
-                  value: "female",
-                  label: "Female",
-                },
-                {
-                  value: "other",
-                  label: "Other",
-                },
-              ].map((option) => {
-                const selected =
-                  gender ===
-                  option.value;
-
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() =>
-                      setGender(
-                        option.value
-                      )
-                    }
-                    style={[
-                      styles.option,
-                      selected &&
-                        styles.optionSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionText,
-                        selected &&
-                          styles.optionTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Marital Status */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Marital Status
-            </Text>
-
-            <View
-              style={styles.optionRow}
-            >
-              {[
-                "Married",
-                "Single",
-                "Other",
-              ].map((option) => {
-                const selected =
-                  maritalStatus ===
-                  option;
-
+          {relationOpen && (
+            <View style={styles.relationGrid}>
+              {RELATIONS.map((option) => {
+                const selected = relation === option;
                 return (
                   <Pressable
                     key={option}
-                    onPress={() =>
-                      setMaritalStatus(
-                        option
-                      )
-                    }
-                    style={[
-                      styles.option,
-                      selected &&
-                        styles.optionSelected,
-                    ]}
+                    onPress={() => {
+                      setRelation(option);
+                      setRelationOpen(false);
+                    }}
+                    style={[styles.relationChip, selected && styles.chipSelected]}
                   >
-                    <Text
-                      style={[
-                        styles.optionText,
-                        selected &&
-                          styles.optionTextSelected,
-                      ]}
-                    >
-                      {option}
-                    </Text>
+                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{option}</Text>
                   </Pressable>
                 );
               })}
             </View>
-          </View>
+          )}
 
-          {/* Birth Date */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Birth Date
-            </Text>
-
-            <Pressable
-              onPress={() =>
-                setShowDatePicker(true)
-              }
-              style={
-                styles.inputButton
-              }
-            >
-              <Icon
-                name="calendar-month-outline"
-                size={21}
-                color={C.INK}
-              />
-
-              <Text
-                style={
-                  styles.inputButtonText
-                }
-              >
-                {dateOfBirth ||
-                  "Select birth date"}
-              </Text>
-            </Pressable>
-
-            {showDatePicker && (
-              <View
-                style={
-                  styles.pickerContainer
-                }
-              >
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display="spinner"
-                  themeVariant="light"
-                  textColor={C.INK}
-                  maximumDate={new Date()}
-                  onChange={
-                    handleDateChange
-                  }
-                />
-
+          {/* Gender */}
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.segment}>
+            {genders.map((option) => {
+              const selected = gender === option.value;
+              return (
                 <Pressable
-                  onPress={() =>
-                    setShowDatePicker(
-                      false
-                    )
-                  }
-                  style={
-                    styles.pickerDone
-                  }
+                  key={option.value}
+                  onPress={() => setGender(option.value)}
+                  style={[styles.segmentItem, selected && styles.segmentItemActive]}
                 >
-                  <Text
-                    style={
-                      styles.pickerDoneText
-                    }
-                  >
-                    Done
-                  </Text>
+                  <Icon name={option.icon} size={15} color={selected ? C.CARD : C.MUTED} />
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{option.label}</Text>
                 </Pressable>
-              </View>
-            )}
+              );
+            })}
           </View>
 
-          {/* Birth Time */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Birth Time
-            </Text>
-
-            <Pressable
-              onPress={() =>
-                setShowTimePicker(true)
-              }
-              style={
-                styles.inputButton
-              }
-            >
-              <Icon
-                name="clock-outline"
-                size={21}
-                color={C.INK}
-              />
-
-              <Text
-                style={
-                  styles.inputButtonText
-                }
-              >
-                {formatDisplayTime(
-                  timeOfBirth
-                ) || "Select birth time"}
-              </Text>
-            </Pressable>
-
-            {showTimePicker && (
-              <View
-                style={
-                  styles.pickerContainer
-                }
-              >
-                <DateTimePicker
-                  value={selectedTime}
-                  mode="time"
-                  display="spinner"
-                  themeVariant="light"
-                  textColor={C.INK}
-                  onChange={
-                    handleTimeChange
-                  }
-                />
-
+          {/* Marital Status */}
+          <Text style={styles.label}>Marital status</Text>
+          <View style={styles.segment}>
+            {["Single", "Married", "Other"].map((option) => {
+              const selected = maritalStatus === option;
+              return (
                 <Pressable
-                  onPress={() =>
-                    setShowTimePicker(
-                      false
-                    )
-                  }
-                  style={
-                    styles.pickerDone
-                  }
+                  key={option}
+                  onPress={() => setMaritalStatus(option)}
+                  style={[styles.segmentItem, selected && styles.segmentItemActive]}
                 >
-                  <Text
-                    style={
-                      styles.pickerDoneText
-                    }
-                  >
-                    Done
-                  </Text>
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{option}</Text>
                 </Pressable>
-              </View>
-            )}
+              );
+            })}
+          </View>
+        </Reanimated.View>
+
+        {/* Birth details */}
+        <Reanimated.View entering={FadeInDown.delay(160).duration(420)} style={styles.card}>
+          <View style={styles.cardHead}>
+            <View style={styles.cardIcon}>
+              <Icon name="star-four-points-outline" size={17} color={C.PLUM} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Birth details</Text>
+              <Text style={styles.cardSub}>The exact time and place make the Kundli accurate</Text>
+            </View>
           </View>
 
-          {/* Birth Place */}
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              Birth Place
-            </Text>
-
-            <View
-              style={styles.placeInputWrapper}
-            >
-              <Icon
-                name="map-marker-outline"
-                size={21}
-                color={C.INK}
-              />
-
-              <TextInput
-                value={placeOfBirth}
-                onChangeText={(value) => {
-                  setPlaceOfBirth(value);
-                  setLat("");
-                  setLon("");
-                  setTzone("");
+          {/* Birth Date + Time */}
+          <View style={styles.twoCol}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Date</Text>
+              <Pressable
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setShowDatePicker(true);
                 }}
-                placeholder="Search city"
-                placeholderTextColor={C.MUTED}
-                style={styles.placeInput}
-              />
-
-              {searchingPlaces && (
-                <ActivityIndicator
-                  size="small"
-                  color={C.PLUM}
-                />
-              )}
+                style={[styles.inputRow, showDatePicker && styles.inputRowActive]}
+              >
+                <Icon name="calendar-month-outline" size={18} color={C.MUTED} />
+                <Text style={[styles.inputText, !dateOfBirth && { color: C.MUTED }]} numberOfLines={1}>
+                  {dateOfBirth || "Select"}
+                </Text>
+              </Pressable>
             </View>
 
-            {placeSuggestions.length > 0 && (
-              <View style={styles.suggestions}>
-                {placeSuggestions.map(
-                  (place, index) => (
-                    <Pressable
-                      key={`${place.latitude}-${place.longitude}-${index}`}
-                      onPress={() =>
-                        selectPlace(place)
-                      }
-                      style={[
-                        styles.suggestion,
-                        index <
-                          placeSuggestions.length - 1 &&
-                          styles.suggestionBorder,
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={
-                            styles.suggestionTitle
-                          }
-                        >
-                          {place.name}
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.suggestionSub
-                          }
-                        >
-                          {[
-                            place.admin1,
-                            place.country,
-                          ]
-                            .filter(Boolean)
-                            .join(", ")}
-                        </Text>
-                      </View>
-
-                      <Icon
-                        name="chevron-right"
-                        size={21}
-                        color={C.MUTED}
-                      />
-                    </Pressable>
-                  )
-                )}
-              </View>
-            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Time</Text>
+              <Pressable
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setShowTimePicker(true);
+                }}
+                style={[styles.inputRow, showTimePicker && styles.inputRowActive]}
+              >
+                <Icon name="clock-outline" size={18} color={C.MUTED} />
+                <Text style={[styles.inputText, !timeOfBirth && { color: C.MUTED }]} numberOfLines={1}>
+                  {formatDisplayTime(timeOfBirth) || "Select"}
+                </Text>
+              </Pressable>
+            </View>
           </View>
 
-          {/* Create */}
+          {showDatePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                themeVariant="light"
+                textColor={C.INK}
+                maximumDate={new Date()}
+                onChange={handleDateChange}
+              />
+              <Pressable onPress={() => setShowDatePicker(false)} style={styles.pickerDone}>
+                <Text style={styles.pickerDoneText}>Done</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {showTimePicker && (
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={selectedTime}
+                mode="time"
+                display="spinner"
+                themeVariant="light"
+                textColor={C.INK}
+                onChange={handleTimeChange}
+              />
+              <Pressable onPress={() => setShowTimePicker(false)} style={styles.pickerDone}>
+                <Text style={styles.pickerDoneText}>Done</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Birth Place */}
+          <Text style={styles.label}>Place</Text>
+          <View style={styles.inputRow}>
+            <Icon name="map-marker-outline" size={19} color={C.MUTED} />
+            <TextInput
+              value={placeOfBirth}
+              onChangeText={(value) => {
+                setPlaceOfBirth(value);
+                setLat("");
+                setLon("");
+                setTzone("");
+              }}
+              placeholder="Search city"
+              placeholderTextColor={C.MUTED}
+              style={styles.inputText}
+            />
+            {searchingPlaces ? (
+              <ActivityIndicator size="small" color={C.PLUM} />
+            ) : lat ? (
+              <Icon name="check-circle" size={18} color={C.SUCCESS} />
+            ) : null}
+          </View>
+
+          {placeSuggestions.length > 0 && (
+            <View style={styles.suggestions}>
+              {placeSuggestions.map((place, index) => (
+                <Pressable
+                  key={`${place.latitude}-${place.longitude}-${index}`}
+                  onPress={() => selectPlace(place)}
+                  style={[styles.suggestion, index < placeSuggestions.length - 1 && styles.suggestionBorder]}
+                >
+                  <Icon name="map-marker" size={16} color={C.GOLD} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.suggestionTitle}>{place.name}</Text>
+                    <Text style={styles.suggestionSub}>
+                      {[place.admin1, place.country].filter(Boolean).join(", ")}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={18} color={C.MUTED} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </Reanimated.View>
+
+        {/* Create */}
+        <Reanimated.View entering={FadeInDown.delay(240).duration(420)}>
           <Pressable
-            onPress={
-              handleCreateProfile
-            }
+            onPress={handleCreateProfile}
             disabled={saving}
-            style={[
-              styles.createButton,
-              saving &&
-                styles.createButtonDisabled,
-            ]}
+            style={[styles.createButton, saving && styles.createButtonDisabled]}
           >
             {saving ? (
-              <ActivityIndicator
-                color="#FFFFFF"
-              />
+              <ActivityIndicator color={C.CARD} />
             ) : (
               <>
-                <Text
-                  style={
-                    styles.createButtonText
-                  }
-                >
-                  Create Profile
+                <Text style={styles.createButtonText}>
+                  {charged ? `Create profile · ₹${pricing!.price}` : "Create profile"}
                 </Text>
-
-                <Icon
-                  name="arrow-right"
-                  size={23}
-                  color="#FFFFFF"
-                />
+                <Icon name="arrow-right" size={19} color={C.CARD} />
               </>
             )}
           </Pressable>
-        </ScrollView>
-      </View>
-    </ImageBackground>
+
+          <View style={styles.priceRow}>
+            <Icon name="shield-check-outline" size={14} color={C.MUTED} />
+            {charged ? (
+              <Text style={styles.priceNote}>
+                {pricing!.oldPrice > pricing!.price && <Text style={styles.priceOld}>₹{pricing!.oldPrice}</Text>}
+                {pricing!.oldPrice > pricing!.price ? " " : ""}
+                <Text style={styles.priceNow}>₹{pricing!.price}</Text>
+                {offPercent > 0 ? <Text style={styles.priceOff}>{` (${offPercent}% off)`}</Text> : ""} one-time, from
+                your wallet
+              </Text>
+            ) : (
+              <Text style={styles.priceNote}>Birth details stay private to your account</Text>
+            )}
+          </View>
+        </Reanimated.View>
+      </ScrollView>
+    </View>
   );
 }
 
+const shadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.07,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 3,
+};
+
 const styles = StyleSheet.create({
-  screenBackground: {
-    flex: 1,
-  },
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
 
-  screenBackgroundImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 34,
-  },
-
-  /*
-   * Header
-   */
-  header: {
-    height: 70,
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12 },
   backButton: {
-    width: 34,
-    height: 42,
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-
-  headerText: {
-    flex: 1,
-    alignItems: "center",
-    paddingRight: 2,
-  },
-
-  headerSpacer: {
-    width: 34,
-  },
-
-  title: {
-    fontSize: 21,
-    lineHeight: 26,
-    fontWeight: "700",
-    color: C.INK,
-  },
-
-  subtitle: {
-    marginTop: 2,
-    fontSize: 11,
-    color: "#837987",
-    textAlign: "center",
-  },
-
-  /*
-   * Avatar
-   */
-  avatarSection: {
-    height: 68,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
-    marginBottom: 10,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
+  title: { fontSize: 21, fontWeight: "700", color: C.INK, letterSpacing: -0.3 },
+  subtitle: { marginTop: 1, fontSize: 12.5, color: C.MUTED },
 
+  content: { paddingHorizontal: 16, gap: 14 },
+
+  /* Photo + price */
+  photoSection: { alignItems: "center", paddingTop: 4, paddingBottom: 2 },
+  photoWrap: { alignItems: "center", justifyContent: "center" },
+  photoStar: { position: "absolute", color: C.GOLD, fontSize: 13 },
+  avatarRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    padding: 4,
+    borderWidth: 1.5,
+    borderColor: "rgba(196,154,74,0.75)",
+    backgroundColor: C.CARD,
+    ...shadow,
+  },
   avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#E9DDF2",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-
-  avatarImage: {
-    width: 68,
-    height: 68,
-  },
-
-  avatarSparkleLeft: {
-    position: "absolute",
-    marginLeft: -96,
-    marginTop: -25,
-  },
-
-  avatarSparkleRight: {
-    position: "absolute",
-    marginLeft: 96,
-    marginTop: -25,
-  },
-
-  sparkleText: {
-    fontSize: 15,
-    color: "#E9A46D",
-  },
-
-  /*
-   * Fields
-   */
-  field: {
-    marginTop: 9,
-  },
-
-  label: {
-    marginBottom: 5,
-    fontSize: 12,
-    fontWeight: "500",
-    color: C.INK,
-  },
-
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderColor: "#E3DDE5",
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(255,255,255,0.72)",
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: C.INK,
-  },
-
-  /*
-   * Gender / Marital Status
-   */
-  optionRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-
-  option: {
     flex: 1,
-    height: 37,
-    borderRadius: 9,
-    backgroundColor:
-      "rgba(239,235,241,0.78)",
+    borderRadius: 48,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.SOFT,
   },
-
-  optionSelected: {
+  avatarImage: { width: "100%", height: "100%" },
+  avatarInitial: { fontSize: 36, fontWeight: "700", color: C.PLUM },
+  cameraBadge: {
+    position: "absolute",
+    right: 2,
+    bottom: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: C.PLUM,
+    borderWidth: 3,
+    borderColor: C.LAVENDER,
   },
-
-  optionText: {
-    fontSize: 11,
-    color: C.INK,
-  },
-
-  optionTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-
-  /*
-   * Date / Time
-   */
-  inputButton: {
-    height: 40,
+  photoName: { marginTop: 12, fontSize: 18, fontWeight: "700", color: C.INK },
+  photoSub: { marginTop: 2, fontSize: 12.5, color: C.MUTED },
+  pricePill: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F6EEDD",
     borderWidth: 1,
-    borderColor: "#E3DDE5",
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(255,255,255,0.72)",
-    paddingHorizontal: 11,
+    borderColor: "rgba(196,154,74,0.45)",
   },
-
-  inputButtonText: {
-    marginLeft: 10,
-    fontSize: 13,
-    color: C.INK,
+  offBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#E6F2EA",
   },
+  offText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3, color: "#2E7D4F" },
+  pillOld: { fontSize: 11.5, color: C.MUTED, textDecorationLine: "line-through" },
+  pillText: { fontSize: 12, fontWeight: "700", color: "#7A5A1E" },
 
-  pickerContainer: {
-    marginTop: 8,
-    borderRadius: 12,
-    overflow: "hidden",
+  /* Cards */
+  card: {
+    padding: 16,
+    borderRadius: 22,
     backgroundColor: C.CARD,
     borderWidth: 1,
-    borderColor: C.BORDER,
+    borderColor: C.LINE,
+    ...shadow,
   },
-
-  pickerDone: {
-    height: 42,
-    borderTopWidth: 1,
-    borderTopColor: C.BORDER,
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 },
+  cardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.SOFT,
   },
+  cardTitle: { fontSize: 15.5, fontWeight: "700", color: C.INK },
+  cardSub: { marginTop: 1, fontSize: 11.5, color: C.MUTED },
 
-  pickerDoneText: {
-    color: C.PLUM,
-    fontWeight: "700",
-    fontSize: 14,
-  },
+  label: { marginTop: 14, marginBottom: 6, fontSize: 12, fontWeight: "600", color: C.INK },
 
-  /*
-   * Birth place
-   */
-  placeInputWrapper: {
-    height: 40,
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E3DDE5",
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(255,255,255,0.72)",
-    paddingHorizontal: 11,
-  },
-
-  placeInput: {
-    flex: 1,
-    height: 40,
-    marginLeft: 9,
-    fontSize: 13,
-    color: C.INK,
-  },
-
-  suggestions: {
-    marginTop: 5,
-    borderRadius: 9,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: C.BORDER,
-    backgroundColor: C.CARD,
-  },
-
-  suggestion: {
-    minHeight: 50,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  suggestionBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.BORDER,
-  },
-
-  suggestionTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.INK,
-  },
-
-  suggestionSub: {
-    marginTop: 2,
-    fontSize: 10.5,
-    color: C.MUTED,
-  },
-
-  /*
-   * Create button
-   */
-  createButton: {
-    height: 43,
-    marginTop: 12,
-    borderRadius: 11,
-    backgroundColor: C.PLUM,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 10,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
+  inputRowActive: { borderColor: C.PLUM, backgroundColor: C.CARD },
+  inputText: { flex: 1, fontSize: 14, color: C.INK, paddingVertical: 0 },
 
-  createButtonDisabled: {
-    opacity: 0.55,
-  },
+  twoCol: { flexDirection: "row", gap: 10 },
 
-  createButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
+  /* Relation chips */
+  relationGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  relationChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
+  chipSelected: { backgroundColor: C.PLUM, borderColor: C.PLUM },
+  chipText: { fontSize: 13, fontWeight: "600", color: C.INK },
+  chipTextSelected: { color: C.CARD },
+
+  /* Gender / marital segments */
+  segment: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: "#F6F2F9",
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  segmentItem: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  segmentItemActive: { backgroundColor: C.PLUM },
+  segmentText: { fontSize: 13, fontWeight: "600", color: C.MUTED },
+  segmentTextActive: { color: C.CARD },
+
+  /* Date / time pickers */
+  pickerContainer: {
+    marginTop: 10,
+    borderRadius: 16,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
+    overflow: "hidden",
+  },
+  pickerDone: {
+    alignSelf: "flex-end",
+    margin: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: C.PLUM,
+  },
+  pickerDoneText: { fontSize: 13, fontWeight: "700", color: C.CARD },
+
+  /* City suggestions */
+  suggestions: {
+    marginTop: 8,
+    borderRadius: 14,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    overflow: "hidden",
+  },
+  suggestion: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11 },
+  suggestionBorder: { borderBottomWidth: 1, borderBottomColor: "#EFE9F2" },
+  suggestionTitle: { fontSize: 13.5, fontWeight: "600", color: C.INK },
+  suggestionSub: { marginTop: 1, fontSize: 11.5, color: C.MUTED },
+
+  /* Create */
+  createButton: {
+    height: 52,
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: C.PLUM,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    ...shadow,
+    shadowOpacity: 0.2,
+  },
+  createButtonDisabled: { opacity: 0.6 },
+  createButtonText: { color: C.CARD, fontSize: 15, fontWeight: "700" },
+
+  priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10 },
+  priceNote: { fontSize: 12, color: C.MUTED },
+  priceOld: { color: C.MUTED, textDecorationLine: "line-through" },
+  priceNow: { color: C.PLUM, fontWeight: "700" },
+  priceOff: { color: "#2E7D4F", fontWeight: "700" },
 });

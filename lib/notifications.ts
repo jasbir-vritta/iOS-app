@@ -30,6 +30,17 @@ const SENT_TOKEN_KEY = "push_token_sent";
 // app doesn't register again on the next launch.
 const OPTED_OUT_KEY = "push_opted_out";
 
+// Our "Turn on notifications" reminder (after the user didn't allow):
+// the day the app was first opened, and the last day it was shown.
+const FIRST_OPEN_DAY_KEY = "push_nudge_first_open_day";
+const NUDGE_LAST_DAY_KEY = "push_nudge_last_day";
+
+// "2026-10-16" on this phone's clock.
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 // Show notifications as a banner even while the app is open.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -40,13 +51,13 @@ Notifications.setNotificationHandler({
   }),
 });
 
-async function getPushToken(): Promise<string | null> {
+async function getPushToken(ask: boolean): Promise<string | null> {
   // Simulators can't receive push notifications.
   if (!Device.isDevice) return null;
 
   let { status } = await Notifications.getPermissionsAsync();
 
-  if (status !== "granted") {
+  if (status !== "granted" && ask) {
     // iOS shows the system "Allow notifications?" prompt.
     ({ status } = await Notifications.requestPermissionsAsync());
   }
@@ -66,14 +77,15 @@ async function getPushToken(): Promise<string | null> {
 }
 
 /**
- * Asks for permission (once) and registers this phone with the backend.
+ * Registers this phone with the backend. With `ask`, shows the phone's
+ * "Allow notifications?" prompt if it hasn't been answered yet.
  * Safe to call on every launch; failures are ignored.
  */
-export async function registerForPushNotifications(): Promise<void> {
+export async function registerForPushNotifications({ ask = false }: { ask?: boolean } = {}): Promise<void> {
   try {
     if (await AsyncStorage.getItem(OPTED_OUT_KEY)) return;
 
-    const token = await getPushToken();
+    const token = await getPushToken(ask);
 
     if (!token) return;
 
@@ -157,7 +169,7 @@ export async function setNotificationsEnabled(enabled: boolean): Promise<boolean
     return false;
   }
 
-  await registerForPushNotifications();
+  await registerForPushNotifications({ ask: true });
 
   return getNotificationsEnabled();
 }
@@ -183,4 +195,45 @@ export function useNotificationTaps() {
 
     return () => subscription.remove();
   }, []);
+}
+
+/**
+ * Our reminder when notifications aren't allowed. Returns null when it
+ * shouldn't show today, else how long the app must be in use first:
+ * 2 minutes on a new user's first day, right away on later days.
+ */
+export async function notificationNudgeDelay(): Promise<number | null> {
+  try {
+    if (!Device.isDevice) return null;
+
+    const day = today();
+    let firstDay = await AsyncStorage.getItem(FIRST_OPEN_DAY_KEY);
+    if (!firstDay) {
+      firstDay = day;
+      await AsyncStorage.setItem(FIRST_OPEN_DAY_KEY, day);
+    }
+
+    const [permission, optedOut, lastDay] = await Promise.all([
+      Notifications.getPermissionsAsync(),
+      AsyncStorage.getItem(OPTED_OUT_KEY),
+      AsyncStorage.getItem(NUDGE_LAST_DAY_KEY),
+    ]);
+
+    // Only after the user said "Don't allow" (not before the phone has
+    // asked), never if they turned it off in Account Settings, once a day.
+    if (permission.status !== "denied" || optedOut || lastDay === day) return null;
+
+    return firstDay === day ? 2 * 60 * 1000 : 2500;
+  } catch {
+    return null;
+  }
+}
+
+/** The reminder was shown today. */
+export async function markNotificationNudgeShown(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(NUDGE_LAST_DAY_KEY, today());
+  } catch {
+    // Ignore.
+  }
 }

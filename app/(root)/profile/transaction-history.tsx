@@ -1,30 +1,28 @@
-import {
-    MaterialCommunityIcons as Icon,
-    Ionicons,
-} from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ImageBackground,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    View,
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  View,
 } from "react-native";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "../../../components/ui/BrandText";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
-    refreshWalletCredits,
-    useUserStore,
+  refreshWalletCredits,
+  useUserStore,
 } from "../../../components/stores/userStore";
 import { parseServerDate } from "../../../components/utils/serverDate";
 import {
-    API_URL,
-    authHeaders,
+  API_URL,
+  authHeaders,
 } from "../../../lib/auth";
 
 // ============================================================
@@ -47,6 +45,8 @@ type Tx = {
   title: string;
   date: string;
   amount: string;
+  // Signed value, for the totals.
+  value: number;
   group: "orders" | "recharge";
   photo?: string;
   createdAt?: string;
@@ -89,87 +89,33 @@ type ApiTransaction = {
 // CONSTANTS
 // ============================================================
 
+const C = {
+  INK: "#1C1820",
+  PLUM: "#2B1A3D",
+  GOLD: "#C49A4A",
+  LAVENDER: "#F4F0F8",
+  CARD: "#FFFDFC",
+  MUTED: "#68616A",
+  LINE: "rgba(217,206,193,0.7)",
+  SOFT: "#EFE8F7",
+  GREEN: "#2E7D4F",
+  RED: "#B3392F",
+};
+
 const FILTERS = [
-  {
-    id: "all",
-    label: "All",
-  },
-  {
-    id: "orders",
-    label: "Orders",
-  },
-  {
-    id: "recharge",
-    label: "Recharge",
-  },
+  { id: "all", label: "All" },
+  { id: "orders", label: "Spent" },
+  { id: "recharge", label: "Added" },
 ] as const;
 
-const TERRACOTTA = "#A94C36";
-const GREEN = "#2E9E5B";
-const RED = "#D92D20";
-
-const STYLE: Record<
-  Kind,
-  {
-    dot?: string;
-    line: string;
-    tint: string;
-    color: string;
-    icon: string;
-    amount: string;
-  }
-> = {
-  chat: {
-    dot: TERRACOTTA,
-    line: "#D9A99B",
-    tint: "#FBEBE4",
-    color: TERRACOTTA,
-    icon: "chat-processing-outline",
-    amount: RED,
-  },
-
-  report: {
-    dot: "#2B1A3D",
-    line: "#C9BCD6",
-    tint: "#EFE7F6",
-    color: "#2B1A3D",
-    icon: "file-document-outline",
-    amount: RED,
-  },
-
-  profile: {
-    dot: "#2B1A3D",
-    line: "#C9BCD6",
-    tint: "#EFE7F6",
-    color: "#2B1A3D",
-    icon: "account-plus-outline",
-    amount: RED,
-  },
-
-  wallet: {
-    dot: GREEN,
-    line: "#9ED0AE",
-    tint: "#E3F3E8",
-    color: GREEN,
-    icon: "wallet-outline",
-    amount: GREEN,
-  },
-
-  cashback: {
-    line: "#CFC8D4",
-    tint: "#FBEBE4",
-    color: TERRACOTTA,
-    icon: "gift-outline",
-    amount: GREEN,
-  },
-
-  failed: {
-    line: "#CFC8D4",
-    tint: "#FDE7E4",
-    color: RED,
-    icon: "clock-alert-outline",
-    amount: "#1C1820",
-  },
+// Icon tile per kind of transaction.
+const STYLE: Record<Kind, { tint: string; color: string; icon: string; amount: string }> = {
+  chat: { tint: C.SOFT, color: C.PLUM, icon: "chat-processing-outline", amount: C.INK },
+  report: { tint: "#F6EEDD", color: "#8A6A2C", icon: "file-document-outline", amount: C.INK },
+  profile: { tint: C.SOFT, color: C.PLUM, icon: "account-plus-outline", amount: C.INK },
+  wallet: { tint: "#E6F2EA", color: C.GREEN, icon: "wallet-plus-outline", amount: C.GREEN },
+  cashback: { tint: "#F6EEDD", color: "#8A6A2C", icon: "gift-outline", amount: C.GREEN },
+  failed: { tint: "#F8E4E1", color: C.RED, icon: "alert-circle-outline", amount: C.MUTED },
 };
 
 // ============================================================
@@ -177,154 +123,102 @@ const STYLE: Record<
 // ============================================================
 
 export default function TransactionHistory() {
-  const user = useUserStore(
-    (state) => state.user
-  );
+  const insets = useSafeAreaInsets();
+  const user = useUserStore((state) => state.user);
 
   // Backend user details uses `credits`.
   // walletBalance is kept as a fallback.
-  const balance =
-    user?.credits ??
-    (user as any)?.walletBalance ??
-    0;
+  const balance = user?.credits ?? (user as any)?.walletBalance ?? 0;
 
-  const [filter, setFilter] =
-    useState<
-      (typeof FILTERS)[number]["id"]
-    >("all");
-
-  const [transactions, setTransactions] =
-    useState<Tx[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
+  const [transactions, setTransactions] = useState<Tx[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  // Bumped by "Try again" to load once more.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // ==========================================================
   // FETCH TRANSACTIONS
   // ==========================================================
 
   useEffect(() => {
-    loadTransactions();
     refreshWalletCredits();
   }, []);
 
-  const loadTransactions = async () => {
-    try {
-      setLoading(true);
-      setError("");
+  useEffect(() => {
+    let cancelled = false;
 
-      const headers = await authHeaders();
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(`${API_URL}/api/user/transactions`, { method: "GET", headers });
+        const data = await response.json();
 
-      const response = await fetch(
-        `${API_URL}/api/user/transactions`,
-        {
-          method: "GET",
-          headers,
+        if (!response.ok) {
+          throw new Error(data?.detail || "Failed to load transactions.");
         }
-      );
 
-      const data = await response.json();
-
-      console.log(
-        "TRANSACTIONS API RESPONSE:",
-        data
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail ||
-            "Failed to load transactions."
-        );
-      }
-
-      const apiTransactions: ApiTransaction[] =
-        Array.isArray(data?.transactions)
-          ? data.transactions
-          : [];
-
-      const normalized =
-        apiTransactions
+        const apiTransactions: ApiTransaction[] = Array.isArray(data?.transactions) ? data.transactions : [];
+        const normalized = apiTransactions
           .map(normalizeTransaction)
-          .filter(
-            (
-              transaction
-            ): transaction is Tx =>
-              transaction !== null
-          );
+          .filter((transaction): transaction is Tx => transaction !== null);
 
-      setTransactions(normalized);
-    } catch (err) {
-      console.error(
-        "TRANSACTION HISTORY ERROR:",
-        err
-      );
+        if (cancelled) return;
+        setTransactions(normalized);
+        setError("");
+      } catch (err) {
+        console.error("TRANSACTION HISTORY ERROR:", err);
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load transactions.");
+        setTransactions([]);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load transactions."
-      );
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
-      setTransactions([]);
-    } finally {
-      setLoading(false);
-    }
+  const retry = () => {
+    setLoaded(false);
+    setReloadKey((key) => key + 1);
   };
 
   // ==========================================================
-  // FILTER
+  // TOTALS + FILTER
   // ==========================================================
 
-  const filteredTransactions =
-    useMemo(() => {
-      if (filter === "all") {
-        return transactions;
-      }
+  const totals = useMemo(() => {
+    let added = 0;
+    let spent = 0;
+    for (const tx of transactions) {
+      if (tx.kind === "failed") continue;
+      if (tx.value > 0) added += tx.value;
+      else spent += -tx.value;
+    }
+    return { added, spent };
+  }, [transactions]);
 
-      return transactions.filter(
-        (transaction) =>
-          transaction.group === filter
-      );
-    }, [filter, transactions]);
+  const filteredTransactions = useMemo(
+    () => (filter === "all" ? transactions : transactions.filter((tx) => tx.group === filter)),
+    [filter, transactions]
+  );
 
   // ==========================================================
   // GROUP BY DATE
   // ==========================================================
 
   const sections = useMemo(() => {
-    const groups = new Map<
-      string,
-      Tx[]
-    >();
-
-    filteredTransactions.forEach(
-      (transaction) => {
-        const title = getDateGroup(
-          transaction.createdAt
-        );
-
-        const existing =
-          groups.get(title);
-
-        if (existing) {
-          existing.push(transaction);
-        } else {
-          groups.set(title, [
-            transaction,
-          ]);
-        }
-      }
-    );
-
-    return Array.from(
-      groups.entries()
-    ).map(([title, items]) => ({
-      title,
-      items,
-    }));
+    const groups = new Map<string, Tx[]>();
+    filteredTransactions.forEach((transaction) => {
+      const title = getDateGroup(transaction.createdAt);
+      const existing = groups.get(title);
+      if (existing) existing.push(transaction);
+      else groups.set(title, [transaction]);
+    });
+    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
   }, [filteredTransactions]);
 
   // ==========================================================
@@ -332,265 +226,125 @@ export default function TransactionHistory() {
   // ==========================================================
 
   return (
-    <ImageBackground
-      source={require(
-        "../../../assets/images/profile/language.png"
-      )}
-      resizeMode="cover"
-      style={{
-        flex: 1,
-        backgroundColor: "#F4F0F8",
-      }}
-    >
+    <View style={[s.screen, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" />
 
-      <SafeAreaView
-        style={{
-          flex: 1,
-        }}
-      >
-        <View className="flex-1 px-[20px]">
-
-          {/* =================================================
-              HEADER
-          ================================================= */}
-
-          <View className="flex-row items-center pt-[6px]">
-
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={12}
-              className="-ml-[8px] h-[44px] w-[44px] items-center justify-center"
-            >
-              <Ionicons
-                name="chevron-back"
-                size={26}
-                color="#1C1820"
-              />
-            </Pressable>
-
-            <Text className="flex-1 text-center text-[17px] font-bold text-[#1C1820]">
-              Transaction History
-            </Text>
-
-            <View className="w-[36px]" />
-          </View>
-
-          {/* =================================================
-              BALANCE
-          ================================================= */}
-
-          <View className="mt-[12px] flex-row items-center rounded-[18px] bg-[#FBEBE1] px-[14px] py-[14px]">
-
-            <View className="h-[44px] w-[44px] items-center justify-center rounded-[13px] bg-[#F5D3C3]">
-              <Icon
-                name="wallet-outline"
-                size={24}
-                color={TERRACOTTA}
-              />
-            </View>
-
-            <View className="ml-[12px] flex-1">
-
-              <Text className="text-[11.5px] text-[#68616A]">
-                Available Balance
-              </Text>
-
-              <Text className="mt-[1px] text-[26px] font-bold text-[#1C1820]">
-                ₹
-                {Number(balance).toFixed(
-                  2
-                )}
-              </Text>
-
-            </View>
-
-            <Pressable
-              onPress={() =>
-                router.push("/profile/wallet")
-              }
-              className="h-[40px] items-center justify-center rounded-[12px] bg-[#2B1A3D] px-[18px]"
-            >
-              <Text className="text-[13px] font-semibold text-[#FFFDFC]">
-                Add Funds
-              </Text>
-            </Pressable>
-
-          </View>
-
-          {/* =================================================
-              FILTERS
-          ================================================= */}
-
-          <View className="mt-[14px] flex-row gap-[10px]">
-
-            {FILTERS.map((item) => {
-              const active =
-                item.id === filter;
-
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() =>
-                    setFilter(item.id)
-                  }
-                  className={`h-[38px] flex-1 items-center justify-center rounded-[12px] border ${
-                    active
-                      ? "border-[#2B1A3D] bg-[#2B1A3D]"
-                      : "border-[#E6DFEA] bg-[#F1EDF3]"
-                  }`}
-                >
-                  <Text
-                    className={`text-[13px] font-semibold ${
-                      active
-                        ? "text-[#FFFDFC]"
-                        : "text-[#1C1820]"
-                    }`}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
-          </View>
-
-          {/* =================================================
-              LOADING
-          ================================================= */}
-
-          {loading ? (
-            <View className="flex-1 items-center justify-center">
-
-              <ActivityIndicator
-                size="large"
-                color="#2B1A3D"
-              />
-
-              <Text className="mt-[10px] text-[13px] text-[#68616A]">
-                Loading transactions...
-              </Text>
-
-            </View>
-          ) : error ? (
-
-            /* =================================================
-               ERROR
-            ================================================= */
-
-            <View className="flex-1 items-center justify-center px-[20px]">
-
-              <Ionicons
-                name="alert-circle-outline"
-                size={42}
-                color={RED}
-              />
-
-              <Text className="mt-[12px] text-center text-[16px] font-semibold text-[#1C1820]">
-                Unable to load transactions
-              </Text>
-
-              <Text className="mt-[5px] text-center text-[13px] text-[#68616A]">
-                {error}
-              </Text>
-
-              <Pressable
-                onPress={loadTransactions}
-                className="mt-[16px] rounded-[12px] bg-[#2B1A3D] px-[18px] py-[10px]"
-              >
-                <Text className="text-[13px] font-semibold text-white">
-                  Try Again
-                </Text>
-              </Pressable>
-
-            </View>
-          ) : (
-
-            /* =================================================
-               TRANSACTIONS
-            ================================================= */
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingBottom: 40,
-              }}
-            >
-
-              {sections.map(
-                (section, sectionIndex) => (
-                  <View
-                    key={section.title}
-                  >
-
-                    <Text
-                      className={`mb-[2px] text-[18px] font-bold text-[#1C1820] ${
-                        sectionIndex === 0
-                          ? "mt-[18px]"
-                          : "mt-[20px]"
-                      }`}
-                    >
-                      {section.title}
-                    </Text>
-
-                    {section.items.map(
-                      (tx, index) => (
-                        <TxRow
-                          key={tx.id}
-                          tx={tx}
-                          prev={
-                            index > 0
-                              ? section.items[
-                                  index - 1
-                                ]
-                              : undefined
-                          }
-                          hasNext={
-                            index <
-                            section.items
-                              .length -
-                              1
-                          }
-                        />
-                      )
-                    )}
-
-                  </View>
-                )
-              )}
-
-              {/* =================================================
-                  EMPTY
-              ================================================= */}
-
-              {sections.length === 0 && (
-                <View className="mt-[60px] items-center">
-
-                  <Ionicons
-                    name="receipt-outline"
-                    size={42}
-                    color="#7A727F"
-                  />
-
-                  <Text className="mt-[12px] text-[16px] font-semibold text-[#1C1820]">
-                    No transactions yet
-                  </Text>
-
-                  <Text className="mt-[4px] text-center text-[13px] text-[#68616A]">
-                    {filter === "all"
-                      ? "Your transactions will appear here."
-                      : "No transactions found for this category."}
-                  </Text>
-
-                </View>
-              )}
-
-            </ScrollView>
-          )}
-
+      {/* Header */}
+      <View style={s.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+          <Icon name="chevron-left" size={24} color={C.INK} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Transactions</Text>
+          <Text style={s.subtitle}>Recharges, chats, reports and rewards</Text>
         </View>
-      </SafeAreaView>
-    </ImageBackground>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 32 }]}
+      >
+        {/* Balance */}
+        <Reanimated.View entering={FadeInDown.duration(420)} style={s.balanceCard}>
+          <View style={s.balanceRing} />
+          <View style={s.balanceRingInner} />
+
+          <View style={s.balanceTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.balanceLabel}>WALLET BALANCE</Text>
+              <Text style={s.balanceValue}>₹{Number(balance).toFixed(2)}</Text>
+            </View>
+            <Pressable onPress={() => router.push("/profile/wallet")} style={s.addButton}>
+              <Icon name="plus" size={16} color={C.PLUM} />
+              <Text style={s.addButtonText}>Add money</Text>
+            </Pressable>
+          </View>
+
+          <View style={s.balanceStats}>
+            <View style={s.stat}>
+              <Icon name="arrow-bottom-left" size={15} color="#9ED9B4" />
+              <View>
+                <Text style={s.statLabel}>Added</Text>
+                <Text style={s.statValue}>₹{totals.added.toFixed(2)}</Text>
+              </View>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.stat}>
+              <Icon name="arrow-top-right" size={15} color="#F3DFB4" />
+              <View>
+                <Text style={s.statLabel}>Spent</Text>
+                <Text style={s.statValue}>₹{totals.spent.toFixed(2)}</Text>
+              </View>
+            </View>
+          </View>
+        </Reanimated.View>
+
+        {/* Filters */}
+        <View style={s.segment}>
+          {FILTERS.map((item) => {
+            const active = item.id === filter;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setFilter(item.id)}
+                style={[s.segmentItem, active && s.segmentItemActive]}
+              >
+                <Text style={[s.segmentText, active && s.segmentTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {!loaded ? (
+          <View style={s.center}>
+            <ActivityIndicator size="large" color={C.PLUM} />
+            <Text style={s.centerText}>Loading transactions…</Text>
+          </View>
+        ) : error ? (
+          <View style={s.center}>
+            <View style={s.stateIcon}>
+              <Icon name="wifi-off" size={26} color={C.PLUM} />
+            </View>
+            <Text style={s.stateTitle}>Couldn&apos;t load transactions</Text>
+            <Text style={s.centerText}>{error}</Text>
+            <Pressable onPress={retry} style={s.stateButton}>
+              <Icon name="refresh" size={17} color={C.CARD} />
+              <Text style={s.stateButtonText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {sections.map((section, sectionIndex) => (
+              <Reanimated.View key={section.title} entering={FadeInDown.delay(60 * sectionIndex).duration(380)}>
+                <Text style={s.overline}>{section.title.toUpperCase()}</Text>
+                <View style={s.groupCard}>
+                  {section.items.map((tx, index) => (
+                    <TxRow key={tx.id} tx={tx} last={index === section.items.length - 1} />
+                  ))}
+                </View>
+              </Reanimated.View>
+            ))}
+
+            {/* Empty */}
+            {sections.length === 0 && (
+              <View style={s.center}>
+                <View style={s.stateIcon}>
+                  <Icon name="receipt-text-outline" size={26} color={C.PLUM} />
+                </View>
+                <Text style={s.stateTitle}>No transactions yet</Text>
+                <Text style={s.centerText}>
+                  {filter === "all"
+                    ? "Recharges, chats and reports will appear here."
+                    : filter === "orders"
+                      ? "Nothing spent yet."
+                      : "No money added yet."}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -770,6 +524,8 @@ function normalizeTransaction(
     2
   )}`;
 
+  const value = amountPrefix === "-" ? -absoluteAmount : amountPrefix === "+" ? absoluteAmount : 0;
+
   // =========================================================
   // PHOTO
   // =========================================================
@@ -793,6 +549,7 @@ function normalizeTransaction(
     title,
     date: formatDate(createdAt),
     amount,
+    value,
     group,
     photo,
     createdAt,
@@ -948,188 +705,192 @@ function formatTime(
 // TRANSACTION ROW
 // =============================================================
 
-function TxRow({
-  tx,
-  prev,
-  hasNext,
-}: {
-  tx: Tx;
-  prev?: Tx;
-  hasNext: boolean;
-}) {
-  const style =
-    STYLE[tx.kind];
-
-  const showDot =
-    tx.kind !== "failed";
+function TxRow({ tx, last }: { tx: Tx; last: boolean }) {
+  const style = STYLE[tx.kind];
+  const time = formatTime(tx.createdAt);
 
   return (
-    <View className="flex-row items-center py-[13px]">
-
-      {/* =====================================================
-          TIMELINE RAIL
-      ===================================================== */}
-
-      <View
-        style={{
-          width: 20,
-          alignSelf: "stretch",
-          alignItems: "center",
-        }}
-      >
-
-        {!!prev && (
-          <View
-            style={{
-              position: "absolute",
-              top: 0,
-              height: "50%",
-              width: 1.5,
-              backgroundColor:
-                STYLE[
-                  prev.kind
-                ].line,
-            }}
-          />
-        )}
-
-        {hasNext && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              height: "50%",
-              width: 1.5,
-              backgroundColor:
-                style.line,
-            }}
-          />
-        )}
-
-        {showDot && (
-          <View
-            style={{
-              position: "absolute",
-              top: "50%",
-              marginTop: -5,
-              width: 10,
-              height: 10,
-              borderRadius: 5,
-              backgroundColor:
-                style.dot ??
-                "#FFFDFC",
-              borderWidth:
-                style.dot ? 0 : 1.5,
-              borderColor:
-                "#8A8190",
-            }}
-          />
-        )}
-
+    <View style={[s.row, !last && s.rowDivider]}>
+      {/* Icon, or the astrologer's photo for chats */}
+      <View style={[s.tile, { backgroundColor: style.tint }]}>
+        <Icon name={style.icon as any} size={21} color={style.color} />
+        {!!tx.photo && <Image source={{ uri: tx.photo }} style={StyleSheet.absoluteFill} />}
       </View>
 
-      {/* =====================================================
-          ICON / PHOTO
-      ===================================================== */}
-
-      <View
-        className="ml-[8px] h-[48px] w-[48px] items-center justify-center overflow-hidden rounded-full"
-        style={{
-          backgroundColor:
-            style.tint,
-        }}
-      >
-
-        <Icon
-          name={
-            style.icon as any
-          }
-          size={23}
-          color={
-            style.color
-          }
-        />
-
-        {!!tx.photo && (
-          <Image
-            source={{
-              uri: tx.photo,
-            }}
-            style={{
-              position:
-                "absolute",
-              width: "100%",
-              height: "100%",
-            }}
-          />
-        )}
-
-      </View>
-
-      {/* =====================================================
-          TITLE + DATE
-      ===================================================== */}
-
-      <View className="ml-[12px] min-w-0 flex-1">
-
-        <Text
-          numberOfLines={1}
-          className="text-[14px] font-bold text-[#1C1820]"
-        >
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={s.rowTitle}>
           {tx.title}
         </Text>
-
-        <Text
-          numberOfLines={1}
-          className="mt-[3px] text-[11.5px] text-[#817985]"
-        >
-          {tx.date}
-
-          {tx.createdAt
-            ? `, ${formatTime(
-                tx.createdAt
-              )}`
-            : ""}
-
+        <Text numberOfLines={1} style={s.rowMeta}>
+          {time || tx.date}
           {tx.duration ? ` · ${tx.duration}` : ""}
         </Text>
-
       </View>
 
-      {/* =====================================================
-          AMOUNT
-      ===================================================== */}
-
-      <View className="ml-[8px] items-end">
-
-        <Text
-          className="text-[16px] font-bold"
-          style={{
-            color:
-              style.amount,
-          }}
-        >
-          {tx.amount}
-        </Text>
-
-        {tx.kind ===
-          "failed" && (
-          <View className="mt-[4px] rounded-[8px] bg-[#FDE7E4] px-[10px] py-[2px]">
-
-            <Text
-              className="text-[11px] font-semibold"
-              style={{
-                color: RED,
-              }}
-            >
-              Failed
-            </Text>
-
+      <View style={{ alignItems: "flex-end" }}>
+        <Text style={[s.amount, { color: style.amount }]}>{tx.amount}</Text>
+        {tx.kind === "failed" && (
+          <View style={s.failedTag}>
+            <Text style={s.failedText}>Failed</Text>
           </View>
         )}
-
       </View>
-
     </View>
   );
 }
+
+const shadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.06,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
+};
+
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
+
+  /* Header */
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12 },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  title: { fontSize: 21, fontWeight: "700", color: C.INK, letterSpacing: -0.3 },
+  subtitle: { marginTop: 1, fontSize: 12.5, color: C.MUTED },
+
+  content: { paddingHorizontal: 16 },
+
+  /* Balance */
+  balanceCard: {
+    padding: 18,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: C.PLUM,
+    ...shadow,
+    shadowOpacity: 0.22,
+  },
+  balanceRing: {
+    position: "absolute",
+    top: -70,
+    right: -50,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,252,0.12)",
+  },
+  balanceRingInner: {
+    position: "absolute",
+    top: -36,
+    right: -16,
+    width: 122,
+    height: 122,
+    borderRadius: 61,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,253,252,0.16)",
+  },
+  balanceTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  balanceLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1.4, color: "rgba(255,253,252,0.65)" },
+  balanceValue: { marginTop: 4, fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: C.CARD },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+  },
+  addButtonText: { fontSize: 13, fontWeight: "700", color: C.PLUM },
+  balanceStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,253,252,0.14)",
+  },
+  stat: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  statDivider: { width: 1, height: 28, marginHorizontal: 12, backgroundColor: "rgba(255,253,252,0.14)" },
+  statLabel: { fontSize: 11, color: "rgba(255,253,252,0.65)" },
+  statValue: { marginTop: 1, fontSize: 14, fontWeight: "700", color: C.CARD },
+
+  /* Filters */
+  segment: {
+    flexDirection: "row",
+    marginTop: 16,
+    padding: 4,
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  segmentItem: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  segmentItemActive: { backgroundColor: C.PLUM },
+  segmentText: { fontSize: 13, fontWeight: "600", color: C.MUTED },
+  segmentTextActive: { color: C.CARD },
+
+  /* Groups */
+  overline: { marginTop: 20, marginBottom: 8, fontSize: 11, fontWeight: "700", letterSpacing: 1.3, color: C.GOLD },
+  groupCard: {
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    ...shadow,
+  },
+
+  /* Row */
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: "#EFE9F2" },
+  tile: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowTitle: { fontSize: 14, fontWeight: "700", color: C.INK },
+  rowMeta: { marginTop: 3, fontSize: 11.5, color: C.MUTED },
+  amount: { fontSize: 15, fontWeight: "700" },
+  failedTag: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: "#F8E4E1" },
+  failedText: { fontSize: 10.5, fontWeight: "700", color: C.RED },
+
+  /* States */
+  center: { alignItems: "center", justifyContent: "center", paddingHorizontal: 24, paddingTop: 60, gap: 8 },
+  centerText: { fontSize: 13, lineHeight: 19, color: C.MUTED, textAlign: "center" },
+  stateIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    marginBottom: 4,
+  },
+  stateTitle: { fontSize: 16, fontWeight: "700", color: C.INK, textAlign: "center" },
+  stateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 44,
+    marginTop: 8,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: C.PLUM,
+  },
+  stateButtonText: { fontSize: 13.5, fontWeight: "700", color: C.CARD },
+});

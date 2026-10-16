@@ -5,7 +5,6 @@ import {
     ActivityIndicator,
     Alert,
     Image,
-    ImageBackground,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 
 import { Text } from "../../../components/ui/BrandText";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -21,15 +21,8 @@ import {
 } from "../../../lib/auth";
 
 import useProfilesStore from "../../../components/stores/profilesStore";
+import BottomSheet from "../../../components/ui/BottomSheet";
 import { useUserStore } from "../../../components/stores/userStore";
-
-const MANAGE_PROFILE_BG = require(
-  "../../../assets/images/profile/manage_profile.png"
-);
-
-const MANAGE_PROFILE_BOTTOM = require(
-  "../../../assets/images/profile/manage_profile_bottom.png"
-);
 
 const C = {
   INK: "#1C1820",
@@ -40,6 +33,9 @@ const C = {
   CARD: "#FFFDFC",
   MUTED: "#68616A",
   BORDER: "#D9CEC1",
+  LINE: "rgba(217,206,193,0.7)",
+  SOFT: "#EFE8F7",
+  DANGER: "#B3392F",
 };
 
 export default function ManageProfiles() {
@@ -73,13 +69,25 @@ export default function ManageProfiles() {
   // then the backend decides when the profile is created.
   const [pricing, setPricing] = useState<{
     freeProfiles: number;
+    maxProfiles: number;
     price: number;
+    oldPrice: number;
     credits: number | null;
   }>({
-    freeProfiles: 3,
-    price: 2,
+    freeProfiles: 2,
+    maxProfiles: Infinity,
+    price: 29,
+    oldPrice: 150,
     credits: null,
   });
+
+  // App-styled sheets instead of system alerts.
+  const [paySheet, setPaySheet] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    avatar?: string | null;
+  } | null>(null);
 
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
@@ -121,9 +129,14 @@ export default function ManageProfiles() {
 
         setPricing({
           freeProfiles:
-            Number(data?.free_profiles) || 3,
+            Number(data?.free_profiles) || 2,
+          // Older backend: no limit sent, so don't block here.
+          maxProfiles:
+            Number(data?.max_profiles) || Infinity,
           price:
-            Number(data?.profile_price) || 2,
+            Number(data?.profile_price) || 29,
+          oldPrice:
+            Number(data?.profile_old_price) || 0,
           credits:
             typeof data?.credits === "number"
               ? data.credits
@@ -151,9 +164,23 @@ export default function ManageProfiles() {
   const needsPayment =
     profiles.length >= pricing.freeProfiles;
 
-  // Extra profiles allowed for free (besides the user's own), and how many are left.
-  const freeExtra = Math.max(0, pricing.freeProfiles - 1);
+  // How many free profiles are left.
   const freeLeft = Math.max(0, pricing.freeProfiles - profiles.length);
+
+  // One profile besides the user's own.
+  const atLimit = profiles.length >= pricing.maxProfiles;
+
+  // "₹29 (₹150 crossed out)" as plain text for alerts.
+  // "81% OFF" from the crossed-out price.
+  const offPercent =
+    pricing.oldPrice > pricing.price
+      ? Math.round((1 - pricing.price / pricing.oldPrice) * 100)
+      : 0;
+
+  const priceText =
+    pricing.oldPrice > pricing.price
+      ? `₹${pricing.price} (instead of ₹${pricing.oldPrice}, ${offPercent}% off)`
+      : `₹${pricing.price}`;
 
   const canAddProfile =
     !needsPayment ||
@@ -199,25 +226,11 @@ export default function ManageProfiles() {
       return;
     }
 
-    Alert.alert(
-      "Delete Profile",
-      `Are you sure you want to delete ${profileName}'s profile?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () =>
-            deleteProfile(
-              profileId,
-              profileName
-            ),
-        },
-      ]
-    );
+    setDeleteTarget({
+      id: profileId,
+      name: profileName,
+      avatar: profiles.find((p) => p.profile_id === profileId)?.avatar_url,
+    });
   };
 
   const deleteProfile = async (
@@ -245,20 +258,17 @@ export default function ManageProfiles() {
       }
 
       removeProfile(profileId);
-
-      Alert.alert(
-        "Profile Deleted",
-        `${profileName}'s profile has been deleted.`
-      );
+      setDeleteTarget(null);
     } catch (error) {
       console.error(
         "Failed to delete profile:",
         error
       );
 
+      setDeleteTarget(null);
       Alert.alert(
         "Error",
-        "Unable to delete this profile."
+        `Unable to delete ${profileName}'s profile. Please try again.`
       );
     } finally {
       setDeletingId(null);
@@ -281,40 +291,18 @@ export default function ManageProfiles() {
    * Add profile.
    */
   const handleAddProfile = () => {
-    if (!canAddProfile) {
-      Alert.alert(
-        "Add funds",
-        `A new profile costs ₹${pricing.price}. Please add funds to your wallet.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Add Funds",
-            onPress: () => router.push("/wallet"),
-          },
-        ]
-      );
-
-      return;
-    }
-
-    if (needsPayment) {
-      Alert.alert(
-        "Add another profile",
-        `You've used your ${freeExtra} free profiles. This one costs ₹${pricing.price} from your wallet.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Continue",
-            onPress: () =>
-              router.push("/profile/add-profile"),
-          },
-        ]
-      );
-
+    if (!canAddProfile || needsPayment) {
+      setPaySheet(true);
       return;
     }
 
     router.push("/profile/add-profile");
+  };
+
+  // Close the sheet first, then navigate (one modal at a time on iOS).
+  const closeThen = (go: () => void) => {
+    setPaySheet(false);
+    setTimeout(go, 350);
   };
 
   const getInitial = (
@@ -343,612 +331,504 @@ export default function ManageProfiles() {
   };
 
   return (
-    <ImageBackground
-      source={MANAGE_PROFILE_BG}
-      resizeMode="cover"
-      style={styles.screen}
-      imageStyle={styles.backgroundImage}
-    >
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop: insets.top,
-          },
-        ]}
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel="Go back">
+          <Icon name="chevron-left" size={24} color={C.INK} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Manage profiles</Text>
+          <Text style={styles.subtitle}>Switch, edit or add family and friends</Text>
+        </View>
+        <Pressable onPress={() => handleEdit()} style={styles.editButton}>
+          <Icon name="pencil-outline" size={15} color={C.PLUM} />
+          <Text style={styles.editText}>Edit</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={
-            styles.content
-          }
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>
-                Manage Profiles
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Switch between or edit your profiles.
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => handleEdit()}
-              style={styles.editButton}
-            >
-              <Text style={styles.editText}>
-                Edit
-              </Text>
-            </Pressable>
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator size="small" color={C.PLUM} />
+            <Text style={styles.loadingText}>Loading profiles…</Text>
           </View>
+        ) : (
+          <>
+            <Text style={styles.overline}>
+              {`${profiles.length} PROFILE${profiles.length === 1 ? "" : "S"}`}
+            </Text>
 
-          {/* Loading */}
-          {loading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator
-                size="small"
-                color={C.PLUM}
-              />
+            {/* Profiles */}
+            <View style={styles.profileList}>
+              {profiles.map((profile, index) => {
+                const isActive = profile.profile_id === activeProfileId;
+                const isDeleting = deletingId === profile.profile_id;
 
-              <Text style={styles.loadingText}>
-                Loading profiles...
-              </Text>
-            </View>
-          ) : (
-            <>
-              {/* Profiles */}
-              <View style={styles.profileList}>
-                {profiles.map(
-                  (profile, index) => {
-                    const isActive =
-                      profile.profile_id ===
-                      activeProfileId;
-
-                    const isDeleting =
-                      deletingId ===
-                      profile.profile_id;
-
-                    return (
-                      <View
-                        key={profile.profile_id}
-                        style={[
-                          styles.profileCard,
-                          isActive &&
-                            styles.activeProfileCard,
-                        ]}
-                      >
-                        {/* Avatar */}
-                        <View
-                          style={[
-                            styles.profileAvatar,
-                            index === 1 &&
-                              styles.secondAvatar,
-                          ]}
-                        >
+                return (
+                  <Reanimated.View key={profile.profile_id} entering={FadeInDown.delay(60 * index).duration(400)}>
+                    <Pressable
+                      onPress={() => handleEdit(profile.profile_id)}
+                      style={[styles.profileCard, isActive && styles.activeProfileCard]}
+                    >
+                      {/* Avatar */}
+                      <View style={[styles.avatarRing, isActive && styles.avatarRingActive]}>
+                        <View style={styles.profileAvatar}>
                           {profile.avatar_url ? (
-                            <Image
-                              source={{
-                                uri: profile.avatar_url,
-                              }}
-                              style={
-                                styles.profileAvatarImage
-                              }
-                            />
+                            <Image source={{ uri: profile.avatar_url }} style={styles.profileAvatarImage} />
                           ) : (
-                            <Text
-                              style={
-                                styles.profileAvatarText
-                              }
-                            >
-                              {getInitial(
-                                profile.name
-                              )}
-                            </Text>
+                            <Text style={styles.profileAvatarText}>{getInitial(profile.name)}</Text>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Information */}
+                      <View style={styles.profileInfo}>
+                        <View style={styles.nameRow}>
+                          <Text style={styles.profileName} numberOfLines={1}>
+                            {profile.name || "Unnamed profile"}
+                          </Text>
+                          {isActive && (
+                            <View style={styles.activePill}>
+                              <Text style={styles.activePillText}>Active</Text>
+                            </View>
                           )}
                         </View>
 
-                        {/* Information */}
-                        <Pressable
-                          style={
-                            styles.profileInfo
-                          }
-                          onPress={() =>
-                            handleEdit(
-                              profile.profile_id
-                            )
-                          }
-                        >
-                          <View
-                            style={
-                              styles.nameRow
-                            }
-                          >
-                            <Text
-                              style={
-                                styles.profileName
-                              }
-                              numberOfLines={1}
-                            >
-                              {profile.name ||
-                                "Unnamed Profile"}
-                            </Text>
-
-                            {isActive && (
-                              <Text
-                                style={
-                                  styles.meText
-                                }
-                              >
-                                (Me)
-                              </Text>
-                            )}
-                          </View>
-
-                          <Text
-                            style={
-                              styles.profileMeta
-                            }
-                            numberOfLines={1}
-                          >
-                            {formatProfileInfo(
-                              profile
-                            )}
+                        {!!profile.relation && (
+                          <Text style={styles.relationText} numberOfLines={1}>
+                            {profile.relation}
                           </Text>
-                        </Pressable>
-
-                        {/* Action */}
-                        {isDeleting ? (
-                          <ActivityIndicator
-                            size="small"
-                            color={
-                              C.TERRACOTTA
-                            }
-                            style={
-                              styles.deleteIcon
-                            }
-                          />
-                        ) : isActive ? (
-                          <Pressable
-                            onPress={() =>
-                              handleEdit(
-                                profile.profile_id
-                              )
-                            }
-                            style={
-                              styles.arrowButton
-                            }
-                          >
-                            <Icon
-                              name="chevron-right"
-                              size={27}
-                              color={C.INK}
-                            />
-                          </Pressable>
-                        ) : (
-                          <Pressable
-                            onPress={() =>
-                              handleDelete(
-                                profile.profile_id,
-                                profile.name ||
-                                  "this profile"
-                              )
-                            }
-                            style={
-                              styles.deleteButton
-                            }
-                          >
-                            <Icon
-                              name="trash-can-outline"
-                              size={24}
-                              color="#FF3B30"
-                            />
-                          </Pressable>
                         )}
-                      </View>
-                    );
-                  }
-                )}
-              </View>
 
-              {/* Add another profile */}
-              {canAddProfile && (
-                <Pressable
-                  onPress={
-                    handleAddProfile
-                  }
-                  style={
-                    styles.addProfileButton
-                  }
-                >
-                  <View
-                    style={
-                      styles.addIconCircle
-                    }
-                  >
-                    <Icon
-                      name="plus"
-                      size={28}
-                      color={C.TERRACOTTA}
-                    />
+                        <Text style={styles.profileMeta} numberOfLines={1}>
+                          {formatProfileInfo(profile)}
+                        </Text>
+                      </View>
+
+                      {/* Action */}
+                      {isDeleting ? (
+                        <ActivityIndicator size="small" color={C.PLUM} style={styles.actionButton} />
+                      ) : isActive ? (
+                        <View style={styles.actionButton}>
+                          <Icon name="chevron-right" size={22} color={C.MUTED} />
+                        </View>
+                      ) : (
+                        <Pressable
+                          onPress={() => handleDelete(profile.profile_id, profile.name || "this profile")}
+                          hitSlop={6}
+                          style={[styles.actionButton, styles.deleteButton]}
+                          accessibilityLabel={`Delete ${profile.name || "profile"}`}
+                        >
+                          <Icon name="trash-can-outline" size={19} color={C.DANGER} />
+                        </Pressable>
+                      )}
+                    </Pressable>
+                  </Reanimated.View>
+                );
+              })}
+            </View>
+
+            {/* Limit reached (only when the backend sets a limit) */}
+            {atLimit && (
+              <View style={styles.limitNote}>
+                <Icon name="information-outline" size={18} color={C.PLUM} />
+                <Text style={styles.limitNoteText}>
+                  You have reached the profile limit. Delete a profile to add someone else.
+                </Text>
+              </View>
+            )}
+
+            {/* Add another profile */}
+            {!atLimit && canAddProfile && (
+              <Reanimated.View entering={FadeInDown.delay(60 * profiles.length).duration(400)}>
+                <Pressable onPress={handleAddProfile} style={styles.addProfileButton}>
+                  <View style={styles.addIconCircle}>
+                    <Icon name="plus" size={24} color={C.CARD} />
                   </View>
 
-                  <View
-                    style={
-                      styles.addProfileTextContainer
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.addProfileTitle
-                      }
-                    >
-                      Add Another Profile
-                    </Text>
+                  <View style={styles.addProfileTextContainer}>
+                    <Text style={styles.addProfileTitle}>Add a loved one</Text>
+                    <Text style={styles.addProfileSubtitle}>For family and friends</Text>
+                  </View>
 
-                    <Text
-                      style={
-                        styles.addProfileSubtitle
-                      }
-                    >
-                      {needsPayment
-                        ? `₹${pricing.price} from your wallet · For family and loved ones`
-                        : `Free · ${freeLeft} left · For family and loved ones`}
-                    </Text>
+                  <View style={styles.addPricePill}>
+                    {needsPayment ? (
+                      <>
+                        {pricing.oldPrice > pricing.price && (
+                          <Text style={styles.priceOld}>{`₹${pricing.oldPrice}`}</Text>
+                        )}
+                        <Text style={styles.priceNow}>{`₹${pricing.price}`}</Text>
+                        {offPercent > 0 && (
+                          <View style={styles.offBadge}>
+                            <Text style={styles.offText}>{`${offPercent}% OFF`}</Text>
+                          </View>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.priceNow}>{freeLeft > 1 ? `Free · ${freeLeft} left` : "Free"}</Text>
+                    )}
                   </View>
                 </Pressable>
-              )}
+              </Reanimated.View>
+            )}
 
-              {/* Add funds: only when another profile can't be added yet */}
-              {!canAddProfile && (
-              <View style={styles.infoSection}>
-
-                {/* Illustration container */}
-                <View
-                  style={
-                    styles.illustrationContainer
-                  }
-                >
-                  <ImageBackground
-                    source={MANAGE_PROFILE_BOTTOM}
-                    resizeMode="cover"
-                    style={
-                      styles.illustrationImage
-                    }
-                    imageStyle={
-                      styles.illustrationImageStyle
-                    }
-                  />
+            {/* Add funds: only when another profile can't be added yet */}
+            {!atLimit && !canAddProfile && (
+              <Reanimated.View entering={FadeInDown.delay(60 * profiles.length).duration(400)} style={styles.fundsCard}>
+                <View style={styles.fundsRing} />
+                <View style={styles.fundsIcon}>
+                  <Icon name="wallet-outline" size={22} color={C.CARD} />
                 </View>
 
-                {/* Text + button container */}
-                <View
-                  style={styles.infoContent}
-                >
-                  <Text
-                    style={styles.infoTitle}
-                  >
-                    {`Add ₹${pricing.price} to create another profile.`}
-                  </Text>
+                <Text style={styles.fundsTitle}>Add a loved one for ₹{pricing.price}</Text>
+                <Text style={styles.fundsText}>
+                  {`Your first profile for a loved one is free; each one after that costs ${priceText}. Your wallet has ₹${(pricing.credits ?? 0).toFixed(2)}.`}
+                </Text>
 
-                  <Text
-                    style={styles.infoText}
-                  >
-                    {`You can add ${freeExtra} profiles for free; each one after that costs ₹${pricing.price}. Your wallet has ₹${(pricing.credits ?? 0).toFixed(2)}.`}
-                  </Text>
+                <Pressable onPress={() => router.push("/wallet")} style={styles.addFundsButton}>
+                  <Text style={styles.addFundsText}>Add money</Text>
+                  <Icon name="arrow-right" size={18} color={C.PLUM} />
+                </Pressable>
+              </Reanimated.View>
+            )}
 
-                  <Pressable
-                    onPress={() =>
-                      router.push("/wallet")
-                    }
-                    style={
-                      styles.addFundsButton
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.addFundsText
-                      }
-                    >
-                      Add Funds
-                    </Text>
+            <View style={styles.footNote}>
+              <Icon name="shield-check-outline" size={14} color={C.MUTED} />
+              <Text style={styles.footNoteText}>Tap a profile to edit it. Switch profiles from the top bar.</Text>
+            </View>
+          </>
+        )}
+      </ScrollView>
 
-                    <Icon
-                      name="arrow-right"
-                      size={22}
-                      color="#FFFFFF"
-                    />
-                  </Pressable>
-                </View>
-              </View>
-              )}
+      {/* Paid profile: confirm, or add money first */}
+      <BottomSheet visible={paySheet} onClose={() => setPaySheet(false)}>
+        <View style={styles.sheetIcon}>
+          <Icon name={canAddProfile ? "account-heart-outline" : "wallet-outline"} size={26} color={C.PLUM} />
+        </View>
+        <Text style={styles.sheetTitle}>{canAddProfile ? "Add a loved one" : "Add money to continue"}</Text>
+        <Text style={styles.sheetText}>
+          {canAddProfile
+            ? "Your free profile is used. This one is a one-time charge from your wallet."
+            : `A new profile costs ₹${pricing.price}. Add money to your wallet to create it.`}
+        </Text>
+
+        <View style={styles.sheetPriceRow}>
+          {pricing.oldPrice > pricing.price && <Text style={styles.sheetPriceOld}>₹{pricing.oldPrice}</Text>}
+          <Text style={styles.sheetPrice}>₹{pricing.price}</Text>
+          {offPercent > 0 && (
+            <View style={styles.offBadge}>
+              <Text style={styles.offText}>{offPercent}% OFF</Text>
+            </View>
+          )}
+        </View>
+
+        {pricing.credits !== null && (
+          <View style={styles.sheetBalance}>
+            <Icon name="wallet-outline" size={16} color={C.MUTED} />
+            <Text style={styles.sheetBalanceText}>Wallet balance</Text>
+            <Text style={[styles.sheetBalanceValue, !canAddProfile && { color: C.DANGER }]}>
+              ₹{pricing.credits.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        <Pressable
+          onPress={() =>
+            closeThen(() => router.push(canAddProfile ? "/profile/add-profile" : "/wallet"))
+          }
+          style={styles.sheetPrimary}
+        >
+          <Text style={styles.sheetPrimaryText}>
+            {canAddProfile ? `Continue · ₹${pricing.price}` : "Add money"}
+          </Text>
+          <Icon name="arrow-right" size={18} color={C.CARD} />
+        </Pressable>
+        <Pressable onPress={() => setPaySheet(false)} style={styles.sheetSecondary}>
+          <Text style={styles.sheetSecondaryText}>Not now</Text>
+        </Pressable>
+      </BottomSheet>
+
+      {/* Delete a profile */}
+      <BottomSheet visible={!!deleteTarget} onClose={() => !deletingId && setDeleteTarget(null)}>
+        <View style={styles.sheetAvatar}>
+          {deleteTarget?.avatar ? (
+            <Image source={{ uri: deleteTarget.avatar }} style={styles.profileAvatarImage} />
+          ) : (
+            <Text style={styles.profileAvatarText}>{getInitial(deleteTarget?.name)}</Text>
+          )}
+        </View>
+        <Text style={styles.sheetTitle}>Delete {deleteTarget?.name}&apos;s profile?</Text>
+        <Text style={styles.sheetText}>
+          Their birth details, horoscope and reports on this profile will be removed. This can&apos;t be undone.
+        </Text>
+
+        <Pressable
+          disabled={!!deletingId}
+          onPress={() => deleteTarget && deleteProfile(deleteTarget.id, deleteTarget.name)}
+          style={[styles.sheetPrimary, styles.sheetDanger]}
+        >
+          {deletingId ? (
+            <ActivityIndicator color={C.CARD} />
+          ) : (
+            <>
+              <Icon name="trash-can-outline" size={18} color={C.CARD} />
+              <Text style={styles.sheetPrimaryText}>Delete profile</Text>
             </>
           )}
-        </ScrollView>
-      </View>
-    </ImageBackground>
+        </Pressable>
+        <Pressable disabled={!!deletingId} onPress={() => setDeleteTarget(null)} style={styles.sheetSecondary}>
+          <Text style={styles.sheetSecondaryText}>Keep profile</Text>
+        </Pressable>
+      </BottomSheet>
+    </View>
   );
 }
 
+const shadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.07,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 3,
+};
+
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-
-  backgroundImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-
-  content: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
 
   /* Header */
-
-  header: {
-    minHeight: 92,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  title: {
-    fontSize: 24,
-    lineHeight: 29,
-    fontWeight: "700",
-    color: C.INK,
-  },
-
-  subtitle: {
-    marginTop: 5,
-    fontSize: 13,
-    color: "#7E7485",
-  },
-
-  editButton: {
-    paddingTop: 4,
-    paddingLeft: 14,
-  },
-
-  editText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: C.PLUM,
-  },
-
-  /* Loading */
-
-  loading: {
-    minHeight: 280,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-    color: C.MUTED,
-  },
-
-  /* Profile list */
-
-  profileList: {
-    gap: 10,
-  },
-
-  profileCard: {
-    minHeight: 72,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: "#E5DDE6",
-    backgroundColor:
-      "rgba(255,255,255,0.72)",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 13,
-  },
-
-  activeProfileCard: {
-    borderColor: "#E6A078",
-    backgroundColor:
-      "rgba(255,255,255,0.82)",
-  },
-
-  profileAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#FCE3D0",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-
-  profileAvatarImage: {
-    width: 48,
-    height: 48,
-  },
-
-  secondAvatar: {
-    backgroundColor: "#FCE8D7",
-  },
-
-  profileAvatarText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: C.TERRACOTTA,
-  },
-
-  profileInfo: {
-    flex: 1,
-    marginLeft: 13,
-  },
-
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  profileName: {
-    maxWidth: "75%",
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.INK,
-  },
-
-  meText: {
-    marginLeft: 5,
-    fontSize: 13,
-    fontWeight: "600",
-    color: C.INK,
-  },
-
-  profileMeta: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#82798A",
-  },
-
-  arrowButton: {
-    width: 38,
-    height: 46,
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-
-  deleteButton: {
-    width: 38,
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  deleteIcon: {
-    width: 38,
-  },
-
-  /* Add profile */
-
-  addProfileButton: {
-    minHeight: 72,
-    marginTop: 10,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#E5B095",
-    backgroundColor:
-      "rgba(255,255,255,0.50)",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-  },
-
-  addIconCircle: {
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12 },
+  backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: C.TERRACOTTA,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
-
-  addProfileTextContainer: {
-    marginLeft: 13,
-  },
-
-  addProfileTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: C.TERRACOTTA,
-  },
-
-  addProfileSubtitle: {
-    marginTop: 3,
-    fontSize: 11,
-    color: "#8B7D88",
-  },
-
-  /* Bottom information section */
-
-  infoSection: {
-    marginTop: 16,
-    borderRadius: 13,
-    overflow: "hidden",
-    backgroundColor: "#FFFDFC",
-  },
-
-  /* Illustration container */
-
-  illustrationContainer: {
-    width: "100%",
-    height: 125,
-    overflow: "hidden",
-    backgroundColor: "#FFFDFC",
-  },
-
-  illustrationImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  illustrationImageStyle: {
-    width: "100%",
-    height: "100%",
-  },
-
-  /* Text + button container */
-
-  infoContent: {
-    width: "100%",
+  title: { fontSize: 21, fontWeight: "700", color: C.INK, letterSpacing: -0.3 },
+  subtitle: { marginTop: 1, fontSize: 12.5, color: C.MUTED },
+  editButton: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingTop: 7,
-    paddingBottom: 12,
-    backgroundColor: "#FFFDFC",
+    gap: 4,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
+  editText: { fontSize: 13, fontWeight: "700", color: C.PLUM },
 
-  infoTitle: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "700",
-    color: C.INK,
-    textAlign: "center",
+  content: { paddingHorizontal: 16 },
+
+  overline: { marginTop: 6, marginBottom: 10, fontSize: 11, fontWeight: "700", letterSpacing: 1.3, color: C.GOLD },
+
+  /* Loading */
+  loading: { minHeight: 280, alignItems: "center", justifyContent: "center" },
+  loadingText: { marginTop: 10, fontSize: 13, color: C.MUTED },
+
+  /* Profile list */
+  profileList: { gap: 10 },
+  profileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    ...shadow,
   },
+  activeProfileCard: { borderColor: C.PLUM, borderWidth: 1.5 },
 
-  infoText: {
-    marginTop: 4,
-    fontSize: 10.5,
-    lineHeight: 14,
-    color: "#817683",
-    textAlign: "center",
-    paddingHorizontal: 8,
+  avatarRing: { width: 56, height: 56, borderRadius: 28, padding: 3, borderWidth: 1.5, borderColor: C.LINE },
+  avatarRingActive: { borderColor: "rgba(196,154,74,0.85)" },
+  profileAvatar: {
+    flex: 1,
+    borderRadius: 25,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.SOFT,
   },
+  profileAvatarImage: { width: "100%", height: "100%" },
+  profileAvatarText: { fontSize: 19, fontWeight: "700", color: C.PLUM },
 
-  addFundsButton: {
-    width: "100%",
-    height: 42,
-    marginTop: 9,
-    borderRadius: 11,
+  profileInfo: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  profileName: { flexShrink: 1, fontSize: 15, fontWeight: "700", color: C.INK },
+  activePill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: C.PLUM },
+  activePillText: { fontSize: 9.5, fontWeight: "700", letterSpacing: 0.4, color: C.CARD },
+  relationText: { marginTop: 2, fontSize: 12, fontWeight: "600", color: "#8A6A2C" },
+  profileMeta: { marginTop: 2, fontSize: 12, color: C.MUTED },
+
+  actionButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  deleteButton: { borderRadius: 18, backgroundColor: "#F8E9E7" },
+
+  /* Limit note */
+  limitNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: C.SOFT,
+  },
+  limitNoteText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: C.INK },
+
+  /* Add profile */
+  addProfileButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "rgba(43,26,61,0.35)",
+    backgroundColor: "rgba(255,253,252,0.6)",
+  },
+  addIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: C.PLUM,
+  },
+  addProfileTextContainer: { flex: 1 },
+  addProfileTitle: { fontSize: 15, fontWeight: "700", color: C.INK },
+  addProfileSubtitle: { marginTop: 2, fontSize: 12, color: C.MUTED },
+  addPricePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F6EEDD",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.45)",
+  },
+  offBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#E6F2EA",
+  },
+  offText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3, color: "#2E7D4F" },
+  priceOld: { fontSize: 11, color: C.MUTED, textDecorationLine: "line-through" },
+  priceNow: { fontSize: 12, fontWeight: "700", color: "#7A5A1E" },
+
+  /* Add funds */
+  fundsCard: {
+    marginTop: 12,
+    padding: 18,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: C.PLUM,
+    ...shadow,
+    shadowOpacity: 0.22,
+  },
+  fundsRing: {
+    position: "absolute",
+    top: -60,
+    right: -40,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,252,0.12)",
+  },
+  fundsIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,253,252,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.5)",
+  },
+  fundsTitle: { marginTop: 12, fontSize: 16, fontWeight: "700", color: C.CARD },
+  fundsText: { marginTop: 4, fontSize: 12.5, lineHeight: 18, color: "rgba(255,253,252,0.75)" },
+  addFundsButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 14,
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+  },
+  addFundsText: { fontSize: 13.5, fontWeight: "700", color: C.PLUM },
+
+  /* Sheets */
+  sheetIcon: {
+    alignSelf: "center",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.SOFT,
+  },
+  sheetAvatar: {
+    alignSelf: "center",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.SOFT,
+    borderWidth: 2,
+    borderColor: "rgba(196,154,74,0.6)",
+  },
+  sheetTitle: { marginTop: 14, fontSize: 19, fontWeight: "700", color: C.INK, textAlign: "center" },
+  sheetText: { marginTop: 6, fontSize: 13.5, lineHeight: 19, color: C.MUTED, textAlign: "center", paddingHorizontal: 8 },
+  sheetPriceRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 },
+  sheetPriceOld: { fontSize: 15, color: C.MUTED, textDecorationLine: "line-through" },
+  sheetPrice: { fontSize: 28, fontWeight: "700", color: C.PLUM },
+  sheetBalance: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: C.LAVENDER,
+  },
+  sheetBalanceText: { flex: 1, fontSize: 13, color: C.MUTED },
+  sheetBalanceValue: { fontSize: 14, fontWeight: "700", color: C.INK },
+  sheetPrimary: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 8,
+    height: 52,
+    marginTop: 18,
+    borderRadius: 999,
+    backgroundColor: C.PLUM,
   },
+  sheetDanger: { backgroundColor: C.DANGER },
+  sheetPrimaryText: { fontSize: 15, fontWeight: "700", color: C.CARD },
+  sheetSecondary: { alignItems: "center", paddingVertical: 14 },
+  sheetSecondaryText: { fontSize: 14, fontWeight: "600", color: C.MUTED },
 
-  addFundsText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
+  footNote: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 18 },
+  footNoteText: { fontSize: 11.5, color: C.MUTED },
 });

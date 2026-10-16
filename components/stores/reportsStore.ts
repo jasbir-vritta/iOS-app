@@ -260,12 +260,17 @@ export async function openReport(order?: ReportOrder | null): Promise<void> {
   }
 }
 
-/** Every report bought on this account, newest first (My Reports). */
-export async function loadReportHistory(): Promise<ReportOrder[]> {
+/**
+ * Reports bought for one profile, newest first (My Reports). Each profile
+ * sees only its own reports (incl. its partner / child reports).
+ */
+export async function loadReportHistory(profileId: string | undefined): Promise<ReportOrder[]> {
+  if (!profileId) return [];
   try {
     const res = await fetch(`${API_URL}/reports/history`, { headers: await authHeaders() });
     const json = await readJson(res);
-    return res.ok && Array.isArray(json?.reports) ? json.reports : [];
+    const rows: ReportOrder[] = res.ok && Array.isArray(json?.reports) ? json.reports : [];
+    return rows.filter((row) => String(row.profile_id) === String(profileId));
   } catch (error) {
     console.warn("Failed to load report history:", error);
     return [];

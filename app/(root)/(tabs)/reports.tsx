@@ -136,11 +136,13 @@ function Price({ report, big = false }: { report: Report; big?: boolean }) {
 /* Entry to My Reports: only shown once the account has bought a report. */
 function MyReportsCard() {
   const [count, setCount] = useState(0);
+  const profileId = useUserStore((state) => state.user?.active_profile_id);
 
+  // The selected profile's reports only.
   useFocusEffect(
     useCallback(() => {
-      void loadReportHistory().then((rows) => setCount(rows.length));
-    }, [])
+      void loadReportHistory(profileId).then((rows) => setCount(rows.length));
+    }, [profileId])
   );
 
   if (count === 0) return null;

@@ -17,6 +17,8 @@ export type Profile = {
   lon: string;
   tzone: string;
   maritalStatus?: string;
+  // How the profile is related to the user (RELATIONS in add-profile.tsx).
+  relation?: string;
   // Profile photo (public bucket URL), also shown on the leaderboard.
   avatar_url?: string | null;
 };

@@ -500,6 +500,17 @@ export default function TopBar() {
                     numberOfLines={1}
                   >
                     {profile.name}
+                    {/* Loved ones: "Sunita Devi (Parent)" */}
+                    {!!profile.relation && (
+                      <Text
+                        style={{
+                          fontWeight: "500",
+                          color: COLORS.MUTED,
+                        }}
+                      >
+                        {` (${profile.relation})`}
+                      </Text>
+                    )}
                   </Text>
 
                   {/* Selected */}

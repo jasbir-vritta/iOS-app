@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons as MIcon } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -8,15 +9,32 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { VrittaLogo } from "../../components/auth/VrittaLogo";
 
 import { Text } from "../../components/ui/BrandText";
 
 import { useUserStore } from "../../components/stores/userStore";
 import { track } from "../../lib/analytics";
 import { API_URL, authHeaders } from "../../lib/auth";
+
+const C = {
+  INK: "#1C1820",
+  PLUM: "#2B1A3D",
+  GOLD: "#C49A4A",
+  LAVENDER: "#F4F0F8",
+  CARD: "#FFFDFC",
+  MUTED: "#68616A",
+  LINE: "rgba(217,206,193,0.7)",
+  SOFT: "#EFE8F7",
+  SUCCESS: "#2E7D4F",
+};
 
 type PlaceResult = {
   id?: number;
@@ -34,6 +52,7 @@ const formatPlaceLabel = (place: PlaceResult) =>
   [place.name, place.admin1].filter(Boolean).join(", ");
 
 export default function Home() {
+  const insets = useSafeAreaInsets();
   const user = useUserStore((state) => state.user);
   const updateUser = useUserStore(
     (state) => state.updateUser
@@ -557,6 +576,10 @@ export default function Home() {
         "Failed to save user:",
         error
       );
+      Alert.alert(
+        "Couldn't save your details",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -564,385 +587,465 @@ export default function Home() {
 
   if (loadingUser) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#F4F0F8]">
-        <ActivityIndicator
-          size="large"
-          color="#2B1A3D"
-        />
+      <View style={[st.screen, st.loading]}>
+        <ActivityIndicator size="large" color={C.PLUM} />
       </View>
     );
   }
 
+  const genders = [
+    { value: "male", label: "Male", icon: "gender-male" },
+    { value: "female", label: "Female", icon: "gender-female" },
+  ] as const;
+
+  const languages = [
+    { value: "en", label: "English", glyph: "Aa" },
+    { value: "hi", label: "हिंदी", glyph: "अ" },
+  ];
+
+  // How many of the 6 details are filled (progress bar).
+  const filled = [name.trim(), gender, language, selectedLocation, dateOfBirth, hour && minute].filter(Boolean).length;
+
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-[#F4F0F8]"
-      behavior={
-        Platform.OS === "ios"
-          ? "padding"
-          : undefined
-      }
-    >
+    <KeyboardAvoidingView style={st.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingHorizontal: 20,
-          paddingTop: 55,
-          paddingBottom: 120,
-        }}
+        contentContainerStyle={[st.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 }]}
       >
-        {/* Header */}
-        <Text className="text-[36px] font-bold text-[#1C1820]">
-          Welcome
-        </Text>
+        {/* Welcome */}
+        <Reanimated.View entering={FadeInDown.duration(450)} style={st.hero}>
+          <View style={st.heroRing} />
+          <View style={st.heroRingInner} />
+          <Text style={[st.heroStar, { top: 20, right: 34 }]}>✦</Text>
+          <Text style={[st.heroStar, { bottom: 26, right: 96, fontSize: 9 }]}>✦</Text>
 
-        <Text className="mt-2 text-[16px] text-[#68616A]">
-          Enter your birth details to get started.
-        </Text>
-
-        {/* Name */}
-        <View className="mt-8">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Name
-          </Text>
-
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter your name"
-            placeholderTextColor="#68616A"
-            className="h-[56px] rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC] px-4 text-[16px] text-[#1C1820]"
-          />
-        </View>
-
-        {/* Gender */}
-        <View className="mt-5">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Gender
-          </Text>
-
-          <View className="flex-row gap-3">
-            <Pressable
-              onPress={() =>
-                setGender("male")
-              }
-              className={`h-[56px] flex-1 items-center justify-center rounded-2xl border ${
-                gender === "male"
-                  ? "border-[#2B1A3D] bg-[#2B1A3D]"
-                  : "border-[#D9CEC1] bg-[#FFFDFC]"
-              }`}
-            >
-              <Text
-                className={`text-[16px] font-semibold ${
-                  gender === "male"
-                    ? "text-white"
-                    : "text-[#1C1820]"
-                }`}
-              >
-                Male
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() =>
-                setGender("female")
-              }
-              className={`h-[56px] flex-1 items-center justify-center rounded-2xl border ${
-                gender === "female"
-                  ? "border-[#2B1A3D] bg-[#2B1A3D]"
-                  : "border-[#D9CEC1] bg-[#FFFDFC]"
-              }`}
-            >
-              <Text
-                className={`text-[16px] font-semibold ${
-                  gender === "female"
-                    ? "text-white"
-                    : "text-[#1C1820]"
-                }`}
-              >
-                Female
-              </Text>
-            </Pressable>
+          <View style={st.logo}>
+            <VrittaLogo size={30} />
           </View>
-        </View>
-
-        {/* Language */}
-        <View className="mt-5">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Language
+          <Text style={st.heroTitle}>Welcome to Vritta</Text>
+          <Text style={st.heroText}>
+            Share your birth details once. We use them for your Kundli, daily guidance and every reading.
           </Text>
 
-          <View className="flex-row gap-3">
-            <Pressable
-              onPress={() =>
-                setLanguage("en")
-              }
-              className={`h-[56px] flex-1 items-center justify-center rounded-2xl border ${
-                language === "en"
-                  ? "border-[#2B1A3D] bg-[#2B1A3D]"
-                  : "border-[#D9CEC1] bg-[#FFFDFC]"
-              }`}
-            >
-              <Text
-                className={`text-[16px] font-semibold ${
-                  language === "en"
-                    ? "text-white"
-                    : "text-[#1C1820]"
-                }`}
-              >
-                English
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() =>
-                setLanguage("hi")
-              }
-              className={`h-[56px] flex-1 items-center justify-center rounded-2xl border ${
-                language === "hi"
-                  ? "border-[#2B1A3D] bg-[#2B1A3D]"
-                  : "border-[#D9CEC1] bg-[#FFFDFC]"
-              }`}
-            >
-              <Text
-                className={`text-[16px] font-semibold ${
-                  language === "hi"
-                    ? "text-white"
-                    : "text-[#1C1820]"
-                }`}
-              >
-                Hindi
-              </Text>
-            </Pressable>
+          <View style={st.progressRow}>
+            <View style={st.progressTrack}>
+              <View style={[st.progressFill, { width: `${(filled / 6) * 100}%` }]} />
+            </View>
+            <Text style={st.progressText}>{filled}/6</Text>
           </View>
-        </View>
+        </Reanimated.View>
 
-        {/* Place of Birth */}
-        <View className="mt-5">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Place of Birth
-          </Text>
+        {/* About you */}
+        <Reanimated.View entering={FadeInDown.delay(90).duration(420)} style={st.card}>
+          <View style={st.cardHead}>
+            <View style={st.cardIcon}>
+              <MIcon name="account-outline" size={18} color={C.PLUM} />
+            </View>
+            <Text style={st.cardTitle}>About you</Text>
+          </View>
 
-          <TextInput
-            value={placeOfBirth}
-            onChangeText={(value) => {
-              setPlaceOfBirth(value);
+          <Text style={st.label}>Your name</Text>
+          <View style={st.inputRow}>
+            <MIcon name="account-outline" size={19} color={C.MUTED} />
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name"
+              placeholderTextColor={C.MUTED}
+              style={st.inputText}
+            />
+          </View>
 
-              if (
-                selectedLocation &&
-                value !==
-                  formatPlaceLabel(selectedLocation)
-              ) {
-                setSelectedLocation(
-                  null
-                );
-              }
-            }}
-            placeholder="Enter your place of birth"
-            placeholderTextColor="#68616A"
-            autoCorrect={false}
-            autoCapitalize="words"
-            className="h-[56px] rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC] px-4 text-[16px] text-[#1C1820]"
-          />
+          <Text style={st.label}>Gender</Text>
+          <View style={st.segment}>
+            {genders.map((option) => {
+              const selected = gender === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setGender(option.value)}
+                  style={[st.segmentItem, selected && st.segmentItemActive]}
+                >
+                  <MIcon name={option.icon} size={16} color={selected ? C.CARD : C.MUTED} />
+                  <Text style={[st.segmentText, selected && st.segmentTextActive]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-          {/* Place loading */}
-          {searchingPlaces && (
-            <View className="mt-2 rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC] px-4 py-4">
-              <View className="flex-row items-center">
-                <ActivityIndicator
-                  size="small"
-                  color="#2B1A3D"
-                />
+          <Text style={st.label}>App language</Text>
+          <View style={st.langRow}>
+            {languages.map((option) => {
+              const selected = language === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setLanguage(option.value)}
+                  style={[st.langCard, selected && st.langCardActive]}
+                >
+                  <View style={[st.glyph, selected && st.glyphActive]}>
+                    <Text style={[st.glyphText, selected && { color: C.CARD }]}>{option.glyph}</Text>
+                  </View>
+                  <Text style={st.langText}>{option.label}</Text>
+                  {selected && <MIcon name="check-circle" size={18} color={C.PLUM} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Reanimated.View>
 
-                <Text className="ml-3 text-[15px] text-[#68616A]">
-                  Finding places...
-                </Text>
-              </View>
+        {/* Birth details */}
+        <Reanimated.View entering={FadeInDown.delay(180).duration(420)} style={st.card}>
+          <View style={st.cardHead}>
+            <View style={st.cardIcon}>
+              <MIcon name="star-four-points-outline" size={17} color={C.PLUM} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.cardTitle}>Birth details</Text>
+              <Text style={st.cardSub}>The exact time and place make your Kundli accurate</Text>
+            </View>
+          </View>
+
+          {/* Place of Birth */}
+          <Text style={st.label}>Place of birth</Text>
+          <View style={st.inputRow}>
+            <MIcon name="map-marker-outline" size={19} color={C.MUTED} />
+            <TextInput
+              value={placeOfBirth}
+              onChangeText={(value) => {
+                setPlaceOfBirth(value);
+                if (selectedLocation && value !== formatPlaceLabel(selectedLocation)) {
+                  setSelectedLocation(null);
+                }
+              }}
+              placeholder="Search your birth city"
+              placeholderTextColor={C.MUTED}
+              autoCorrect={false}
+              autoCapitalize="words"
+              style={st.inputText}
+            />
+            {searchingPlaces ? (
+              <ActivityIndicator size="small" color={C.PLUM} />
+            ) : selectedLocation ? (
+              <MIcon name="check-circle" size={18} color={C.SUCCESS} />
+            ) : null}
+          </View>
+
+          {!searchingPlaces && placeSuggestions.length > 0 && (
+            <View style={st.suggestions}>
+              {placeSuggestions.map((place, index) => (
+                <Pressable
+                  key={`${place.latitude}-${place.longitude}-${index}`}
+                  onPress={() => handleSelectPlace(place)}
+                  style={[st.suggestion, index < placeSuggestions.length - 1 && st.suggestionBorder]}
+                >
+                  <MIcon name="map-marker" size={16} color={C.GOLD} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.suggestionTitle}>{place.name}</Text>
+                    <Text style={st.suggestionSub}>{formatPlaceSubtitle(place)}</Text>
+                  </View>
+                  <MIcon name="chevron-right" size={18} color={C.MUTED} />
+                </Pressable>
+              ))}
             </View>
           )}
 
-          {/* Place suggestions */}
-          {!searchingPlaces &&
-            placeSuggestions.length >
-              0 && (
-              <View className="mt-2 overflow-hidden rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC]">
-                {placeSuggestions.map(
-                  (
-                    place,
-                    index
-                  ) => (
-                    <Pressable
-                      key={`${place.latitude}-${place.longitude}-${index}`}
-                      onPress={() =>
-                        handleSelectPlace(
-                          place
-                        )
-                      }
-                      className={`px-4 py-4 ${
-                        index !==
-                        placeSuggestions.length -
-                          1
-                          ? "border-b border-[#D9CEC1]"
-                          : ""
-                      }`}
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-1 pr-3">
-                          <Text className="text-[17px] font-medium text-[#1C1820]">
-                            {
-                              place.name
-                            }
-                          </Text>
+          {/* Date + Time */}
+          <View style={st.twoCol}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.label}>Date of birth</Text>
+              <Pressable
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setShowDatePicker(true);
+                }}
+                style={[st.inputRow, showDatePicker && st.inputRowActive]}
+              >
+                <MIcon name="calendar-month-outline" size={18} color={C.MUTED} />
+                <Text style={[st.inputText, !dateOfBirth && { color: C.MUTED }]} numberOfLines={1}>
+                  {dateOfBirth || "Select"}
+                </Text>
+              </Pressable>
+            </View>
 
-                          <Text className="mt-1 text-[14px] text-[#68616A]">
-                            {formatPlaceSubtitle(
-                              place
-                            )}
-                          </Text>
-                        </View>
-
-                        <Text className="text-[24px] text-[#68616A]">
-                          ↗
-                        </Text>
-                      </View>
-                    </Pressable>
-                  )
-                )}
-              </View>
-            )}
-        </View>
-
-        {/* Date of Birth */}
-        <View className="mt-5">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Date of Birth
-          </Text>
-
-          <Pressable
-            onPress={() =>
-              setShowDatePicker(true)
-            }
-            className="h-[56px] justify-center rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC] px-4"
-          >
-            <Text
-              className={`text-[16px] ${
-                dateOfBirth
-                  ? "text-[#1C1820]"
-                  : "text-[#68616A]"
-              }`}
-            >
-              {dateOfBirth ||
-                "Select date of birth"}
-            </Text>
-          </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={st.label}>Time of birth</Text>
+              <Pressable
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setShowTimePicker(true);
+                }}
+                style={[st.inputRow, showTimePicker && st.inputRowActive]}
+              >
+                <MIcon name="clock-outline" size={18} color={C.MUTED} />
+                <Text style={[st.inputText, !displayTime && { color: C.MUTED }]} numberOfLines={1}>
+                  {displayTime || "Select"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
           {showDatePicker && (
-            <View className="mt-3 overflow-hidden rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC]">
+            <View style={st.pickerContainer}>
               <DateTimePicker
                 value={getDateValue()}
                 mode="date"
                 display="spinner"
                 themeVariant="light"
-                maximumDate={
-                  new Date()
-                }
-                onChange={
-                  handleDateChange
-                }
+                textColor={C.INK}
+                maximumDate={new Date()}
+                onChange={handleDateChange}
               />
-
-              <Pressable
-                onPress={() =>
-                  setShowDatePicker(
-                    false
-                  )
-                }
-                className="border-t border-[#D9CEC1] py-4"
-              >
-                <Text className="text-center text-[17px] font-semibold text-[#2B1A3D]">
-                  Done
-                </Text>
+              <Pressable onPress={() => setShowDatePicker(false)} style={st.pickerDone}>
+                <Text style={st.pickerDoneText}>Done</Text>
               </Pressable>
             </View>
           )}
-        </View>
-
-        {/* Time of Birth */}
-        <View className="mt-5">
-          <Text className="mb-2 text-[15px] font-semibold text-[#1C1820]">
-            Time of Birth
-          </Text>
-
-          <Pressable
-            onPress={() =>
-              setShowTimePicker(true)
-            }
-            className="h-[56px] justify-center rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC] px-4"
-          >
-            <Text
-              className={`text-[16px] ${
-                displayTime
-                  ? "text-[#1C1820]"
-                  : "text-[#68616A]"
-              }`}
-            >
-              {displayTime ||
-                "Select time of birth"}
-            </Text>
-          </Pressable>
 
           {showTimePicker && (
-            <View className="mt-3 overflow-hidden rounded-2xl border border-[#D9CEC1] bg-[#FFFDFC]">
+            <View style={st.pickerContainer}>
               <DateTimePicker
                 value={getTimeValue()}
                 mode="time"
                 display="spinner"
                 themeVariant="light"
-                textColor="#1C1820"
-                onChange={
-                  handleTimeChange
-                }
+                textColor={C.INK}
+                onChange={handleTimeChange}
               />
-
-              <Pressable
-                onPress={() =>
-                  setShowTimePicker(
-                    false
-                  )
-                }
-                className="border-t border-[#D9CEC1] py-4"
-              >
-                <Text className="text-center text-[17px] font-semibold text-[#2B1A3D]">
-                  Done
-                </Text>
+              <Pressable onPress={() => setShowTimePicker(false)} style={st.pickerDone}>
+                <Text style={st.pickerDoneText}>Done</Text>
               </Pressable>
             </View>
           )}
 
-          <Text className="mt-2 text-[13px] text-[#68616A]">
-            Select your exact birth time.
-          </Text>
-        </View>
+          <View style={st.tip}>
+            <MIcon name="information-outline" size={15} color={C.PLUM} />
+            <Text style={st.tipText}>Not sure of the time? Use the closest time you know.</Text>
+          </View>
+        </Reanimated.View>
 
         {/* Save */}
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          className={`mt-8 h-[56px] items-center justify-center rounded-2xl ${
-            saving
-              ? "bg-[#68616A]"
-              : "bg-[#2B1A3D]"
-          }`}
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text className="text-[17px] font-bold text-white">
-              Save Details
-            </Text>
-          )}
-        </Pressable>
+        <Reanimated.View entering={FadeInDown.delay(260).duration(420)}>
+          <Pressable onPress={handleSave} disabled={saving} style={[st.save, saving && { opacity: 0.6 }]}>
+            {saving ? (
+              <ActivityIndicator color={C.CARD} />
+            ) : (
+              <>
+                <Text style={st.saveText}>Continue</Text>
+                <MIcon name="arrow-right" size={19} color={C.CARD} />
+              </>
+            )}
+          </Pressable>
+          <View style={st.footRow}>
+            <MIcon name="shield-check-outline" size={14} color={C.MUTED} />
+            <Text style={st.footText}>Your birth details stay private to your account</Text>
+          </View>
+        </Reanimated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const shadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.07,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 3,
+};
+
+const st = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
+  loading: { alignItems: "center", justifyContent: "center" },
+  content: { paddingHorizontal: 16, gap: 14 },
+
+  /* Welcome */
+  hero: {
+    padding: 20,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: C.PLUM,
+    ...shadow,
+    shadowOpacity: 0.22,
+  },
+  heroRing: {
+    position: "absolute",
+    top: -70,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,252,0.12)",
+  },
+  heroRingInner: {
+    position: "absolute",
+    top: -34,
+    right: -14,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,253,252,0.16)",
+  },
+  heroStar: { position: "absolute", color: C.GOLD, fontSize: 13 },
+  logo: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,253,252,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.5)",
+  },
+  heroTitle: { marginTop: 14, fontSize: 26, fontWeight: "700", color: C.CARD, letterSpacing: -0.4 },
+  heroText: { marginTop: 6, fontSize: 13.5, lineHeight: 20, color: "rgba(255,253,252,0.75)" },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: "rgba(255,253,252,0.15)", overflow: "hidden" },
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: C.GOLD },
+  progressText: { fontSize: 12, fontWeight: "700", color: "#F3DFB4" },
+
+  /* Cards */
+  card: {
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    ...shadow,
+  },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 },
+  cardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.SOFT,
+  },
+  cardTitle: { fontSize: 15.5, fontWeight: "700", color: C.INK },
+  cardSub: { marginTop: 1, fontSize: 11.5, color: C.MUTED },
+
+  label: { marginTop: 14, marginBottom: 6, fontSize: 12, fontWeight: "600", color: C.INK },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  inputRowActive: { borderColor: C.PLUM, backgroundColor: C.CARD },
+  inputText: { flex: 1, fontSize: 14, color: C.INK, paddingVertical: 0 },
+  twoCol: { flexDirection: "row", gap: 10 },
+
+  segment: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: "#F6F2F9",
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  segmentItem: {
+    flex: 1,
+    height: 40,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  segmentItemActive: { backgroundColor: C.PLUM },
+  segmentText: { fontSize: 13.5, fontWeight: "600", color: C.MUTED },
+  segmentTextActive: { color: C.CARD },
+
+  langRow: { flexDirection: "row", gap: 10 },
+  langCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderRadius: 16,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  langCardActive: { borderColor: C.PLUM, borderWidth: 1.5, backgroundColor: C.CARD },
+  glyph: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F7F1E8",
+  },
+  glyphActive: { backgroundColor: C.PLUM },
+  glyphText: { fontSize: 15, fontWeight: "700", color: C.PLUM },
+  langText: { flex: 1, fontSize: 14, fontWeight: "700", color: C.INK },
+
+  suggestions: {
+    marginTop: 8,
+    borderRadius: 14,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    overflow: "hidden",
+  },
+  suggestion: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11 },
+  suggestionBorder: { borderBottomWidth: 1, borderBottomColor: "#EFE9F2" },
+  suggestionTitle: { fontSize: 13.5, fontWeight: "600", color: C.INK },
+  suggestionSub: { marginTop: 1, fontSize: 11.5, color: C.MUTED },
+
+  pickerContainer: {
+    marginTop: 10,
+    borderRadius: 16,
+    backgroundColor: "#FBF9FC",
+    borderWidth: 1,
+    borderColor: C.LINE,
+    overflow: "hidden",
+  },
+  pickerDone: {
+    alignSelf: "flex-end",
+    margin: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: C.PLUM,
+  },
+  pickerDoneText: { fontSize: 13, fontWeight: "700", color: C.CARD },
+
+  tip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: C.SOFT,
+  },
+  tipText: { flex: 1, fontSize: 12, color: C.INK },
+
+  save: {
+    height: 54,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.PLUM,
+    ...shadow,
+    shadowOpacity: 0.2,
+  },
+  saveText: { fontSize: 16, fontWeight: "700", color: C.CARD },
+  footRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10 },
+  footText: { fontSize: 12, color: C.MUTED },
+});

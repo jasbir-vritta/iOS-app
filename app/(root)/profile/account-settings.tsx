@@ -1,4 +1,5 @@
-import { MaterialCommunityIcons as Icon, Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -10,9 +11,10 @@ import {
   Switch,
   View,
 } from "react-native";
+import Reanimated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "../../../components/ui/BrandText";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   getNotificationsEnabled,
@@ -22,17 +24,21 @@ import {
 const C = {
   INK: "#1C1820",
   PLUM: "#2B1A3D",
-  TERRACOTTA: "#A94C36",
-  IVORY: "#F7F1E8",
+  GOLD: "#C49A4A",
+  LAVENDER: "#F4F0F8",
   CARD: "#FFFDFC",
   MUTED: "#68616A",
   BORDER: "#D9CEC1",
-  LAV_TINT: "#EFE8F7",
-  PEACH_TINT: "#FBEBE4",
-  SOFT_LINE: "#EEE7F4",
+  LINE: "rgba(217,206,193,0.7)",
+  SOFT: "#EFE8F7",
+  DANGER: "#B3392F",
+  DANGER_TINT: "#F8E9E7",
 };
 
+type IconName = React.ComponentProps<typeof Icon>["name"];
+
 export default function AccountSettings() {
+  const insets = useSafeAreaInsets();
   const [notificationsOn, setNotificationsOn] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -62,109 +68,145 @@ export default function AccountSettings() {
     }
   };
 
-  return (
-    <SafeAreaView style={s.root} edges={["top", "bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.IVORY} />
+  const version = Constants.expoConfig?.version;
 
+  return (
+    <View style={[s.root, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" />
+
+      {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.back}>
-          <Ionicons name="chevron-back" size={25} color={C.INK} />
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+          <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
-        <Text style={s.headerTitle}>Account Settings</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Account settings</Text>
+          <Text style={s.subtitle}>Notifications and your account</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={s.content}>
-        {/* NOTIFICATIONS */}
-        <Text style={s.sectionTitle}>Notifications</Text>
-
-        <View style={s.card}>
-          <View style={s.row}>
-            <View style={[s.icon, { backgroundColor: C.LAV_TINT }]}>
-              <Icon name="bell-outline" size={22} color={C.PLUM} />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 32 }]}
+      >
+        {/* Notifications */}
+        <Reanimated.View entering={FadeInDown.duration(380)}>
+          <Text style={s.overline}>NOTIFICATIONS</Text>
+          <View style={s.card}>
+            <View style={s.row}>
+              <View style={[s.icon, { backgroundColor: C.SOFT }]}>
+                <Icon name="bell-outline" size={21} color={C.PLUM} />
+              </View>
+              <View style={s.rowText}>
+                <Text style={s.rowTitle}>Push notifications</Text>
+                <Text style={s.rowSub}>Daily mantra reminders and important updates</Text>
+              </View>
+              <Switch
+                value={notificationsOn}
+                onValueChange={toggleNotifications}
+                disabled={saving}
+                trackColor={{ false: C.BORDER, true: C.PLUM }}
+                thumbColor={C.CARD}
+                ios_backgroundColor={C.BORDER}
+              />
             </View>
+          </View>
+        </Reanimated.View>
 
-            <View style={s.rowText}>
-              <Text style={s.rowTitle}>Push notifications</Text>
-              <Text style={s.rowSub}>Daily mantra and important updates.</Text>
-            </View>
-
-            <Switch
-              value={notificationsOn}
-              onValueChange={toggleNotifications}
-              disabled={saving}
-              trackColor={{ false: C.BORDER, true: C.PLUM }}
-              thumbColor={C.CARD}
+        {/* Account */}
+        <Reanimated.View entering={FadeInDown.delay(70).duration(380)}>
+          <Text style={s.overline}>ACCOUNT</Text>
+          <View style={s.card}>
+            <LinkRow
+              icon="logout"
+              title="Log out"
+              sub="Sign out on this phone"
+              onPress={() => router.push("/(root)/profile/logout")}
+            />
+            <View style={s.divider} />
+            <LinkRow
+              icon="delete-outline"
+              title="Delete account"
+              sub="Permanently remove your account and data"
+              danger
+              onPress={() => router.push("/(root)/profile/delete-account")}
             />
           </View>
-        </View>
+        </Reanimated.View>
 
-        {/* ACCOUNT */}
-        <Text style={s.sectionTitle}>Account</Text>
-
-        <View style={s.card}>
-          <Pressable
-            style={s.row}
-            onPress={() => router.push("/(root)/profile/delete-account")}
-          >
-            <View style={[s.icon, { backgroundColor: C.PEACH_TINT }]}>
-              <Icon name="delete-outline" size={22} color={C.TERRACOTTA} />
-            </View>
-
-            <View style={s.rowText}>
-              <Text style={[s.rowTitle, { color: C.TERRACOTTA }]}>Delete account</Text>
-              <Text style={s.rowSub}>Permanently remove your account and data.</Text>
-            </View>
-
-            <Icon name="chevron-right" size={22} color={C.INK} />
-          </Pressable>
-        </View>
+        {!!version && <Text style={s.version}>Vritta · version {version}</Text>}
       </ScrollView>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+function LinkRow({
+  icon,
+  title,
+  sub,
+  danger = false,
+  onPress,
+}: {
+  icon: IconName;
+  title: string;
+  sub: string;
+  danger?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={s.row}>
+      <View style={[s.icon, { backgroundColor: danger ? C.DANGER_TINT : C.SOFT }]}>
+        <Icon name={icon} size={21} color={danger ? C.DANGER : C.PLUM} />
+      </View>
+      <View style={s.rowText}>
+        <Text style={[s.rowTitle, danger && { color: C.DANGER }]}>{title}</Text>
+        <Text style={s.rowSub}>{sub}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={C.MUTED} />
+    </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.IVORY },
+  root: { flex: 1, backgroundColor: C.LAVENDER },
 
-  header: {
-    height: 56,
-    flexDirection: "row",
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12 },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
-    paddingHorizontal: 16,
+    justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
-  back: { width: 42, height: 42, alignItems: "center", justifyContent: "center", marginLeft: -8 },
-  headerTitle: { marginLeft: 4, fontSize: 19, fontWeight: "700", color: C.PLUM },
+  title: { fontSize: 21, fontWeight: "700", color: C.INK, letterSpacing: -0.3 },
+  subtitle: { marginTop: 1, fontSize: 12.5, color: C.MUTED },
 
-  content: { paddingHorizontal: 16, paddingBottom: 32 },
+  content: { paddingHorizontal: 16 },
 
-  sectionTitle: {
-    marginTop: 18,
-    marginBottom: 8,
-    marginLeft: 4,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    color: C.MUTED,
-  },
+  overline: { marginTop: 18, marginBottom: 8, fontSize: 11, fontWeight: "700", letterSpacing: 1.3, color: C.GOLD },
 
   card: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: C.SOFT_LINE,
+    borderColor: C.LINE,
     backgroundColor: C.CARD,
     overflow: "hidden",
+    shadowColor: "#2B1A3D",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
+  divider: { height: 1, marginLeft: 68, backgroundColor: "#EFE9F2" },
 
-  row: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
+  row: { minHeight: 70, flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12 },
   icon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   rowText: { flex: 1, marginLeft: 12, marginRight: 8 },
   rowTitle: { fontSize: 15, fontWeight: "700", color: C.INK },
   rowSub: { marginTop: 2, fontSize: 12.5, color: C.MUTED },
+
+  version: { marginTop: 22, textAlign: "center", fontSize: 11.5, color: C.MUTED },
 });

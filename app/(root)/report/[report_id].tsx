@@ -51,17 +51,21 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const C = {
   ink: "#1C1820",
   plum: "#2B1A3D",
-  terracotta: "#A94C36",
+  soft: "#EFE8F7",
+  goldSoft: "#F6EEDD",
+  green: "#2E7D4F",
+  greenSoft: "#E6F2EA",
+  line: "rgba(217,206,193,0.7)",
   gold: "#C49A4A",
   card: "#FFFDFC",
   ivory: "#F7F1E8",
   secondary: "#68616A",
   border: "#D9CEC1",
-  peach: "#FCE4D6",
+  peach: "#EFE8F7",
   white: "#FFFFFF",
 };
 
-const PAGE_BG = "#FCF1E9";
+const PAGE_BG = "#F4F0F8";
 const FEATURE_WIDTH = (SCREEN_WIDTH - 24) / 4;
 const RELATED_WIDTH = (SCREEN_WIDTH - 32 - 10) / 2;
 const HERO_HEIGHT = SCREEN_WIDTH * 0.8;
@@ -105,8 +109,6 @@ type Report = {
 const reports = reportsData as Report[];
 
 // Shared empty values: store selectors must return the same object each
-// time, or React re-renders forever.
-const NO_NAMES: string[] = [];
 const NO_LANGUAGES: Record<string, string> = {};
 const NO_OPTIONS: ReportOptions = { languages: [], variants: [], needsPartner: false, needsChild: false };
 
@@ -119,7 +121,9 @@ function SectionTitle({
 }) {
   return (
     <View style={s.sectionHeading}>
-      <Icon name={icon as any} size={19} color={C.ink} />
+      <View style={s.sectionIcon}>
+        <Icon name={icon as any} size={16} color={C.plum} />
+      </View>
       <Text style={s.sectionTitle}>{title}</Text>
     </View>
   );
@@ -145,7 +149,7 @@ function CircleIcon({
         },
       ]}
     >
-      <Icon name={name as any} size={size} color={C.terracotta} />
+      <Icon name={name as any} size={size} color={C.plum} />
     </View>
   );
 }
@@ -302,11 +306,6 @@ export default function ReportDetailScreen() {
       ? state.byProfile[String(activeProfileId)]?.purchases?.[purchaseKey(report_id, variant)]
       : undefined
   );
-  const boughtForOthers = useReportsStore((state) =>
-    activeProfileId && report_id
-      ? state.byProfile[String(activeProfileId)]?.boughtForOthers?.[report_id] || NO_NAMES
-      : NO_NAMES
-  );
   const available = useReportsStore((state) =>
     activeProfileId && report_id
       ? state.byProfile[String(activeProfileId)]?.available?.[report_id] !== false
@@ -446,7 +445,7 @@ export default function ReportDetailScreen() {
         <Text style={s.notFoundTitle}>Report not found</Text>
 
         <Text style={s.notFoundText}>
-          We couldn't find this report.
+          We couldn&apos;t find this report.
         </Text>
 
         <Pressable
@@ -589,14 +588,15 @@ export default function ReportDetailScreen() {
       >
         <Pressable
           onPress={() => router.back()}
-          hitSlop={12}
+          hitSlop={10}
           style={s.backButton}
+          accessibilityLabel="Go back"
         >
-          <Icon name="arrow-left" size={23} color={C.ink} />
+          <Icon name="chevron-left" size={24} color={C.ink} />
         </Pressable>
 
         <View style={s.headerText}>
-          <Text style={s.headerTitle}>Reports</Text>
+          <Text style={s.headerTitle} numberOfLines={1}>Report</Text>
           <Text style={s.headerSubtitle}>
             Based on your kundli
           </Text>
@@ -604,7 +604,8 @@ export default function ReportDetailScreen() {
 
         {sampleUrl ? (
           <Pressable onPress={() => void previewSample()} style={s.previewButton}>
-            <Text style={s.previewText}>Preview</Text>
+            <Icon name="eye-outline" size={15} color={C.plum} />
+            <Text style={s.previewText}>Sample</Text>
           </Pressable>
         ) : null}
       </View>
@@ -652,19 +653,6 @@ export default function ReportDetailScreen() {
           </View>
         )}
 
-        {/* Bought for another profile, not this one */}
-        {!purchased && !preparing && boughtForOthers.length > 0 && (
-          <View style={s.otherHint}>
-            <Icon name="account-multiple-outline" size={20} color={C.plum} />
-            <Text style={s.otherHintText}>
-              You bought this for {boughtForOthers.join(", ")}.{" "}
-              {activeProfileName
-                ? `Get it for ${activeProfileName} too?`
-                : "Get it for this profile too?"}
-            </Text>
-          </View>
-        )}
-
         {/* Features */}
         {features.length > 0 && (
           <ScrollView
@@ -706,8 +694,8 @@ export default function ReportDetailScreen() {
                 <View style={s.questionIcon}>
                   <Icon
                     name="help"
-                    size={15}
-                    color={C.terracotta}
+                    size={14}
+                    color={C.plum}
                   />
                 </View>
 
@@ -793,7 +781,7 @@ export default function ReportDetailScreen() {
         {relatedReports.length > 0 && (
           <View style={s.relatedSection}>
             <Text style={s.relatedTitle}>
-              You may also like
+              YOU MAY ALSO LIKE
             </Text>
 
             <ScrollView
@@ -965,9 +953,9 @@ const s = StyleSheet.create({
   variantCard: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.line,
     backgroundColor: C.card,
     alignItems: "center",
   },
@@ -975,17 +963,6 @@ const s = StyleSheet.create({
   variantLabel: { color: C.ink, fontSize: 14, fontWeight: "700" },
   variantPrice: { color: C.secondary, fontSize: 13, marginTop: 2 },
   variantLabelOn: { color: C.white },
-  otherHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginHorizontal: 16,
-    marginTop: 14,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: "#EFE8F7",
-  },
-  otherHintText: { flex: 1, color: C.ink, fontSize: 13.5, lineHeight: 19, fontWeight: "600" },
   purchasedBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -1002,7 +979,7 @@ const s = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.line,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -1030,50 +1007,58 @@ const s = StyleSheet.create({
   },
 
   header: {
-    minHeight: 66,
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
     backgroundColor: PAGE_BG,
   },
 
   backButton: {
-    width: 34,
+    width: 40,
     height: 40,
+    borderRadius: 20,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
   },
 
   headerText: {
     flex: 1,
-    paddingLeft: 4,
   },
 
   headerTitle: {
-    fontSize: 16,
+    fontSize: 21,
     fontWeight: "700",
     color: C.ink,
+    letterSpacing: -0.3,
   },
 
   headerSubtitle: {
     marginTop: 1,
-    fontSize: 11.5,
+    fontSize: 12.5,
     color: C.secondary,
   },
 
   previewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 36,
     paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.terracotta,
+    borderRadius: 999,
     backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
   },
 
   previewText: {
-    color: C.terracotta,
-    fontSize: 12.5,
-    fontWeight: "600",
+    color: C.plum,
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   hero: {
@@ -1144,11 +1129,11 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 6,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "rgba(217,206,193,0.45)",
-    shadowColor: "#A94C36",
+    borderColor: C.line,
+    shadowColor: "#2B1A3D",
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
@@ -1163,8 +1148,17 @@ const s = StyleSheet.create({
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     marginBottom: 8,
+  },
+
+  sectionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.soft,
   },
 
   sectionTitle: {
@@ -1205,11 +1199,11 @@ const s = StyleSheet.create({
 
   discoveryCard: {
     paddingHorizontal: 12,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "rgba(217,206,193,0.45)",
-    shadowColor: "#A94C36",
+    borderColor: C.line,
+    shadowColor: "#2B1A3D",
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
@@ -1242,11 +1236,11 @@ const s = StyleSheet.create({
 
   testimonialCard: {
     padding: 14,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "rgba(217,206,193,0.45)",
-    shadowColor: "#A94C36",
+    borderColor: C.line,
+    shadowColor: "#2B1A3D",
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
@@ -1326,9 +1320,10 @@ const s = StyleSheet.create({
   relatedTitle: {
     marginHorizontal: 16,
     marginBottom: 10,
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: "700",
-    color: C.ink,
+    letterSpacing: 1.3,
+    color: C.gold,
   },
 
   relatedList: {
@@ -1339,10 +1334,10 @@ const s = StyleSheet.create({
   relatedCard: {
     width: RELATED_WIDTH,
     overflow: "hidden",
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "rgba(217,206,193,0.6)",
+    borderColor: C.line,
   },
 
   relatedImage: {
@@ -1383,16 +1378,17 @@ const s = StyleSheet.create({
 
   discountBadge: {
     alignSelf: "flex-start",
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: C.peach,
+    borderRadius: 999,
+    backgroundColor: C.greenSoft,
   },
 
   discountText: {
-    color: C.terracotta,
+    color: C.green,
     fontSize: 10.5,
     fontWeight: "700",
+    letterSpacing: 0.3,
   },
 
   priceRow: {
@@ -1422,9 +1418,9 @@ const s = StyleSheet.create({
 
   buyButton: {
     flex: 1,
-    height: 50,
+    height: 52,
     paddingHorizontal: 16,
-    borderRadius: 14,
+    borderRadius: 999,
     backgroundColor: C.plum,
     flexDirection: "row",
     alignItems: "center",
@@ -1467,7 +1463,7 @@ const s = StyleSheet.create({
   primaryButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 999,
     backgroundColor: C.plum,
   },
 
