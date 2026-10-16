@@ -609,7 +609,7 @@ const initialSeconds = hasValidRemainingTime
               }}
               keyboardShouldPersistTaps="handled"
             >
-              <ChatWelcome type="vedic" astrologerName={astrologerName} />
+              <ChatWelcome type="vedic" astrologerName={astrologerName} fresh={messages.length === 0} />
 
               {messages.map((item) => (
                 <View

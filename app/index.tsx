@@ -10,6 +10,7 @@ import { track } from "../lib/analytics";
 // then opens the app (signed in) or the login flow.
 export default function LaunchScreen() {
     const {
+        user,
         isAuthenticated,
         initializeAuth,
         authInitialized,
@@ -36,11 +37,15 @@ export default function LaunchScreen() {
         if (!authInitialized || !animationDone) return;
 
         if (isAuthenticated) {
-            router.replace("/(root)/(tabs)");
+            // Signed in but onboarding not finished (e.g. the app was closed
+            // on that screen): back to onboarding, not Home. Accounts from
+            // before the "onboarded" flag have a profile, so they go Home.
+            const needsOnboarding = !user?.onboarded && !user?.active_profile_id;
+            router.replace(needsOnboarding ? "/(auth)/onboarding" : "/(root)/(tabs)");
         } else {
             router.replace("/(auth)");
         }
-    }, [authInitialized, isAuthenticated, animationDone]);
+    }, [authInitialized, isAuthenticated, animationDone, user]);
 
     return (
         <>

@@ -42,9 +42,29 @@ export function PhoneIcon({ size = 20, color = AUTH.text }: { size?: number; col
   );
 }
 
-export function LockIcon() {
+export function MailIcon({ size = 20, color = AUTH.text }: { size?: number; color?: string }) {
   return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={AUTH.gold} strokeWidth={2}>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x={3} y={5} width={18} height={14} rx={3} />
+      <Path d="M4 7l8 6 8-6" />
+    </Svg>
+  );
+}
+
+/** Show / hide password: an eye, struck through while hidden. */
+export function EyeIcon({ open, color = AUTH.muted }: { open: boolean; color?: string }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <Path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+      {!open && <Path d="M4 4l16 16" />}
+    </Svg>
+  );
+}
+
+export function LockIcon({ size = 14, color = AUTH.gold }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={size > 16 ? 1.8 : 2}>
       <Rect x={5} y={11} width={14} height={10} rx={2} />
       <Path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </Svg>
@@ -59,10 +79,25 @@ export function ChevronDown({ color = AUTH.text }: { color?: string }) {
   );
 }
 
-export function BackButton({ onPress }: { onPress: () => void }) {
+// Light sign-in steps (phone, email, code): the app's lavender look.
+export const LIGHT = {
+  bg: "#F4F0F8",
+  card: "#FFFDFC",
+  ink: "#1C1820",
+  plum: "#2B1A3D",
+  gold: "#C49A4A",
+  muted: "#68616A",
+  line: "rgba(217,206,193,0.9)",
+  soft: "#EFE8F7",
+  placeholder: "#9A929D",
+  error: "#B3392F",
+  success: "#2E7D4F",
+};
+
+export function BackButton({ onPress, light = false }: { onPress: () => void; light?: boolean }) {
   return (
-    <Pressable onPress={onPress} hitSlop={8} style={styles.back} accessibilityLabel="Back">
-      <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={AUTH.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Pressable onPress={onPress} hitSlop={8} style={[styles.back, light && styles.backLight]} accessibilityLabel="Back">
+      <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={light ? LIGHT.ink : AUTH.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         <Path d="M15 18l-6-6 6-6" />
       </Svg>
     </Pressable>
@@ -70,11 +105,14 @@ export function BackButton({ onPress }: { onPress: () => void }) {
 }
 
 /** "Step 1 of 2" bars on the phone and code screens. */
-export function Steps({ done }: { done: number }) {
+export function Steps({ done, light = false }: { done: number; light?: boolean }) {
   return (
     <View style={styles.steps}>
       {[1, 2].map((n) => (
-        <View key={n} style={[styles.stepBar, n <= done && styles.stepOn]} />
+        <View
+          key={n}
+          style={[styles.stepBar, light && styles.stepBarLight, n <= done && (light ? styles.stepOnLight : styles.stepOn)]}
+        />
       ))}
     </View>
   );
@@ -86,6 +124,8 @@ type ButtonProps = {
   icon?: ReactNode;
   disabled?: boolean;
   busy?: boolean;
+  // Light sign-in steps: a plum pill instead of the gold one.
+  light?: boolean;
 };
 
 /** Ivory pill: the main sign-in option on the welcome sheet. */
@@ -109,7 +149,19 @@ export function GlassButton({ label, onPress, icon, disabled }: ButtonProps) {
 }
 
 /** Gold call to action at the bottom of the phone and code screens. */
-export function GoldButton({ label, onPress, disabled, busy }: ButtonProps) {
+export function GoldButton({ label, onPress, disabled, busy, light }: ButtonProps) {
+  if (light) {
+    return (
+      <Pressable onPress={onPress} disabled={disabled || busy} style={[styles.plum, (disabled || busy) && styles.disabled]}>
+        {busy ? (
+          <ActivityIndicator color={LIGHT.card} />
+        ) : (
+          <Text style={[styles.btnText, { color: LIGHT.card }]}>{label}</Text>
+        )}
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable onPress={onPress} disabled={disabled || busy} style={[styles.goldWrap, (disabled || busy) && styles.disabled]}>
       <LinearGradient colors={[AUTH.goldTop, AUTH.goldBottom]} style={styles.gold}>
@@ -125,9 +177,20 @@ export function GoldButton({ label, onPress, disabled, busy }: ButtonProps) {
 
 const styles = StyleSheet.create({
   back: { width: 44, height: 44, marginLeft: -10, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  backLight: {
+    width: 40,
+    height: 40,
+    marginLeft: 0,
+    borderRadius: 20,
+    backgroundColor: LIGHT.card,
+    borderWidth: 1,
+    borderColor: LIGHT.line,
+  },
   steps: { flexDirection: "row", gap: 6, marginTop: 14 },
   stepBar: { width: 28, height: 3, borderRadius: 2, backgroundColor: "rgba(244,238,230,0.18)" },
   stepOn: { backgroundColor: AUTH.gold },
+  stepBarLight: { backgroundColor: "rgba(43,26,61,0.12)" },
+  stepOnLight: { backgroundColor: LIGHT.plum },
   btn: { height: 52, borderRadius: 999, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   solid: { backgroundColor: AUTH.text },
   glass: { backgroundColor: AUTH.glass, borderWidth: 1, borderColor: AUTH.glassBorder },
@@ -141,5 +204,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   gold: { height: 56, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  plum: {
+    height: 54,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: LIGHT.plum,
+  },
   disabled: { opacity: 0.5 },
 });

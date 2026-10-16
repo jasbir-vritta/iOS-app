@@ -9,7 +9,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  AppleIcon, BackButton, ChevronDown, GlassButton, GoldButton, GoogleIcon, LockIcon, PhoneIcon, SolidButton, Steps,
+  AppleIcon, BackButton, ChevronDown, GlassButton, GoldButton, EyeIcon, GoogleIcon, LockIcon, MailIcon, PhoneIcon, SolidButton, Steps,
 } from "../../components/auth/AuthParts";
 import { CosmicBackground } from "../../components/auth/CosmicBackground";
 import { AUTH, AUTH_FONTS, F } from "../../components/auth/theme";
@@ -19,6 +19,7 @@ import useAuthStore from "../../components/stores/authStore";
 import { useKeyboardInset } from "../../components/utils/useKeyboardInset";
 import { identifyUser, metaEvents, setUserProfile, track } from "../../lib/analytics";
 import { saveSession } from "../../lib/auth";
+import { emailLogin, emailResendCode, emailSignup, emailVerifyCode, isValidEmail } from "../../lib/emailAuth";
 import {
   appleFirebaseToken,
   appleSignInAvailable,
@@ -91,6 +92,12 @@ export default function Login() {
   const [country, setCountry] = useState(COUNTRIES.find((c) => c.code === "IN") || COUNTRIES[0]);
   const [sending, setSending] = useState(false);
 
+  // Email + password (sign up: email, password, confirm -> code by email).
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   const confirmation = useRef(null);
   const busy = useRef(false);
   const otpInput = useRef(null);
@@ -120,11 +127,11 @@ export default function Login() {
   };
 
   // Backend session in hand: new users go to onboarding, others home.
-  const finishSignIn = async (session, phoneNumber, method) => {
+  const finishSignIn = async (session, phoneNumber, method, emailAddress) => {
     await saveSession(session.access_token, phoneNumber);
 
     // Mixpanel: identify first so the event belongs to this user.
-    await identifyUser(session.user_id, { phone: phoneNumber });
+    await identifyUser(session.user_id, { phone: phoneNumber, email: emailAddress });
     // New account: remember how they signed up (kept, never overwritten).
     if (session.created) {
       await setUserProfile(
@@ -269,6 +276,87 @@ export default function Login() {
     }
   };
 
+  // ---- Email + password ----
+  const emailAddress = email.trim().toLowerCase();
+  const emailValid = isValidEmail(emailAddress);
+  const passwordValid = password.length >= 8;
+  const confirmOk = mode === "login" || confirm === password;
+  const emailFormValid = emailValid && passwordValid && confirmOk;
+
+  const openEmail = () => {
+    setPassword("");
+    setConfirm("");
+    setShowPassword(false);
+    go("email");
+  };
+
+  const submitEmail = async () => {
+    Keyboard.dismiss();
+    if (!emailFormValid || busy.current) return;
+
+    busy.current = true;
+    setSending(true);
+    setError("");
+
+    try {
+      if (mode === "signup") {
+        const sent = await emailSignup(emailAddress, password);
+        setCode("");
+        setResendIn(sent.resend_in || RESEND_SECONDS);
+        go("emailOtp");
+      } else {
+        setStatusText("Signing you in…");
+        setScreen("verifying");
+        const session = await emailLogin(emailAddress, password);
+        await finishSignIn(session, undefined, "email", emailAddress);
+      }
+    } catch (e) {
+      setError(e?.message || "Something went wrong. Please try again.");
+      setScreen("email");
+    } finally {
+      busy.current = false;
+      setSending(false);
+    }
+  };
+
+  const verifyEmailCode = async (value = code) => {
+    Keyboard.dismiss();
+    if (value.length !== OTP_LENGTH || busy.current) return;
+
+    busy.current = true;
+    setError("");
+    setStatusText("Verifying your code…");
+    setScreen("verifying");
+
+    try {
+      const session = await emailVerifyCode(emailAddress, value);
+      await finishSignIn(session, undefined, "email", emailAddress);
+    } catch (e) {
+      setError(e?.message || "Could not verify the code. Please try again.");
+      setCode("");
+      setScreen("emailOtp");
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  const resendEmailCode = async () => {
+    if (resendIn > 0 || busy.current) return;
+
+    busy.current = true;
+    setError("");
+
+    try {
+      const sent = await emailResendCode(emailAddress);
+      setCode("");
+      setResendIn(sent.resend_in || RESEND_SECONDS);
+    } catch (e) {
+      setError(e?.message || "Could not send a new code. Please try again.");
+    } finally {
+      busy.current = false;
+    }
+  };
+
   const copy = COPY[mode];
 
   if (!fontsLoaded) {
@@ -310,16 +398,14 @@ export default function Login() {
             <Text style={styles.h2}>{copy.title}</Text>
             <Text style={styles.sub}>{copy.sub}</Text>
 
+            {/* Order: Phone, Google, Apple (iPhone), Email. */}
             <View style={styles.stack}>
-              {appleAvailable ? (
-                <>
-                  <SolidButton label={`${copy.verb} with Apple`} icon={<AppleIcon />} onPress={continueWithApple} />
-                  <GlassButton label={`${copy.verb} with Google`} icon={<GoogleIcon />} onPress={continueWithGoogle} />
-                </>
-              ) : (
-                <SolidButton label={`${copy.verb} with Google`} icon={<GoogleIcon />} onPress={continueWithGoogle} />
+              <SolidButton label={`${copy.verb} with Phone`} icon={<PhoneIcon color={AUTH.bg} />} onPress={() => go("phone")} />
+              <GlassButton label={`${copy.verb} with Google`} icon={<GoogleIcon />} onPress={continueWithGoogle} />
+              {appleAvailable && (
+                <GlassButton label={`${copy.verb} with Apple`} icon={<AppleIcon color={AUTH.text} />} onPress={continueWithApple} />
               )}
-              <GlassButton label={`${copy.verb} with Phone`} icon={<PhoneIcon />} onPress={() => go("phone")} />
+              <GlassButton label={`${copy.verb} with Email`} icon={<MailIcon />} onPress={openEmail} />
             </View>
 
             {!!error && <Text style={styles.error}>{error}</Text>}
@@ -442,6 +528,174 @@ export default function Login() {
         </View>
       )}
 
+      {screen === "email" && (
+        <View style={[styles.flow, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <BackButton onPress={() => go("welcome")} />
+            {mode === "signup" && <Steps done={1} />}
+            <Text style={styles.big}>{mode === "signup" ? "Sign up with email" : "Log in with email"}</Text>
+            <Text style={styles.sub}>
+              {mode === "signup"
+                ? `We’ll email you a ${OTP_LENGTH}-digit code to confirm it’s you.`
+                : "Use the email and password you signed up with."}
+            </Text>
+
+            <View style={[styles.inputField, styles.inputFirst]}>
+              <MailIcon size={19} color={AUTH.muted} />
+              <TextInput
+                value={email}
+                onChangeText={(v) => {
+                  setEmail(v.replace(/\s/g, ""));
+                  setError("");
+                }}
+                placeholder="you@example.com"
+                placeholderTextColor="rgba(244,238,230,0.3)"
+                selectionColor={AUTH.gold}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                autoFocus
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.inputField}>
+              <LockIcon size={19} color={AUTH.muted} />
+              <TextInput
+                value={password}
+                onChangeText={(v) => {
+                  setPassword(v);
+                  setError("");
+                }}
+                placeholder={mode === "signup" ? "Create a password" : "Password"}
+                placeholderTextColor="rgba(244,238,230,0.3)"
+                selectionColor={AUTH.gold}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                textContentType={mode === "signup" ? "newPassword" : "password"}
+                onSubmitEditing={mode === "login" ? submitEmail : undefined}
+                style={styles.input}
+              />
+              <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityLabel="Show password">
+                <EyeIcon open={showPassword} />
+              </Pressable>
+            </View>
+
+            {mode === "signup" && (
+              <View style={[styles.inputField, !!confirm && confirm !== password && styles.inputError]}>
+                <LockIcon size={19} color={AUTH.muted} />
+                <TextInput
+                  value={confirm}
+                  onChangeText={(v) => {
+                    setConfirm(v);
+                    setError("");
+                  }}
+                  placeholder="Confirm password"
+                  placeholderTextColor="rgba(244,238,230,0.3)"
+                  selectionColor={AUTH.gold}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  onSubmitEditing={submitEmail}
+                  style={styles.input}
+                />
+              </View>
+            )}
+
+            {mode === "signup" && (
+              <Text style={styles.helpText}>
+                {!!confirm && confirm !== password
+                  ? "Passwords don’t match."
+                  : "At least 8 characters."}
+              </Text>
+            )}
+            {!!error && <Text style={styles.error}>{error}</Text>}
+
+            <Text style={styles.foot}>
+              {mode === "signup" ? "Already have an account? " : "New to Vritta? "}
+              <Text
+                style={styles.link}
+                onPress={() => {
+                  setMode(mode === "signup" ? "login" : "signup");
+                  setConfirm("");
+                  setError("");
+                }}
+              >
+                {mode === "signup" ? "Log In" : "Create Account"}
+              </Text>
+            </Text>
+          </ScrollView>
+
+          <GoldButton
+            label={mode === "signup" ? "Send Code" : "Log In"}
+            onPress={submitEmail}
+            disabled={!emailFormValid}
+            busy={sending}
+          />
+        </View>
+      )}
+
+      {screen === "emailOtp" && (
+        <View style={[styles.flow, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <BackButton onPress={() => go("email")} />
+            <Steps done={2} />
+            <Text style={styles.big}>Check your email</Text>
+            <Text style={styles.sub}>
+              Code sent to {emailAddress} ·{" "}
+              <Text style={styles.link} onPress={() => go("email")}>
+                Edit
+              </Text>
+            </Text>
+
+            {/* One hidden input drives the boxes, so paste and autofill work. */}
+            <Pressable style={styles.otp} onPress={() => otpInput.current?.focus()}>
+              {Array.from({ length: OTP_LENGTH }, (_, i) => (
+                <View key={i} style={[styles.otpBox, i === code.length && styles.otpBoxOn, !!error && styles.otpBoxError]}>
+                  <Text style={styles.otpDigit}>{code[i] ?? ""}</Text>
+                </View>
+              ))}
+            </Pressable>
+            <TextInput
+              ref={otpInput}
+              value={code}
+              onChangeText={(v) => {
+                const digits = v.replace(/\D/g, "").slice(0, OTP_LENGTH);
+                setCode(digits);
+                setError("");
+                if (digits.length === OTP_LENGTH) verifyEmailCode(digits);
+              }}
+              keyboardType="number-pad"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              maxLength={OTP_LENGTH}
+              autoFocus
+              style={styles.hiddenInput}
+            />
+
+            <Text style={styles.helpText}>
+              Didn’t get it? Check spam, or{" "}
+              {resendIn > 0 ? (
+                <Text style={styles.helpStrong}>resend in 0:{String(resendIn).padStart(2, "0")}</Text>
+              ) : (
+                <Text style={styles.link} onPress={resendEmailCode}>
+                  resend code
+                </Text>
+              )}
+            </Text>
+            {!!error && <Text style={styles.error}>{error}</Text>}
+          </ScrollView>
+
+          <GoldButton label="Verify & Continue" onPress={() => verifyEmailCode()} disabled={code.length !== OTP_LENGTH} />
+        </View>
+      )}
+
       {screen === "verifying" && (
         <View style={styles.verifying}>
           <ActivityIndicator size="large" color={AUTH.gold} />
@@ -541,6 +795,23 @@ const styles = StyleSheet.create({
   ccText: { fontFamily: F.semibold, fontSize: 15, color: AUTH.text },
   num: { flex: 1, height: "100%", paddingHorizontal: 14, fontFamily: F.semibold, fontSize: 18, letterSpacing: 0.7, color: AUTH.text },
   help: { marginTop: 16, flexDirection: "row", alignItems: "center", gap: 8 },
+
+  // Email screen
+  inputField: {
+    marginTop: 12,
+    height: 56,
+    borderRadius: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    backgroundColor: AUTH.glass,
+    borderWidth: 1,
+    borderColor: AUTH.fieldBorder,
+  },
+  inputFirst: { marginTop: 30 },
+  inputError: { borderColor: AUTH.error },
+  input: { flex: 1, height: "100%", fontFamily: F.medium, fontSize: 16, color: AUTH.text },
   helpText: { marginTop: 16, fontFamily: F.regular, fontSize: 13, lineHeight: 19, color: AUTH.muted, flexShrink: 1 },
   helpStrong: { fontFamily: F.semibold, color: AUTH.text },
   otp: { flexDirection: "row", gap: 8, marginTop: 30 },

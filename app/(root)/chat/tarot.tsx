@@ -1203,7 +1203,7 @@ export default function TarotChat() {
               paddingBottom: 130,
             }}
           >
-            <ChatWelcome type="tarot" astrologerName={astrologerName} />
+            <ChatWelcome type="tarot" astrologerName={astrologerName} fresh={items.length === 0} />
 
             {items.map((item) => {
               /* TEXT MESSAGE */

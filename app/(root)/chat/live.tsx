@@ -685,6 +685,7 @@ export default function LiveChat() {
               <ChatWelcome
                 type={(readingType as ReadingType) || "vedic"}
                 astrologerName={name}
+                fresh={messages.length === 0}
                 bubbleColor={theme.astroBg}
                 borderColor={theme.astroBorder}
               />

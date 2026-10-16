@@ -746,6 +746,7 @@ export default function NumerologyChat() {
               <ChatWelcome
                 type="numerology"
                 astrologerName={astrologerName}
+                fresh={messages.length === 0}
                 bubbleColor="#FFFEFF"
                 borderColor="#DDD3E5"
               />
