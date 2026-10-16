@@ -1,5 +1,7 @@
-# Push to main: production build (only if native code changed) ->
-# App Store Connect / TestFlight + an over-the-air update.
+# Push to main: always a new production build (the build number goes up
+# automatically) -> App Store Connect / TestFlight, plus an over-the-air
+# update so users on an existing build with the same native code get the
+# changes too. New users get everything inside the build on the first open.
 name: Deploy to TestFlight (iOS)
 
 on:
@@ -7,21 +9,8 @@ on:
     branches: ['main']
 
 jobs:
-  fingerprint:
-    name: Fingerprint
-    type: fingerprint
-    environment: production
-  get_ios_build:
-    name: Check for existing iOS build
-    needs: [fingerprint]
-    type: get-build
-    params:
-      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
-      profile: production
   build_ios:
     name: Build iOS
-    needs: [get_ios_build]
-    if: ${{ !needs.get_ios_build.outputs.build_id }}
     type: build
     params:
       platform: ios
@@ -29,19 +18,13 @@ jobs:
   submit_ios_build:
     name: Submit to TestFlight
     needs: [build_ios]
-    # Only new builds: App Store Connect rejects a build number twice.
-    if: ${{ needs.build_ios.outputs.build_id }}
     type: submit
     params:
       profile: production
       build_id: ${{ needs.build_ios.outputs.build_id }}
   publish_ios_update:
     name: Publish iOS update
-    # after (not needs): still runs when Build iOS was skipped because a
-    # build with the same native code already exists (a skipped job in
-    # needs skips everything after it).
-    after: [get_ios_build, build_ios]
-    if: ${{ after.get_ios_build.outputs.build_id || after.build_ios.outputs.build_id }}
+    needs: [build_ios]
     type: update
     params:
       channel: production
