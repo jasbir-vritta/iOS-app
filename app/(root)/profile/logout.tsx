@@ -1,6 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ImageBackground, Pressable, StatusBar, Text, View } from "react-native";
+import {
+  ImageBackground,
+  Pressable,
+  StatusBar,
+  View,
+} from "react-native";
+
+import { Text } from "../../../components/ui/BrandText";
 import useAuthStore from "../../../components/stores/authStore";
 
 export default function Logout() {

@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import ChatWelcome from "../../../components/chat/ChatWelcome";
-import { track } from "../../../lib/analytics";
+import { track, useChatTracking } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
     applyWalletUpdate,
@@ -216,6 +216,9 @@ export default function NumerologyChat() {
     ratePerMinute?: string;
     remainingTimeSeconds?: string;
   }>();
+
+  // Analytics: chat_started_<astrologer> + chat_<astrologer>_time_spent.
+  useChatTracking({ astrologerName, astrologerId, readingType: readingType || "numerology", sessionId, chatType: "ai" });
 
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);

@@ -1,42 +1,40 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-
 import {
   ActivityIndicator,
+  Alert,
   Image,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import Reanimated, {
+  Easing,
+  FadeInDown,
+  FadeInUp,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  LeaderboardPeriod,
-  LeaderboardUser,
-  useMantraStore,
-} from "../../../components/stores/mantraStore";
+import { AUTH_FONTS, F } from "../../../components/auth/theme";
+import { C, CardArt, HOME_PAD, softShadow } from "../../../components/home/homeUi";
+import { LeaderboardPeriod, LeaderboardUser, useMantraStore } from "../../../components/stores/mantraStore";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 
-const INK = "#1C1830";
-const MUTED = "#77758A";
-const PURPLE = "#4B2470";
-const PURPLE_SOFT = "#EFE8F8";
-const BACKGROUND = "#F6F2FC";
-const GOLD = "#F2A72B";
 const SILVER = "#9A9AA6";
-const BRONZE = "#C97A45";
-const FIRE = "#F26332";
+const BRONZE = "#B07A4F";
 
-const PERIODS: {
-  key: LeaderboardPeriod;
-  label: string;
-  reset: string;
-}[] = [
+const PERIODS: { key: LeaderboardPeriod; label: string; reset: string }[] = [
   { key: "daily", label: "Daily", reset: "Resets at midnight" },
   { key: "weekly", label: "Weekly", reset: "Resets every Monday" },
   { key: "monthly", label: "Monthly", reset: "Resets on the 1st" },
@@ -44,7 +42,8 @@ const PERIODS: {
 
 const LEADERBOARD_TOP = require("../../../assets/images/leaderboard_top.png");
 
-const AVATAR_COLORS =["#8E3FBF", "#D6336C", "#3B5BDB", "#0C8599", "#E8590C"];
+// Initial avatars in palette tones.
+const AVATAR_COLORS = ["#2B1A3D", "#4A3366", "#6B4E8C", "#8A6A2E", "#A94C36"];
 
 function formatChants(value: number) {
   return String(Math.round(value || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -52,21 +51,11 @@ function formatChants(value: number) {
 
 function avatarColor(name: string) {
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function Avatar({
-  user,
-  size,
-  softFallback = false,
-}: {
-  user: LeaderboardUser;
-  size: number;
-  softFallback?: boolean;
-}) {
+function Avatar({ user, size, soft = false }: { user: LeaderboardUser; size: number; soft?: boolean }) {
   const [failed, setFailed] = useState(false);
   const radius = size / 2;
 
@@ -81,7 +70,6 @@ function Avatar({
   }
 
   const initial = (user.name || "?").trim().charAt(0).toUpperCase() || "?";
-
   return (
     <View
       style={{
@@ -90,109 +78,101 @@ function Avatar({
         borderRadius: radius,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: softFallback ? PURPLE_SOFT : avatarColor(user.name || ""),
+        backgroundColor: soft ? "rgba(255,253,252,0.16)" : avatarColor(user.name || ""),
       }}
     >
-      <Text
-        style={{
-          fontSize: size * 0.42,
-          fontWeight: "600",
-          color: softFallback ? PURPLE : "#FFFFFF",
-        }}
-      >
-        {initial}
-      </Text>
+      <Text style={{ fontSize: size * 0.42, fontFamily: F.semibold, color: C.CARD }}>{initial}</Text>
     </View>
   );
 }
 
-function PodiumSpot({
-  user,
-  place,
-}: {
-  user?: LeaderboardUser;
-  place: 1 | 2 | 3;
-}) {
-  const first = place === 1;
-  const size = first ? 92 : 72;
-  const ringColor = first ? GOLD : place === 2 ? SILVER : BRONZE;
-
-  if (!user) {
-    return <View style={first ? styles.podiumFirst : styles.podiumSide} />;
-  }
+/* #1 gets a breathing gold glow and a gently bobbing crown. */
+function Crowned({ size, children }: { size: number; children: React.ReactNode }) {
+  const still = useReducedMotion();
+  const glow = useSharedValue(0);
+  const bob = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    glow.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    bob.value = withRepeat(withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }), -1, true);
+  }, [bob, glow, still]);
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: 0.12 + 0.28 * glow.value,
+    transform: [{ scale: 1 + 0.18 * glow.value }],
+  }));
+  const crownStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -3 * bob.value }, { rotate: `${-4 + 8 * bob.value}deg` }],
+  }));
 
   return (
-    <View style={first ? styles.podiumFirst : styles.podiumSide}>
-      {first && (
-        <View style={styles.crown}>
-          <MaterialCommunityIcons name="star-circle" size={26} color={GOLD} />
-        </View>
-      )}
+    <View style={{ alignItems: "center", justifyContent: "center" }}>
+      <Reanimated.View
+        style={[{ position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: C.GOLD }, glowStyle]}
+        pointerEvents="none"
+      />
+      <Reanimated.View style={[s.crown, crownStyle]}>
+        <MaterialCommunityIcons name="crown" size={22} color={C.GOLD} />
+      </Reanimated.View>
+      {children}
+    </View>
+  );
+}
 
-      <View
-        style={[
-          styles.podiumRing,
-          {
-            width: size + 10,
-            height: size + 10,
-            borderRadius: (size + 10) / 2,
-            borderColor: first ? GOLD : "#FFFFFF",
-          },
-        ]}
-      >
-        <Avatar user={user} size={size} />
+function PodiumSpot({ user, place }: { user?: LeaderboardUser; place: 1 | 2 | 3 }) {
+  const first = place === 1;
+  const size = first ? 88 : 68;
+  const ring = first ? C.GOLD : place === 2 ? SILVER : BRONZE;
 
-        <View style={[styles.placeBadge, { backgroundColor: ringColor }]}>
-          <Text style={styles.placeBadgeText}>{place}</Text>
-        </View>
+  if (!user) return <View style={first ? s.podiumFirst : s.podiumSide} />;
+
+  const circle = (
+    <View style={[s.podiumRing, { width: size + 10, height: size + 10, borderRadius: (size + 10) / 2, borderColor: ring }]}>
+      <Avatar user={user} size={size} />
+      <View style={[s.placeBadge, { backgroundColor: ring }]}>
+        <Text style={s.placeBadgeText}>{place}</Text>
       </View>
+    </View>
+  );
 
-      <Text
-        style={[styles.podiumName, first && styles.podiumNameFirst]}
-        numberOfLines={2}
-      >
+  return (
+    <Reanimated.View
+      entering={FadeInUp.delay(first ? 0 : place === 2 ? 150 : 300).duration(500)}
+      style={first ? s.podiumFirst : s.podiumSide}
+    >
+      {first ? <Crowned size={size + 10}>{circle}</Crowned> : circle}
+
+      <Text style={[s.podiumName, first && s.podiumNameFirst]} numberOfLines={2}>
         {user.is_current_user ? `${user.name} (You)` : user.name}
       </Text>
-
-      <Text style={[styles.podiumChants, first && styles.podiumChantsFirst]}>
-        {formatChants(user.chants)}
-      </Text>
-
-      <Text style={styles.podiumLabel}>chants</Text>
-    </View>
+      <Text style={[s.podiumChants, first && s.podiumChantsFirst]}>{formatChants(user.chants)}</Text>
+      <Text style={s.podiumLabel}>chants</Text>
+    </Reanimated.View>
   );
 }
 
 function RankRow({ user, last }: { user: LeaderboardUser; last: boolean }) {
   return (
-    <View
-      style={[
-        styles.row,
-        !last && styles.rowDivider,
-        user.is_current_user && styles.rowCurrent,
-      ]}
-    >
-      <Text style={styles.rowRank}>{user.rank}</Text>
-
-      <Avatar user={user} size={44} />
-
-      <Text style={styles.rowName} numberOfLines={1}>
+    <View style={[s.row, !last && s.rowDivider, user.is_current_user && s.rowCurrent]}>
+      <View style={s.rankPill}>
+        <Text style={s.rankText}>{user.rank}</Text>
+      </View>
+      <Avatar user={user} size={40} />
+      <Text style={s.rowName} numberOfLines={1}>
         {user.is_current_user ? `${user.name} (You)` : user.name}
       </Text>
-
-      <Text style={styles.rowChants}>{formatChants(user.chants)} chants</Text>
-
-      <View style={styles.rowFire}>
-        {user.rank <= 5 && (
-          <MaterialCommunityIcons name="fire" size={20} color={FIRE} />
-        )}
+      <Text style={s.rowChants}>{formatChants(user.chants)}</Text>
+      <View style={s.rowFire}>
+        {user.rank <= 5 && <MaterialCommunityIcons name="fire" size={18} color={C.GOLD} />}
       </View>
     </View>
   );
 }
 
-export default function Index() {
+export default function Leaderboard() {
   const tabSpace = useTabBarSpace();
+  const insets = useSafeAreaInsets();
+  const [fontsLoaded] = useFonts(AUTH_FONTS);
+
   const leaderboard = useMantraStore((state) => state.leaderboard);
   const myRank = useMantraStore((state) => state.myRank);
   const period = useMantraStore((state) => state.leaderboardPeriod);
@@ -214,11 +194,8 @@ export default function Index() {
   }, [selected, fetchLeaderboard]);
 
   const goBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(root)/(tabs)/rewards");
-    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/(root)/(tabs)/rewards");
   };
 
   const activePeriod = PERIODS.find((p) => p.key === selected) ?? PERIODS[0];
@@ -228,294 +205,186 @@ export default function Index() {
   const showingStale = period !== selected;
   const firstLoad = loading && (leaderboard.length === 0 || showingStale);
 
+  // Your own rank sits just above the tab bar.
+  const meSpace = myRank ? 86 : 0;
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      {/* HEADER */}
-
-      <View style={styles.header}>
-        <Pressable style={styles.headerButton} onPress={goBack} hitSlop={8}>
-          <MaterialCommunityIcons name="chevron-left" size={30} color={INK} />
-        </Pressable>
-
-        <View style={styles.headerTitleRow}>
-          <Text style={styles.headerTitle}>Mantra Leaderboard</Text>
-          <MaterialCommunityIcons
-            name="information-outline"
-            size={20}
-            color={INK}
-          />
-        </View>
-
-        <View style={styles.headerButton} />
+    <View style={[s.screen, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity style={s.headerButton} onPress={goBack} hitSlop={8} accessibilityLabel="Go back">
+          <MaterialCommunityIcons name="chevron-left" size={26} color={C.INK} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>Mantra leaderboard</Text>
+        <TouchableOpacity
+          style={s.headerButton}
+          hitSlop={8}
+          accessibilityLabel="About the leaderboard"
+          onPress={() =>
+            Alert.alert("Mantra leaderboard", "Every chant you do counts. Rankings show the most chants for each period.")
+          }
+        >
+          <MaterialCommunityIcons name="information-outline" size={20} color={C.INK} />
+        </TouchableOpacity>
       </View>
 
-      {/* PERIOD TABS */}
-
-      <View style={styles.segment}>
+      {/* Period switcher */}
+      <View style={s.segment}>
         {PERIODS.map((p) => {
           const active = p.key === selected;
-
           return (
-            <Pressable
+            <TouchableOpacity
               key={p.key}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
+              activeOpacity={0.85}
+              style={[s.segmentItem, active && s.segmentItemActive]}
               onPress={() => setSelected(p.key)}
             >
-              <Text
-                style={[styles.segmentText, active && styles.segmentTextActive]}
-              >
-                {p.label}
-              </Text>
-            </Pressable>
+              <Text style={[s.segmentText, active && s.segmentTextActive]}>{p.label}</Text>
+            </TouchableOpacity>
           );
         })}
       </View>
 
-      <View style={styles.resetRow}>
-        <MaterialCommunityIcons
-          name="calendar-month-outline"
-          size={16}
-          color={MUTED}
-        />
-        <Text style={styles.resetText}>
-          {activePeriod.label} • {activePeriod.reset}
+      <View style={s.resetRow}>
+        <MaterialCommunityIcons name="calendar-month-outline" size={15} color={C.MUTED} />
+        <Text style={s.resetText}>
+          {activePeriod.label} · {activePeriod.reset}
         </Text>
       </View>
 
-      {firstLoad ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={PURPLE} />
+      {!fontsLoaded || firstLoad ? (
+        <View style={s.centered}>
+          <ActivityIndicator size="large" color={C.PLUM} />
         </View>
       ) : error && leaderboard.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyTitle}>Couldn't load the leaderboard</Text>
-          <Pressable
-            style={styles.retryButton}
-            onPress={() => fetchLeaderboard(selected)}
-          >
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
+        <View style={s.centered}>
+          <Text style={s.emptyTitle}>Couldn’t load the leaderboard</Text>
+          <TouchableOpacity style={s.retryButton} onPress={() => fetchLeaderboard(selected)}>
+            <Text style={s.retryText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       ) : leaderboard.length === 0 ? (
-        <View style={styles.centered}>
-          <MaterialCommunityIcons name="meditation" size={44} color={PURPLE} />
-          <Text style={styles.emptyTitle}>No chants yet</Text>
-          <Text style={styles.emptyText}>
-            Be the first to chant and top the leaderboard.
-          </Text>
+        <View style={s.centered}>
+          <MaterialCommunityIcons name="meditation" size={42} color={C.PLUM} />
+          <Text style={s.emptyTitle}>No chants yet</Text>
+          <Text style={s.emptyText}>Be the first to chant and top the leaderboard.</Text>
         </View>
       ) : (
         <>
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: tabSpace }]}
+            contentContainerStyle={{ paddingHorizontal: HOME_PAD, paddingBottom: tabSpace + meSpace + 12 }}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={PURPLE}
-                colors={[PURPLE]}
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.PLUM} colors={[C.PLUM]} />
             }
           >
-            {/* PODIUM */}
-
-            <View style={styles.podium}>
+            {/* Podium */}
+            <View style={s.podium}>
               <Image
                 source={LEADERBOARD_TOP}
-                style={[
-                  styles.podiumBackground,
-                  {
-                    width: screenWidth,
-                    height: (screenWidth * 822) / 1914,
-                  },
-                ]}
+                style={[s.podiumBackground, { width: screenWidth, height: (screenWidth * 822) / 1914 }]}
                 resizeMode="contain"
               />
-
               <PodiumSpot user={podium[1]} place={2} />
               <PodiumSpot user={podium[0]} place={1} />
               <PodiumSpot user={podium[2]} place={3} />
             </View>
 
-            {/* RANKS 4+ */}
-
+            {/* Ranks 4+ */}
             {rest.length > 0 && (
-              <View style={styles.listCard}>
+              <Reanimated.View entering={FadeInDown.delay(350).duration(420)} style={s.listCard}>
                 {rest.map((user, index) => (
-                  <RankRow
-                    key={`${user.profile_id}-${user.rank}`}
-                    user={user}
-                    last={index === rest.length - 1}
-                  />
+                  <RankRow key={`${user.profile_id}-${user.rank}`} user={user} last={index === rest.length - 1} />
                 ))}
-              </View>
+              </Reanimated.View>
             )}
           </ScrollView>
 
-          {/* CURRENT USER */}
-
+          {/* Your rank, always visible above the tab bar */}
           {myRank && (
-            <View style={styles.meCard}>
-              <Text style={styles.meRank}>{myRank.rank}</Text>
-
-              <Avatar user={myRank} size={48} softFallback />
-
-              <View style={styles.meContent}>
-                <Text style={styles.meName} numberOfLines={1}>
-                  {myRank.name} (You)
-                </Text>
-                <Text style={styles.meChants}>
-                  {formatChants(myRank.chants)} chants
-                </Text>
+            <Reanimated.View entering={FadeInUp.delay(400).duration(420)} style={[s.me, { bottom: tabSpace + 8 }]}>
+              <View style={s.meClip}>
+                <CardArt width={150} height={90} color={C.CARD} />
+                <View style={s.meRank}>
+                  <Text style={s.meRankText}>#{myRank.rank}</Text>
+                </View>
+                <Avatar user={myRank} size={44} soft />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.meName} numberOfLines={1}>
+                    {myRank.name} (You)
+                  </Text>
+                  <Text style={s.meChants}>{formatChants(myRank.chants)} chants</Text>
+                </View>
+                <MaterialCommunityIcons name="meditation" size={22} color={C.GOLD} />
               </View>
-            </View>
+            </Reanimated.View>
           )}
         </>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: BACKGROUND,
-  },
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
+    paddingHorizontal: HOME_PAD,
     paddingTop: 8,
     paddingBottom: 14,
   },
   headerButton: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
   },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 21,
-    fontWeight: "700",
-    color: INK,
-  },
+  headerTitle: { color: C.INK, fontSize: 19, fontFamily: F.bold },
+
   segment: {
     flexDirection: "row",
-    marginHorizontal: 16,
+    marginHorizontal: HOME_PAD,
     padding: 4,
-    borderRadius: 14,
-    backgroundColor: PURPLE_SOFT,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.BORDER,
   },
-  segmentItem: {
-    flex: 1,
-    height: 40,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentItemActive: {
-    backgroundColor: PURPLE,
-  },
-  segmentText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: INK,
-  },
-  segmentTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  resetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 14,
-  },
-  resetText: {
-    fontSize: 13,
-    color: MUTED,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    gap: 10,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: INK,
-    textAlign: "center",
-  },
-  emptyText: {
-    fontSize: 14,
-    color: MUTED,
-    textAlign: "center",
-  },
-  retryButton: {
-    marginTop: 4,
-    paddingHorizontal: 22,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: PURPLE,
-  },
-  retryText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  podium: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    paddingTop: 34,
-    paddingBottom: 18,
-  },
+  segmentItem: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  segmentItemActive: { backgroundColor: C.PLUM },
+  segmentText: { color: C.MUTED, fontSize: 13.5, fontFamily: F.semibold },
+  segmentTextActive: { color: C.CARD },
+  resetRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 },
+  resetText: { color: C.MUTED, fontSize: 12.5, fontFamily: F.medium },
+
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 10 },
+  emptyTitle: { color: C.INK, fontSize: 17, fontFamily: F.bold, textAlign: "center" },
+  emptyText: { color: C.MUTED, fontSize: 14, fontFamily: F.regular, textAlign: "center" },
+  retryButton: { marginTop: 4, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 999, backgroundColor: C.PLUM },
+  retryText: { color: C.CARD, fontSize: 14, fontFamily: F.semibold },
+
+  podium: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", paddingTop: 40, paddingBottom: 20 },
   // Centres the lotus sun behind the #1 avatar.
-  podiumBackground: {
-    position: "absolute",
-    top: -8,
-    left: -16,
-  },
-  podiumFirst: {
-    flex: 1.2,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  podiumSide: {
-    flex: 1,
-    alignItems: "center",
-  },
-  crown: {
-    position: "absolute",
-    top: -24,
-    zIndex: 2,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-  },
+  podiumBackground: { position: "absolute", top: -8, left: -HOME_PAD },
+  podiumFirst: { flex: 1.2, alignItems: "center", marginBottom: 16 },
+  podiumSide: { flex: 1, alignItems: "center" },
+  crown: { position: "absolute", top: -26, zIndex: 3 },
   podiumRing: {
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#4B2470",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 4,
+    backgroundColor: C.CARD,
+    shadowColor: C.PLUM,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
   placeBadge: {
     position: "absolute",
@@ -526,112 +395,55 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#FFFFFF",
+    borderColor: C.CARD,
   },
-  placeBadgeText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  podiumName: {
-    marginTop: 18,
-    fontSize: 14,
-    fontWeight: "600",
-    color: INK,
-    textAlign: "center",
-  },
-  podiumNameFirst: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  podiumChants: {
-    marginTop: 2,
-    fontSize: 18,
-    fontWeight: "700",
-    color: INK,
-  },
-  podiumChantsFirst: {
-    fontSize: 22,
-  },
-  podiumLabel: {
-    fontSize: 13,
-    color: MUTED,
-  },
+  placeBadgeText: { color: C.CARD, fontSize: 12.5, fontFamily: F.bold },
+  podiumName: { marginTop: 18, color: C.INK, fontSize: 13.5, fontFamily: F.semibold, textAlign: "center" },
+  podiumNameFirst: { fontSize: 16, fontFamily: F.bold },
+  podiumChants: { marginTop: 2, color: C.PLUM, fontSize: 17, fontFamily: F.bold },
+  podiumChantsFirst: { fontSize: 21 },
+  podiumLabel: { color: C.MUTED, fontSize: 12, fontFamily: F.regular },
+
   listCard: {
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    backgroundColor: C.CARD,
     paddingHorizontal: 14,
-    shadowColor: "#4B2470",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    ...softShadow,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    gap: 12,
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#ECE7F3",
-  },
-  rowCurrent: {
-    backgroundColor: "#F8F4FD",
-    marginHorizontal: -14,
-    paddingHorizontal: 14,
-  },
-  rowRank: {
-    width: 26,
-    fontSize: 15,
-    fontWeight: "600",
-    color: INK,
-    textAlign: "center",
-  },
-  rowName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    color: INK,
-  },
-  rowChants: {
-    fontSize: 14,
-    color: MUTED,
-  },
-  rowFire: {
-    width: 20,
-    alignItems: "center",
-  },
-  meCard: {
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 10, gap: 12 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: C.LINE },
+  rowCurrent: { backgroundColor: C.SOFT, marginHorizontal: -14, paddingHorizontal: 14 },
+  rankPill: { minWidth: 30, height: 26, paddingHorizontal: 6, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: C.SOFT },
+  rankText: { color: C.PLUM, fontSize: 12.5, fontFamily: F.bold },
+  rowName: { flex: 1, color: C.INK, fontSize: 14.5, fontFamily: F.semibold },
+  rowChants: { color: C.MUTED, fontSize: 13, fontFamily: F.semibold },
+  rowFire: { width: 20, alignItems: "center" },
+
+  me: { position: "absolute", left: HOME_PAD, right: HOME_PAD, borderRadius: 22, backgroundColor: C.PLUM, ...softShadow, shadowOpacity: 0.3 },
+  meClip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: "#EDE5F7",
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: C.PLUM,
   },
   meRank: {
-    width: 30,
-    fontSize: 16,
-    fontWeight: "700",
-    color: INK,
-    textAlign: "center",
+    minWidth: 40,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(196,154,74,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.45)",
   },
-  meContent: {
-    flex: 1,
-  },
-  meName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: INK,
-  },
-  meChants: {
-    marginTop: 2,
-    fontSize: 14,
-    color: MUTED,
-  },
+  meRankText: { color: C.CARD, fontSize: 13, fontFamily: F.bold },
+  meName: { color: C.CARD, fontSize: 15, fontFamily: F.bold },
+  meChants: { marginTop: 2, color: "rgba(255,253,252,0.72)", fontSize: 12.5, fontFamily: F.regular },
 });

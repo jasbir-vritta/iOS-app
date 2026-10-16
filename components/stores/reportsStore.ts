@@ -1,7 +1,11 @@
 import * as WebBrowser from "expo-web-browser";
+import { router } from "expo-router";
+import { Platform } from "react-native";
 import { create } from "zustand";
 
+import { track } from "../../lib/analytics";
 import { API_URL, authHeaders } from "../../lib/auth";
+import { hasInAppViewer } from "../utils/reportViewer";
 import { useUserStore } from "./userStore";
 
 /** One purchase of a report for a profile (from the backend). */
@@ -217,11 +221,43 @@ export async function openReport(order?: ReportOrder | null): Promise<void> {
   const url = order?.html_url || order?.pdf_url;
   if (!url) return;
 
-  await WebBrowser.openBrowserAsync(url, {
+  // In-app viewer (no address bar or browser download/share). Android's web
+  // view can't show PDFs, so a PDF-only report there opens in the browser.
+  const pdfOnly = !order?.html_url;
+  const isSample = order?.order_id === "sample";
+  if (hasInAppViewer() && !(pdfOnly && Platform.OS === "android")) {
+    router.push({
+      pathname: "/(root)/report/viewer",
+      params: {
+        url,
+        title: order?.report_name || (isSample ? "Sample report" : "Your report"),
+        // For analytics in the viewer.
+        report_id: order?.report_id || "",
+        sample: isSample ? "1" : "0",
+      },
+    } as any);
+    return;
+  }
+
+  // Older builds / Android PDF-only: the browser sheet. Analytics as in the viewer.
+  const details = {
+    report_id: order?.report_id || "",
+    is_sample: String(isSample),
+    viewer: "browser",
+    platform: Platform.OS,
+  };
+  track("visited_report_pdf", details);
+  const startedAt = Date.now();
+  const result = await WebBrowser.openBrowserAsync(url, {
     presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
     toolbarColor: "#F6EEE6",
     controlsColor: "#8A3A16",
   });
+  // iOS waits until the sheet is closed; Android returns at once (no time to measure).
+  if (result.type === "cancel" || result.type === "dismiss") {
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    if (seconds > 0) track("report_pdf_time_spent", { ...details, seconds });
+  }
 }
 
 /** Every report bought on this account, newest first (My Reports). */

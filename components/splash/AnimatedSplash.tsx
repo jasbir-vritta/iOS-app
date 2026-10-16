@@ -1,3 +1,4 @@
+import { useFonts } from "expo-font";
 import { useEffect } from "react";
 import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
@@ -10,6 +11,8 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+
+import { AUTH_FONTS, F } from "../auth/theme";
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 
 /*
@@ -188,6 +191,8 @@ function Wordmark() {
 }
 
 export function AnimatedSplash() {
+  // Brand font for the tagline (system font for the first moment while it loads).
+  const [fontsLoaded] = useFonts(AUTH_FONTS);
   const { width, height } = useWindowDimensions();
   // Everything is laid out around this point, like the design (36% down).
   const centerY = height * 0.36;
@@ -270,7 +275,9 @@ export function AnimatedSplash() {
       </Animated.View>
 
       <Animated.View style={[styles.tagWrap, { top: centerY + 234 }, tag]}>
-        <Text style={styles.tag}>Your stars, your path.</Text>
+        <Text style={[styles.tag, fontsLoaded && { fontFamily: F.medium, fontWeight: "normal" }]}>
+          Your stars, your path.
+        </Text>
       </Animated.View>
 
       <View style={styles.loadTrack}>

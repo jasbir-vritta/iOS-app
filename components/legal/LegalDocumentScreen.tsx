@@ -8,9 +8,10 @@ import {
   Share,
   StatusBar,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+
+import { Text } from "../ui/BrandText";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { LegalDocument } from "../constants/legal";

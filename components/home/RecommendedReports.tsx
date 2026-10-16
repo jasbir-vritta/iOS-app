@@ -1,10 +1,9 @@
-
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Dimensions,
-  ImageBackground,
+  Image,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -14,271 +13,174 @@ import {
 } from "react-native";
 
 import reportsData from "../constants/reports.json";
+import { loadProfileReports, useReportsStore } from "../stores/reportsStore";
+import { useUserStore } from "../stores/userStore";
+import { C, F, HOME_PAD, LIST_BOTTOM, LIST_TOP, SectionHeader, softShadow } from "./homeUi";
 
-// Reports that have their own page (others open the Reports tab).
-const REPORT_IDS = new Set((reportsData as { id: string }[]).map((r) => r.id));
-
-const C = {
-  INK: "#1C1820",
-  PLUM: "#2B1A3D",
-  MUTED: "#6B6470",
-  WHITE: "#FFFFFF",
+type Report = {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  price: number;
+  oldPrice?: number;
+  discount?: string;
+  frequency?: string;
 };
 
-const px = (value: number) =>
-  Math.round(value * (Math.min(Dimensions.get("window").width, 430) / 430));
+// Picked for Home, in this order.
+const RECOMMENDED = ["kundli-milan", "future", "career", "finance"];
+const ALL = reportsData as Report[];
+const REPORTS = RECOMMENDED.map((id) => ALL.find((r) => r.id === id)).filter(Boolean) as Report[];
 
-const GAP = 8;
-const H_PAD = 16;
-const VISIBLE = 3;
-const CARD_RATIO = 0.72;
+const GAP = 12;
+const CARD_WIDTH_FRACTION = 0.7; // one card and a peek of the next
+const IMAGE_RATIO = 1200 / 500; // report covers are 1200 x 500
 
-const reports = [
-  {
-    id: "kundli-milan",
-    title: "Kundli Matching",
-    subtitle: "Report",
-    background: require("../../assets/backgrounds/homepage_kundli_milan_report.png"),
-  },
-  {
-    id: "career",
-    title: "Career",
-    subtitle: "Report",
-    background: require("../../assets/backgrounds/homepage_career_report.png"),
-  },
-  {
-    id: "finance",
-    title: "Finance",
-    subtitle: "Report",
-    background: require("../../assets/backgrounds/homepage_finanance_report.png"),
-  },
-];
+const openReport = (id: string) =>
+  router.push({ pathname: "/(root)/report/[report_id]", params: { report_id: id } } as any);
 
 export default function RecommendedReports() {
-  const [rowWidth, setRowWidth] = useState(
-    Dimensions.get("window").width - H_PAD * 2
+  const [rowWidth, setRowWidth] = useState(Dimensions.get("window").width - HOME_PAD * 2);
+  const profileId = useUserStore((state) => state.user?.active_profile_id);
+  const purchases = useReportsStore((state) =>
+    profileId ? state.byProfile[String(profileId)]?.purchases : undefined
   );
 
-  const onLayout = (event: LayoutChangeEvent) => {
-    setRowWidth(event.nativeEvent.layout.width);
+  // Know what this profile already bought (shows "Purchased" instead of a price).
+  useFocusEffect(
+    useCallback(() => {
+      if (profileId) void loadProfileReports(String(profileId)).catch(() => {});
+    }, [profileId])
+  );
+
+  // Future Report is bought per duration ("future:10"): any of them counts.
+  const stateOf = (id: string) => {
+    const orders = Object.entries(purchases || {})
+      .filter(([key]) => key === id || key.startsWith(`${id}:`))
+      .map(([, order]) => order);
+    if (orders.some((o) => o?.status === "completed")) return "purchased";
+    if (orders.some((o) => o?.status === "processing")) return "preparing";
+    return "buy";
   };
 
-  const openReports = (reportId?: string) => {
-    if (reportId && REPORT_IDS.has(reportId)) {
-      // Straight to that report's page.
-      router.push({
-        pathname: "/(root)/report/[report_id]",
-        params: { report_id: reportId },
-      } as any);
-    } else {
-      router.push("/(root)/(tabs)/reports" as any);
-    }
-  };
-
-  const cardW = Math.floor((rowWidth - GAP * (VISIBLE - 1)) / VISIBLE);
-  const cardH = Math.round(cardW * CARD_RATIO);
-  const pad = Math.round(cardW * 0.09);
-  const arrowSize = Math.round(cardW * 0.22);
+  const onLayout = (e: LayoutChangeEvent) => setRowWidth(e.nativeEvent.layout.width);
+  const cardW = Math.round(rowWidth * CARD_WIDTH_FRACTION);
+  const imageH = Math.round(cardW / IMAGE_RATIO);
 
   return (
-    <View style={styles.container} onLayout={onLayout}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.heading}>
-            Recommended reports for you
-          </Text>
-          <Text style={styles.subtitle}>
-            In-depth analysis for every stage of your life
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View all reports"
-          onPress={() => openReports()}
-          style={styles.viewAll}
-          hitSlop={8}
-        >
-          <Text style={styles.viewAllText}>View all</Text>
-          <Icon name="arrow-right" size={px(18)} color={C.PLUM} />
-        </Pressable>
-      </View>
+    <View onLayout={onLayout}>
+      <SectionHeader
+        overline="IN-DEPTH REPORTS"
+        title="Recommended for you"
+        onViewAll={() => router.push("/(root)/(tabs)/reports" as any)}
+      />
 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ marginHorizontal: -H_PAD }}
-        contentContainerStyle={[
-          styles.cards,
-          {
-            paddingHorizontal: H_PAD,
-            paddingVertical: 4,
-          },
-        ]}
+        decelerationRate="fast"
+        snapToInterval={cardW + GAP}
+        snapToAlignment="start"
+        style={{ marginHorizontal: -HOME_PAD }}
+        contentContainerStyle={{ paddingHorizontal: HOME_PAD, paddingTop: LIST_TOP, paddingBottom: LIST_BOTTOM, gap: GAP }}
       >
-        {reports.map((report) => (
-          <Pressable
-            key={report.id}
-            accessibilityRole="button"
-            accessibilityLabel={`View ${report.title} ${report.subtitle}`}
-            onPress={() => openReports(report.id)}
-            style={({ pressed }) => [
-              styles.cardPressable,
-              pressed && styles.pressed,
-            ]}
-          >
-            <ImageBackground
-              source={report.background}
-              resizeMode="cover"
-              imageStyle={{
-                borderRadius: Math.round(cardW * 0.14),
-              }}
-              style={[
-                styles.card,
-                {
-                  width: cardW,
-                  height: cardH,
-                  borderRadius: Math.round(cardW * 0.14),
-                  padding: pad,
-                },
-              ]}
+        {REPORTS.map((report) => {
+          const state = stateOf(report.id);
+
+          return (
+            <Pressable
+              key={report.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${report.title}, ₹${report.price}`}
+              onPress={() => openReport(report.id)}
+              style={[styles.card, { width: cardW }]}
             >
-              <View style={styles.footer}>
-                <View
-                  style={{
-                    flex: 1,
-                    paddingRight: Math.round(cardW * 0.04),
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    allowFontScaling={false}
-                    style={[
-                      styles.cardTitle,
-                      {
-                        fontSize: Math.round(cardW * 0.098),
-                        lineHeight: Math.round(cardW * 0.125),
-                      },
-                    ]}
-                  >
+              <View style={styles.clip}>
+                <View style={{ height: imageH }}>
+                  <Image source={{ uri: report.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  {!!report.frequency && (
+                    <View style={styles.tag}>
+                      <Text style={styles.tagText}>{report.frequency}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.body}>
+                  <Text style={styles.title} numberOfLines={1}>
                     {report.title}
                   </Text>
-
-                  <Text
-                    numberOfLines={1}
-                    allowFontScaling={false}
-                    style={[
-                      styles.cardSubtitle,
-                      {
-                        fontSize: Math.round(cardW * 0.098),
-                        lineHeight: Math.round(cardW * 0.125),
-                      },
-                    ]}
-                  >
-                    {report.subtitle}
+                  <Text style={styles.description} numberOfLines={1}>
+                    {report.description}
                   </Text>
-                </View>
 
-                <View
-                  style={[
-                    styles.arrowButton,
-                    {
-                      width: arrowSize,
-                      height: arrowSize,
-                      borderRadius: arrowSize / 2,
-                    },
-                  ]}
-                >
-                  <Icon
-                    name="arrow-right"
-                    size={Math.round(cardW * 0.12)}
-                    color={C.INK}
-                  />
+                  <View style={styles.footer}>
+                    {state === "buy" ? (
+                      <View style={styles.priceRow}>
+                        <Text style={styles.price}>₹{report.price}</Text>
+                        {!!report.oldPrice && <Text style={styles.oldPrice}>₹{report.oldPrice}</Text>}
+                        {!!report.discount && (
+                          <View style={styles.discount}>
+                            <Text style={styles.discountText}>{report.discount}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.owned}>
+                        <Icon
+                          name={state === "purchased" ? "check-decagram" : "progress-clock"}
+                          size={13}
+                          color={C.PLUM}
+                        />
+                        <Text style={styles.ownedText}>{state === "purchased" ? "Purchased" : "Preparing"}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.arrow}>
+                      <Icon name="arrow-right" size={16} color={C.CARD} />
+                    </View>
+                  </View>
                 </View>
               </View>
-            </ImageBackground>
-          </Pressable>
-        ))}
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: px(20),
+  card: { borderRadius: 22, backgroundColor: C.CARD, ...softShadow },
+  clip: { borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: C.LINE, backgroundColor: C.CARD },
+  tag: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    backgroundColor: "rgba(255,253,252,0.92)",
   },
-  header: {
+  tagText: { color: C.PLUM, fontSize: 10.5, fontFamily: F.semibold },
+  body: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 },
+  title: { color: C.INK, fontSize: 16, fontFamily: F.bold },
+  description: { color: C.MUTED, fontSize: 12.5, fontFamily: F.regular, marginTop: 3 },
+  footer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
+  priceRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
+  price: { color: C.INK, fontSize: 18, fontFamily: F.bold },
+  oldPrice: { color: C.MUTED, fontSize: 12.5, fontFamily: F.regular, textDecorationLine: "line-through" },
+  discount: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "#E6F2EA" },
+  discountText: { color: "#2E7D4F", fontSize: 10, fontFamily: F.semibold },
+  owned: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: px(12),
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: C.SOFT,
   },
-  headerText: {
-    flex: 1,
-    paddingRight: px(6),
-  },
-  heading: {
-    fontSize: px(19),
-    lineHeight: px(24),
-    fontWeight: "700",
-    color: C.INK,
-  },
-  subtitle: {
-    fontSize: px(12),
-    lineHeight: px(16),
-    color: C.MUTED,
-    marginTop: px(2),
-  },
-  viewAll: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: px(6),
-  },
-  viewAllText: {
-    color: C.PLUM,
-    fontSize: px(14),
-    fontWeight: "600",
-  },
-  cards: {
-    gap: GAP,
-  },
-  cardPressable: {
-    flexShrink: 0,
-  },
-  card: {
-    overflow: "hidden",
-    justifyContent: "flex-end",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.7)",
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-  },
-  cardTitle: {
-    color: C.INK,
-    fontWeight: "700",
-  },
-  cardSubtitle: {
-    color: C.INK,
-  },
-  arrowButton: {
-    backgroundColor: C.WHITE,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#2B1A3D",
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 2,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
+  ownedText: { color: C.PLUM, fontSize: 12, fontFamily: F.semibold },
+  arrow: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.PLUM, alignItems: "center", justifyContent: "center" },
 });

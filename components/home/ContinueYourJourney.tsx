@@ -17,18 +17,24 @@ import {
 import mantrasData from "../../components/constants/mantra.json";
 import reportsData from "../../components/constants/reports.json";
 import { useUserStore } from "../../components/stores/userStore";
+import { ChatHistoryItem, openChatSession, withAstrologerPhotos } from "../../components/utils/openChat";
 import { getIncompleteReportIds } from "../../components/utils/reportJourneyStorage";
+import { parseServerDate } from "../../components/utils/serverDate";
+import { API_URL, authHeaders } from "../../lib/auth";
+import { C as HOME, F, HOME_PAD, LIST_BOTTOM, LIST_TOP, SectionHeader, softShadow } from "./homeUi";
 
+// Home palette (plum for the app, terracotta only for human astrologers).
 const C = {
-  INK: "#1C1820",
-  PLUM: "#2B1A3D",
-  MUTED: "#77717E",
-  WHITE: "#FFFFFF",
-  ORANGE: "#A94317",
-  TRACK: "#E7E2EA",
-  PROGRESS_MANTRA: "#3A1659",
-  PROGRESS_REPORT: "#B5532A",
-  BORDER: "rgba(229,220,235,0.7)",
+  INK: HOME.INK,
+  PLUM: HOME.PLUM,
+  MUTED: HOME.MUTED,
+  WHITE: HOME.CARD,
+  ORANGE: HOME.PLUM,
+  TRACK: HOME.SOFT,
+  PROGRESS_MANTRA: HOME.PLUM,
+  PROGRESS_REPORT: HOME.PLUM,
+  BORDER: HOME.LINE,
+  TERRACOTTA: HOME.TERRACOTTA,
 };
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -36,14 +42,19 @@ const SCALE = Math.min(SCREEN_WIDTH / 430, 1);
 const px = (value: number) => Math.round(value * SCALE);
 
 // Match the horizontal padding of the Home screen.
-const H_PAD = Math.round(16 * (Math.min(SCREEN_WIDTH, 430) / 853));
+const H_PAD = HOME_PAD;
 
 const GAP = 10;
 const MANTRA_FRACTION = 0.52;
 const REPORT_FRACTION = 0.45;
 
 const CHANTS_PER_MILESTONE = 108;
-const STORAGE_PREFIX = "@mantra_chants_";
+// Most recent chats shown here.
+const RECENT_CHATS = 2;
+// Same keys as the mantra screen: chants are counted per profile, across mantras.
+const PENDING_PREFIX = "@mantra_pending_";
+const TOTAL_PREFIX = "@mantra_total_";
+const LAST_PREFIX = "@mantra_last_";
 
 const FALLBACK_MANTRA_IMAGE = require("../../assets/images/sadhana_mars_mantra.png");
 const CAREER_IMAGE = require("../../assets/backgrounds/homepage_career_report.png");
@@ -134,10 +145,36 @@ function getMantraImage(item: RawMantra): string | undefined {
   );
 }
 
+const chatTime = (chat: ChatHistoryItem) => {
+  const value = chat.last_message_at || chat.created_at;
+  const time = value ? parseServerDate(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
+// "Just now", "3h ago", "Yesterday", "12 Oct".
+function chatWhen(chat: ChatHistoryItem): string {
+  const time = chatTime(chat);
+  if (!time) return "";
+  const mins = Math.floor((Date.now() - time) / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 24 * 60) return `${Math.floor(mins / 60)}h ago`;
+  if (mins < 48 * 60) return "Yesterday";
+  return new Date(time).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+const READING_LABEL: Record<string, string> = {
+  vedic: "Vedic chat",
+  tarot: "Tarot chat",
+  numerology: "Numerology chat",
+};
+
 export default function ContinueYourJourney() {
   const activeProfileId = useUserStore(
     (state) => state.user?.active_profile_id
   );
+  const user = useUserStore((state) => state.user);
+  const [chats, setChats] = useState<ChatHistoryItem[]>([]);
 
   const [mantras, setMantras] = useState<MantraItem[]>([]);
   const [incompleteReports, setIncompleteReports] = useState<
@@ -152,56 +189,36 @@ export default function ContinueYourJourney() {
         setMantras([]);
       } else {
         const definitions = getMantraList();
-        const savedKeys = await AsyncStorage.getAllKeys();
-        const profilePrefix = `${STORAGE_PREFIX}${activeProfileId}_`;
+        const [[, pending], [, total], [, lastId]] = await AsyncStorage.multiGet([
+          `${PENDING_PREFIX}${activeProfileId}`,
+          `${TOTAL_PREFIX}${activeProfileId}`,
+          `${LAST_PREFIX}${activeProfileId}`,
+        ]);
 
-        const profileKeys = savedKeys.filter((key) =>
-          key.startsWith(profilePrefix)
-        );
+        // Current round of 108 (saved total + chants not sent yet).
+        const chanted =
+          Math.max(0, Math.floor(Number(total) || 0)) +
+          Math.max(0, Math.floor(Number(pending) || 0));
+        const chantsInCycle = chanted % CHANTS_PER_MILESTONE;
 
-        const entries = await AsyncStorage.multiGet(profileKeys);
-        const countById = new Map<string, number>();
+        const idOf = (item: RawMantra) => String(item.id ?? item._id ?? item.mantra_id ?? "");
+        const item =
+          definitions.find((m) => lastId && idOf(m) === lastId) ?? definitions[0];
 
-        for (const [key, value] of entries) {
-          if (!value) continue;
-
-          const id = key.slice(profilePrefix.length);
-          const parsed = Number(value);
-
-          if (id && Number.isFinite(parsed) && parsed > 0) {
-            countById.set(id, Math.floor(parsed));
-          }
+        // Hide when nothing is chanted yet or the round of 108 is complete.
+        if (chantsInCycle === 0 || !item || !idOf(item)) {
+          setMantras([]);
+        } else {
+          setMantras([
+            {
+              id: idOf(item),
+              title: item.title ?? item.name ?? item.mantra_name ?? "Mantra",
+              subtitle: item.subtitle ?? item.description ?? "Continue chanting",
+              chants: chantsInCycle,
+              image: getMantraImage(item),
+            },
+          ]);
         }
-
-        const incomplete: MantraItem[] = [];
-
-        for (const item of definitions) {
-          const rawId = item.id ?? item._id ?? item.mantra_id;
-
-          if (rawId === undefined || rawId === null) continue;
-
-          const id = String(rawId);
-          const total = countById.get(id) ?? 0;
-          const chantsInCycle = total % CHANTS_PER_MILESTONE;
-
-          // Hide untouched mantras and completed 108-chant milestones.
-          if (total <= 0 || chantsInCycle === 0) continue;
-
-          incomplete.push({
-            id,
-            title:
-              item.title ??
-              item.name ??
-              item.mantra_name ??
-              "Mantra",
-            subtitle:
-              item.subtitle ?? item.description ?? "Continue chanting",
-            chants: chantsInCycle,
-            image: getMantraImage(item),
-          });
-        }
-
-        setMantras(incomplete.slice(0, 3));
       }
 
       // Load incomplete reports for the active profile only.
@@ -224,6 +241,32 @@ export default function ContinueYourJourney() {
       console.error("Failed to load Continue Your Journey:", error);
       setMantras([]);
       setIncompleteReports([]);
+    }
+
+    // Last chats of this profile (newest first).
+    try {
+      if (!activeProfileId) {
+        setChats([]);
+        return;
+      }
+      const response = await fetch(
+        `${API_URL}/chat/history?profile_id=${encodeURIComponent(String(activeProfileId))}`,
+        { headers: await authHeaders() }
+      );
+      const data = await response.json().catch(() => ({}));
+      const sessions: ChatHistoryItem[] =
+        response.ok && Array.isArray(data?.sessions) ? data.sessions : [];
+      setChats(
+        await withAstrologerPhotos(
+          sessions
+            .filter((chat) => chat?.session_id && chat.last_message)
+            .sort((a, b) => chatTime(b) - chatTime(a))
+            .slice(0, RECENT_CHATS)
+        )
+      );
+    } catch (error) {
+      console.warn("Could not load recent chats:", error);
+      setChats([]);
     }
   }, [activeProfileId]);
 
@@ -256,7 +299,7 @@ export default function ContinueYourJourney() {
   };
 
   // Hide the whole section if this profile has no unfinished activity.
-  if (mantras.length === 0 && incompleteReports.length === 0) {
+  if (mantras.length === 0 && incompleteReports.length === 0 && chats.length === 0) {
     return null;
   }
 
@@ -281,29 +324,20 @@ export default function ContinueYourJourney() {
 
   const cardStyle = {
     minHeight: cardMinH,
-    borderRadius: cardRadius,
+    borderRadius: Math.max(cardRadius, 20),
     padding: cardPad,
     flexDirection: "row" as const,
     alignItems: "center" as const,
     backgroundColor: C.WHITE,
     borderWidth: 1,
     borderColor: C.BORDER,
-    shadowColor: "#2B1A3D",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...softShadow,
   };
 
   return (
     <View style={styles.container} onLayout={onLayout}>
+      <SectionHeader overline="PICK UP WHERE YOU LEFT OFF" title="Continue your journey" />
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.heading}>Continue your journey</Text>
-          <Text style={styles.subtitle}>
-            Pick up where you left off
-          </Text>
-        </View>
 
         {/* <TouchableOpacity
           accessibilityRole="button"
@@ -442,6 +476,103 @@ export default function ContinueYourJourney() {
           );
         })}
 
+        {chats.map((chat) => {
+          const name = chat.astrologer_name?.trim() || "Astrologer";
+          const photo = chat.astrologer_image_url || chat.astrologer_image || undefined;
+          const kind =
+            chat.participant_type === "human"
+              ? "Astrologer chat"
+              : READING_LABEL[chat.reading_type || ""] || "Chat";
+          const when = chatWhen(chat);
+
+          return (
+            <TouchableOpacity
+              key={chat.session_id}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue chat with ${name}`}
+              activeOpacity={0.85}
+              onPress={() => openChatSession(chat, user)}
+              style={{ ...cardStyle, width: mantraW }}
+            >
+              {photo ? (
+                <Image
+                  source={{ uri: photo }}
+                  resizeMode="cover"
+                  style={{
+                    width: mantraImg,
+                    height: mantraImg,
+                    borderRadius: mantraImg / 2,
+                    backgroundColor: "#F5F0F9",
+                    marginRight: cardGap,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: mantraImg,
+                    height: mantraImg,
+                    borderRadius: mantraImg / 2,
+                    backgroundColor: "#F1EAF7",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: cardGap,
+                  }}
+                >
+                  <Text style={{ color: C.PLUM, fontFamily: F.bold, fontSize: Math.round(mantraImg * 0.4) }}>
+                    {name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.content}>
+                <Text
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                  style={[styles.label, { fontSize: textSize, lineHeight: textLH }]}
+                >
+                  {kind}
+                </Text>
+
+                <Text
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                  style={[styles.title, { fontSize: textSize, lineHeight: textLH }]}
+                >
+                  {name}
+                </Text>
+
+                {!!when && (
+                  <Text
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                    style={[
+                      styles.meta,
+                      { fontSize: Math.round(u * 0.05), lineHeight: textLH, marginTop: Math.round(u * 0.02) },
+                    ]}
+                  >
+                    {when}
+                  </Text>
+                )}
+              </View>
+
+              <View
+                style={{
+                  width: playSize,
+                  height: playSize,
+                  borderRadius: playSize / 2,
+                  backgroundColor: chat.participant_type === "human" ? C.TERRACOTTA : C.PLUM,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginLeft: cardGap,
+                }}
+              >
+                <Icon name="chat-processing-outline" size={Math.round(playSize * 0.5)} color={C.WHITE} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
         {incompleteReports.map((report) => {
           const reportImage = report.image ?? report.image_url;
 
@@ -564,14 +695,12 @@ export default function ContinueYourJourney() {
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    marginTop: px(20),
   },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: px(12),
   },
 
   headerText: {
@@ -583,7 +712,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: px(19),
     lineHeight: px(25),
-    fontWeight: "700",
+    fontFamily: F.bold,
     color: C.INK,
   },
 
@@ -603,14 +732,14 @@ const styles = StyleSheet.create({
 
   viewAllText: {
     fontSize: px(14),
-    fontWeight: "600",
+    fontFamily: F.semibold,
     color: C.PLUM,
   },
 
   cards: {
     alignItems: "stretch",
-    paddingTop: px(4),
-    paddingBottom: px(12),
+    paddingTop: LIST_TOP,
+    paddingBottom: LIST_BOTTOM,
   },
 
   content: {
@@ -620,16 +749,18 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    fontWeight: "500",
-    color: C.INK,
+    fontFamily: F.semibold,
+    color: C.MUTED,
+    letterSpacing: 0.2,
   },
 
   title: {
-    fontWeight: "700",
+    fontFamily: F.bold,
     color: C.INK,
   },
 
   meta: {
+    fontFamily: F.regular,
     color: C.MUTED,
   },
 

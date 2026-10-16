@@ -1,35 +1,218 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Reanimated, {
+  Easing,
+  FadeInDown,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-
+import { AUTH_FONTS, F } from "../../../components/auth/theme";
+import { C, CardArt, HOME_PAD, SectionHeader, softShadow } from "../../../components/home/homeUi";
 import { useRewardsStore } from "../../../components/stores/rewardsStore";
+import TopBar from "../../../components/TopBar";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 
-const REWARDS_TODAY_TOP =
-  "https://storage.googleapis.com/vritta/astrology/rewards/rewards_today_top.png";
+type IconName = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
-const MANTRA_REWARD_IMAGE =
-  "https://storage.googleapis.com/vritta/astrology/rewards/mantra_reward.png";
+const GREEN = "#2E7D4F";
+const GREEN_SOFT = "#E6F2EA";
+const GOLD_TEXT = "#8A6A2E";
 
-const NAVY = "#17104A";
-const NAVY_SOFT = "#24134F";
-const SLATE = "#77758A";
-const PURPLE = "#54228C";
-const ORANGE = "#E27A45";
+const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
 
-export default function Index() {
+// Sections rise in one after another (as on Home).
+const enter = (index: number) => FadeInDown.delay(70 * index).duration(420);
+
+/* ---------------- today's ring ---------------- */
+
+const RING = 112;
+const STROKE = 8;
+
+function useCountUp(target: number, still: boolean) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (still) return;
+    const start = Date.now();
+    let frame = 0;
+    const step = () => {
+      const k = Math.min(1, (Date.now() - start) / 1000);
+      setValue(Math.round(target * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target, still]);
+  return still ? target : value;
+}
+
+// Little ₹ symbols that rise from the ring and fade, like coins being earned.
+const RUPEES = [
+  { x: 14, delay: 0 },
+  { x: 74, delay: 1300 },
+  { x: 44, delay: 2600 },
+];
+
+function Rupee({ x, delay, still }: { x: number; delay: number; still: boolean }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    t.value = withDelay(delay, withRepeat(withTiming(1, { duration: 3900, easing: Easing.out(Easing.quad) }), -1));
+  }, [delay, still, t]);
+  const style = useAnimatedStyle(() => ({
+    opacity: Math.sin(Math.PI * t.value) * 0.9,
+    transform: [{ translateY: 70 - 90 * t.value }, { scale: 0.8 + 0.3 * t.value }],
+  }));
+  if (still) return null;
+  return (
+    <Reanimated.View style={[{ position: "absolute", left: x, top: 0 }, style]} pointerEvents="none">
+      <Text style={st.rupee}>₹</Text>
+    </Reanimated.View>
+  );
+}
+
+// A soft band of light that sweeps across the card every few seconds.
+function Shine({ still }: { still: boolean }) {
+  const x = useSharedValue(-1);
+  useEffect(() => {
+    if (still) return;
+    x.value = withRepeat(
+      withSequence(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }), withDelay(3200, withTiming(-1, { duration: 0 }))),
+      -1
+    );
+  }, [still, x]);
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.value * 420 }, { rotate: "18deg" }] }));
+  if (still) return null;
+  return (
+    <Reanimated.View style={[st.shine, style]} pointerEvents="none">
+      <LinearGradient
+        colors={["rgba(255,253,252,0)", "rgba(255,253,252,0.13)", "rgba(255,253,252,0)"]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={StyleSheet.absoluteFill}
+      />
+    </Reanimated.View>
+  );
+}
+
+function TodayRing({ progress, earned, still }: { progress: number; earned: number; still: boolean }) {
+  const r = (RING - STROKE) / 2;
+  const length = 2 * Math.PI * r;
+  const fill = useSharedValue(still ? progress : 0);
+  useEffect(() => {
+    fill.value = still ? progress : withTiming(progress, { duration: 1200, easing: Easing.out(Easing.cubic) });
+  }, [fill, progress, still]);
+  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: length * (1 - fill.value) }));
+  const shown = useCountUp(earned, still);
+
+  // Breathing glow and a coin orbiting the ring.
+  const glow = useSharedValue(0);
+  const orbit = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    glow.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }), -1, true);
+    orbit.value = withRepeat(withTiming(360, { duration: 9000, easing: Easing.linear }), -1);
+  }, [glow, orbit, still]);
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: 0.08 + 0.3 * glow.value,
+    transform: [{ scale: 0.82 + 0.3 * glow.value }],
+  }));
+  const orbitStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${orbit.value}deg` }] }));
+  // Room around the ring so the coin and its glow are never clipped.
+  const ORBIT_BOX = RING + 40;
+  const ORBIT_R = RING / 2 + 9;
+
+  return (
+    <View style={{ width: RING, height: RING, alignItems: "center", justifyContent: "center" }}>
+      <Reanimated.View style={[st.ringGlow, glowStyle]} pointerEvents="none" />
+      <Reanimated.View
+        style={[
+          { position: "absolute", width: ORBIT_BOX, height: ORBIT_BOX, left: -20, top: -20 },
+          orbitStyle,
+        ]}
+        pointerEvents="none"
+      >
+        <Svg width={ORBIT_BOX} height={ORBIT_BOX}>
+          <Circle
+            cx={ORBIT_BOX / 2}
+            cy={ORBIT_BOX / 2}
+            r={ORBIT_R}
+            stroke="rgba(196,154,74,0.45)"
+            strokeDasharray="2 6"
+            fill="none"
+          />
+          <Circle cx={ORBIT_BOX / 2} cy={ORBIT_BOX / 2 - ORBIT_R} r={8} fill={C.GOLD} opacity={0.25} />
+          <Circle cx={ORBIT_BOX / 2} cy={ORBIT_BOX / 2 - ORBIT_R} r={4.5} fill={C.GOLD} />
+        </Svg>
+      </Reanimated.View>
+      {RUPEES.map((r, i) => (
+        <Rupee key={i} {...r} still={still} />
+      ))}
+      <Svg width={RING} height={RING} style={StyleSheet.absoluteFill}>
+        <Circle cx={RING / 2} cy={RING / 2} r={r} stroke="rgba(255,253,252,0.16)" strokeWidth={STROKE} fill="none" />
+        <AnimatedCircle
+          cx={RING / 2}
+          cy={RING / 2}
+          r={r}
+          stroke={C.GOLD}
+          strokeWidth={STROKE}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${length} ${length}`}
+          animatedProps={ringProps}
+          transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+        />
+      </Svg>
+      <Text style={st.ringValue}>₹{shown}</Text>
+      <Text style={st.ringLabel}>earned today</Text>
+    </View>
+  );
+}
+
+// Gold sparkles that twinkle on the hero.
+const SPARKLES = [
+  { left: "6%", top: 14, size: 10, delay: 0 },
+  { left: "44%", top: 10, size: 8, delay: 900 },
+  { left: "52%", top: 96, size: 7, delay: 1500 },
+] as const;
+
+function Sparkle({ left, top, size, delay, still }: { left: string; top: number; size: number; delay: number; still: boolean }) {
+  const glow = useSharedValue(0.6);
+  useEffect(() => {
+    if (still) return;
+    glow.value = withDelay(
+      delay,
+      withRepeat(withSequence(withTiming(1, { duration: 1300 }), withTiming(0.2, { duration: 1300 })), -1)
+    );
+  }, [delay, glow, still]);
+  const style = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: 0.8 + glow.value * 0.3 }] }));
+  return (
+    <Reanimated.View style={[{ position: "absolute", left: left as any, top }, style]} pointerEvents="none">
+      <MaterialCommunityIcons name="star-four-points" size={size} color={C.GOLD} />
+    </Reanimated.View>
+  );
+}
+
+/* ---------------- screen ---------------- */
+
+export default function Rewards() {
   const tabSpace = useTabBarSpace();
+  const insets = useSafeAreaInsets();
+  const [fontsLoaded] = useFonts(AUTH_FONTS);
+  const still = useReducedMotion();
+
   const rewards = useRewardsStore((state) => state.rewards);
   const loading = useRewardsStore((state) => state.loading);
   const fetchRewards = useRewardsStore((state) => state.fetchRewards);
@@ -41,749 +224,375 @@ export default function Index() {
     }, [fetchRewards])
   );
 
-  if (loading && !rewards) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PURPLE} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Wallet credits are whole rupees in the UI.
-  const walletCredits = Math.floor(Number(rewards?.walletCredits ?? 0)) || 0;
-
   const earnedToday = rewards?.today?.earned ?? 0;
   const dailyMaximum = rewards?.today?.maximum ?? 10;
+  const progress = dailyMaximum > 0 ? Math.min(earnedToday / dailyMaximum, 1) : 0;
+  const reached = earnedToday >= dailyMaximum;
 
-  const progress =
-    dailyMaximum > 0 ? Math.min(earnedToday / dailyMaximum, 1) : 0;
-
-  const activities = [
+  const activities: {
+    type: "mantra_daily" | "conversation_daily" | "insight_daily";
+    title: string;
+    description: string;
+    icon: IconName;
+    open: () => void;
+  }[] = [
     {
-      type: "mantra_daily" as const,
-      title: "Complete today's Mantra Jaap",
+      type: "mantra_daily",
+      title: "Complete today’s Mantra Jaap",
       description: "Keep your daily chanting practice going",
-      icon: "om" as const,
-      data: rewards?.activities?.mantra_daily,
+      icon: "om",
+      open: () => router.push("/(root)/(tabs)/mantra" as any),
     },
     {
-      type: "conversation_daily" as const,
+      type: "conversation_daily",
       title: "Have a conversation",
       description: "Get guidance from AI or an astrologer",
-      icon: "message-outline" as const,
-      data: rewards?.activities?.conversation_daily,
+      icon: "message-outline",
+      open: () => router.push("/(root)/(tabs)/chat" as any),
     },
     {
-      type: "insight_daily" as const,
+      type: "insight_daily",
       title: "Read your daily insights",
       description: "Check your personalised guidance",
-      icon: "file-document-outline" as const,
-      data: rewards?.activities?.insight_daily,
+      icon: "file-document-outline",
+      open: () => router.push("/(root)/(tabs)/my_life" as any),
     },
   ];
 
-  const streak = rewards?.mantraStreak ?? {
-    current: 0,
-    target: 7,
-    bonus: 20,
-    days: 0,
-    completedToday: false,
-  };
-
-  const streakProgress =
-    streak.target > 0 ? Math.min(streak.current / streak.target, 1) : 0;
+  const streak = rewards?.mantraStreak ?? { current: 0, target: 7, bonus: 20, days: 0, completedToday: false };
+  const doneCount = activities.filter((a) => rewards?.activities?.[a.type]?.completed).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={st.screen}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabSpace }]}
+        contentContainerStyle={{ paddingHorizontal: HOME_PAD, paddingTop: insets.top + 4, paddingBottom: tabSpace + 24 }}
       >
-        {/* HEADER */}
+        <TopBar />
 
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>Rewards</Text>
-
-            <Text style={styles.headerSubtitle}>
-              Stay consistent, complete daily{"\n"}
-              activities and earn rewards.
-            </Text>
+        {!fontsLoaded || (loading && !rewards) ? (
+          <View style={st.loading}>
+            <ActivityIndicator size="large" color={C.PLUM} />
           </View>
+        ) : (
+          <>
+            <Reanimated.View entering={enter(0)}>
+              <Text style={st.title}>Rewards</Text>
+              <Text style={st.subtitle}>Stay consistent, complete daily activities and earn</Text>
+            </Reanimated.View>
 
-          <View style={styles.walletPill}>
-            <MaterialCommunityIcons
-              name="wallet-outline"
-              size={28}
-              color="#C35A2A"
-            />
+            {/* Today's rewards */}
+            <Reanimated.View entering={enter(1)} style={st.hero}>
+              <View style={st.heroClip}>
+                <CardArt width={200} height={140} color={C.CARD} />
+                <Shine still={still} />
+                {SPARKLES.map((sparkle, i) => (
+                  <Sparkle key={i} {...sparkle} still={still} />
+                ))}
 
-            <View>
-              <Text style={styles.walletLabel}>Wallet</Text>
-              <Text style={styles.walletAmount}>₹{walletCredits}</Text>
-            </View>
+                <View style={st.heroRow}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={st.heroOverline}>TODAY’S REWARDS</Text>
+                    <Text style={st.heroTitle}>
+                      {earnedToday > dailyMaximum ? `₹${earnedToday} earned` : `₹${earnedToday} of ₹${dailyMaximum}`}
+                    </Text>
+                    <Text style={st.heroText}>
+                      {reached
+                        ? `Today’s ₹${dailyMaximum} target reached. Every extra 108 chants earns more.`
+                        : `Complete activities to earn ₹${dailyMaximum} today. Every extra 108 chants earns more.`}
+                    </Text>
+                  </View>
+                  <TodayRing progress={progress} earned={earnedToday} still={still} />
+                </View>
 
-            <Pressable
-              style={styles.addButton}
-              onPress={() => router.push("/profile/wallet")}
-            >
-              <MaterialCommunityIcons name="plus" size={26} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        </View>
+                <View style={st.heroFoot}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={15} color={C.GOLD} />
+                  <Text style={st.heroFootText}>
+                    {doneCount} of {activities.length} activities done today
+                  </Text>
+                </View>
+              </View>
+            </Reanimated.View>
 
-        {/* TODAY'S REWARDS */}
+            {/* Today's activities */}
+            <Reanimated.View entering={enter(2)}>
+              <SectionHeader overline="EARN EVERY DAY" title="Today’s activities" />
+              <View style={{ gap: 10 }}>
+                {activities.map((activity) => {
+                  const data = rewards?.activities?.[activity.type];
+                  const completed = data?.completed ?? false;
+                  const credits = data?.credits ?? 0;
 
-       <View style={styles.todayCard}>
-    <Image
-      source={{ uri: REWARDS_TODAY_TOP }}
-      style={styles.todayCardImage}
-    />
+                  return (
+                    <TouchableOpacity
+                      key={activity.type}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${activity.title}, ${completed ? "done" : `earn ₹${credits}`}`}
+                      activeOpacity={0.9}
+                      onPress={activity.open}
+                      style={[st.activity, completed && st.activityDone]}
+                    >
+                      <View style={[st.activityIcon, completed && st.activityIconDone]}>
+                        <MaterialCommunityIcons
+                          name={completed ? "check" : activity.icon}
+                          size={20}
+                          color={completed ? C.CARD : C.PLUM}
+                        />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={st.activityTitle} numberOfLines={1}>
+                          {activity.title}
+                        </Text>
+                        <Text style={st.activityText} numberOfLines={2}>
+                          {activity.description}
+                        </Text>
+                      </View>
+                      <View style={[st.credit, completed && st.creditDone]}>
+                        <Text style={[st.creditText, completed && { color: GREEN }]}>+₹{credits}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </Reanimated.View>
 
-    <View style={styles.todayOverlay}>
-      <View style={styles.todayHeader}>
-        <View style={styles.todayTitleRow}>
-          <Text style={styles.todayTitle}>
-            Today's Rewards
-          </Text>
+            {/* Mantra streak */}
+            <Reanimated.View entering={enter(3)}>
+              <SectionHeader overline="KEEP IT GOING" title="Mantra streak" />
+              <View style={st.streak}>
+                <View style={st.streakTop}>
+                  <View style={st.streakIcon}>
+                    <MaterialCommunityIcons name="fire" size={22} color={C.GOLD} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={st.streakTitle}>{streak.target}-day mantra streak</Text>
+                    <Text style={st.streakText}>
+                      {streak.days > 0
+                        ? `${streak.days} day${streak.days > 1 ? "s" : ""} in a row${streak.completedToday ? " · today is done" : ""}`
+                        : "Chant 108 times today to start your streak."}
+                    </Text>
+                  </View>
+                  <View style={st.bonus}>
+                    <MaterialCommunityIcons name="gift-outline" size={12} color={GOLD_TEXT} />
+                    <Text style={st.bonusText}>₹{streak.bonus} bonus</Text>
+                  </View>
+                </View>
 
-          <MaterialCommunityIcons
-            name="information-outline"
-            size={18}
-            color={NAVY_SOFT}
-          />
-        </View>
+                <View style={st.days}>
+                  {Array.from({ length: streak.target }, (_, i) => {
+                    const done = i < streak.current;
+                    const today = i === streak.current && !streak.completedToday;
+                    return (
+                      <View key={i} style={st.dayCol}>
+                        <View style={[st.day, done && st.dayDone, today && st.dayToday]}>
+                          {done && <MaterialCommunityIcons name="check" size={13} color={C.CARD} />}
+                        </View>
+                        <Text style={[st.dayLabel, done && { color: C.PLUM }]}>D{i + 1}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </Reanimated.View>
 
-        <Text style={styles.todayAmount}>
-          <Text style={styles.todayEarned}>
-            ₹{earnedToday}
-          </Text>
-          {/* Past the target (extra mantra rounds, streak bonus): show the total only. */}
-          {earnedToday > dailyMaximum ? " earned" : ` / ₹${dailyMaximum}`}
-        </Text>
-      </View>
-
-      <View style={styles.todayTrack}>
-        <View
-          style={[
-            styles.todayFill,
-            {
-              width: `${progress * 100}%`,
-            },
-          ]}
-        />
-      </View>
-
-      <Text style={styles.todayDescription}>
-        {earnedToday >= dailyMaximum
-          ? "You've reached today's ₹" + dailyMaximum + " target 🎉 Every extra 108 chants earns more."
-          : "Complete activities to earn ₹" + dailyMaximum + " today. Every extra 108 chants earns more."}
-      </Text>
-    </View>
-</View>
-
-        {/* TODAY'S ACTIVITIES */}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Activities</Text>
-
-          <Text style={styles.sectionSubtitle}>
-            Complete these activities to earn rewards.
-          </Text>
-        </View>
-
-        <View style={styles.activitiesContainer}>
-          {activities.map((activity) => {
-            const completed = activity.data?.completed ?? false;
-            const credits = activity.data?.credits ?? 0;
-
-            return (
-              <View
-                key={activity.type}
-                style={[
-                  styles.activityRow,
-                  completed && styles.activityRowCompleted,
-                ]}
+            {/* Leaderboard */}
+            <Reanimated.View entering={enter(4)}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                activeOpacity={0.9}
+                onPress={() => router.push("/(root)/(tabs)/leaderboard")}
+                style={st.board}
               >
-                <View style={styles.activityIcon}>
-                  <MaterialCommunityIcons
-                    name={activity.icon}
-                    size={27}
-                    color={PURPLE}
-                  />
+                <View style={st.boardClip}>
+                  <CardArt width={170} height={110} color={C.CARD} />
+                  <View style={st.boardIcon}>
+                    <MaterialCommunityIcons name="trophy-outline" size={24} color={C.GOLD} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={st.boardTitle}>Mantra leaderboard</Text>
+                    <Text style={st.boardText}>See today’s top chanters. Every chant you do counts.</Text>
+                  </View>
+                  <View style={st.boardArrow}>
+                    <MaterialCommunityIcons name="arrow-right" size={16} color={C.INK} />
+                  </View>
                 </View>
+              </TouchableOpacity>
 
-                <View style={styles.activityContent}>
-                  <Text style={styles.activityTitle} numberOfLines={1}>
-                    {activity.title}
-                  </Text>
-
-                  <Text style={styles.activityDescription} numberOfLines={2}>
-                    {activity.description}
-                  </Text>
+              {/* More ways to earn */}
+              <View style={st.more}>
+                <View style={st.moreIcon}>
+                  <MaterialCommunityIcons name="gift-outline" size={20} color={C.PLUM} />
                 </View>
-
-                <View
-                  style={[
-                    styles.rewardBadge,
-                    completed && styles.rewardBadgeCompleted,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.rewardBadgeText,
-                      completed && styles.rewardBadgeCompletedText,
-                    ]}
-                  >
-                    + ₹{credits}
-                  </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={st.moreTitle}>More ways to earn</Text>
+                  <Text style={st.moreText}>Refer friends and earn rewards.</Text>
                 </View>
-
-                <View
-                  style={[
-                    styles.statusCircle,
-                    completed && styles.statusCircleCompleted,
-                  ]}
-                >
-                  {completed && (
-                    <MaterialCommunityIcons
-                      name="check"
-                      size={17}
-                      color="#FFFFFF"
-                    />
-                  )}
+                <View style={st.soon}>
+                  <Text style={st.soonText}>Coming soon</Text>
                 </View>
               </View>
-            );
-          })}
-        </View>
-
-        {/* MANTRA STREAK */}
-
-        <View style={styles.streakCard}>
-          <MaterialCommunityIcons
-            name="fire"
-            size={50}
-            color="#F26332"
-            style={styles.streakIcon}
-          />
-
-          <View style={styles.streakMain}>
-            <Text style={styles.streakTitle}>
-              {streak.target} day mantra streak
-            </Text>
-
-            <Text style={styles.streakDescription}>
-              {streak.days > 0
-                ? `${streak.days} day${streak.days > 1 ? "s" : ""} in a row${
-                    streak.completedToday ? " · Today is done ✓" : ""
-                  }`
-                : "Keep your mantra practice going."}
-            </Text>
-
-            <Text style={styles.streakDescription}>
-              Every {streak.target} days in a row earns a ₹{streak.bonus} bonus.
-            </Text>
-          </View>
-
-          <View style={styles.streakSide}>
-            <Text style={styles.streakCount}>
-              {streak.current} / {streak.target} days
-            </Text>
-
-            <View style={styles.streakTrack}>
-              <View
-                style={[
-                  styles.streakFill,
-                  { width: `${streakProgress * 100}%` },
-                ]}
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* MANTRA LEADERBOARD */}
-
-        <Pressable style={styles.leaderboardCard} onPress={() => router.push("/(root)/(tabs)/leaderboard")}>
-          <Image
-            source={{ uri: MANTRA_REWARD_IMAGE }}
-            style={styles.leaderboardImage}
-          />
-
-          <View style={styles.leaderboardOverlay}>
-              <MaterialCommunityIcons
-                name="trophy-award"
-                size={38}
-                color={PURPLE}
-                style={styles.leaderboardIcon}
-              />
-
-              <View style={styles.leaderboardContent}>
-                <Text style={styles.leaderboardTitle}>Mantra Leaderboard</Text>
-
-                <Text style={styles.leaderboardDescription}>
-                  See today's top chanters.{"\n"}
-                  Your chant count contributes{"\n"}
-                  to the leaderboard.
-                </Text>
-              </View>
-
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={28}
-                color={NAVY_SOFT}
-                style={styles.leaderboardChevron}
-              />
-            </View>
-        </Pressable>
-
-        {/* MORE WAYS TO EARN */}
-
-        <Pressable style={styles.moreWaysCard} onPress={() => {}}>
-          <MaterialCommunityIcons
-            name="gift-outline"
-            size={32}
-            color={PURPLE}
-            style={styles.moreWaysIcon}
-          />
-
-          <View style={styles.moreWaysContent}>
-            <Text style={styles.moreWaysTitle}>More ways to earn</Text>
-
-            <Text style={styles.moreWaysDescription}>
-              Refer friends and earn rewards.
-            </Text>
-          </View>
-
-          <MaterialCommunityIcons
-            name="chevron-right"
-            size={27}
-            color="#3B3556"
-          />
-        </Pressable>
+            </Reanimated.View>
+          </>
+        )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F8F7FF",
-  },
+const st = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.LAVENDER },
+  loading: { height: 320, alignItems: "center", justifyContent: "center" },
+  title: { marginTop: 14, color: C.INK, fontSize: 26, fontFamily: F.bold, letterSpacing: -0.4 },
+  subtitle: { marginTop: 2, marginBottom: 14, color: C.MUTED, fontSize: 13.5, fontFamily: F.regular },
 
-  loadingContainer: {
-    flex: 1,
+  hero: { borderRadius: 26, backgroundColor: C.PLUM, ...softShadow, shadowOpacity: 0.25 },
+  heroClip: { borderRadius: 26, overflow: "hidden", padding: 18, backgroundColor: C.PLUM },
+  heroRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },
+  heroOverline: { color: "rgba(255,253,252,0.65)", fontSize: 11, fontFamily: F.bold, letterSpacing: 1.6 },
+  heroTitle: { marginTop: 6, color: C.CARD, fontSize: 22, lineHeight: 27, fontFamily: F.bold, letterSpacing: -0.3 },
+  heroText: { marginTop: 6, color: "rgba(255,253,252,0.78)", fontSize: 12.5, lineHeight: 18, fontFamily: F.regular },
+  heroFoot: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,253,252,0.14)",
+  },
+  heroFootText: { color: "rgba(255,253,252,0.85)", fontSize: 12.5, fontFamily: F.semibold },
+  ringValue: { color: C.CARD, fontSize: 22, lineHeight: 26, fontFamily: F.bold },
+  ringGlow: { position: "absolute", width: RING, height: RING, borderRadius: RING / 2, backgroundColor: C.GOLD },
+  rupee: { color: C.GOLD, fontSize: 15, fontFamily: F.bold },
+  shine: { position: "absolute", top: -60, bottom: -60, left: -40, width: 90 },
+  ringLabel: { color: "rgba(255,253,252,0.65)", fontSize: 10.5, fontFamily: F.medium },
+
+  activity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.LINE,
+    ...softShadow,
+    shadowOpacity: 0.05,
+  },
+  activityDone: { backgroundColor: "#F3F9F4", borderColor: "#D4E8DA" },
+  activityIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.SOFT,
+    borderWidth: 1,
+    borderColor: "rgba(43,26,61,0.14)",
   },
-
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 110,
+  activityIconDone: { backgroundColor: GREEN, borderColor: GREEN },
+  activityTitle: { color: C.INK, fontSize: 14.5, fontFamily: F.bold },
+  activityText: { marginTop: 2, color: C.MUTED, fontSize: 12, lineHeight: 16.5, fontFamily: F.regular },
+  credit: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: C.IVORY,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
   },
+  creditDone: { backgroundColor: GREEN_SOFT, borderColor: "#CFE6D6" },
+  creditText: { color: GOLD_TEXT, fontSize: 13, fontFamily: F.bold },
 
-  /* Header */
-
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
+  streak: {
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: C.IVORY,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
+    ...softShadow,
+    shadowOpacity: 0.05,
   },
-
-  headerText: {
-    flex: 1,
-    paddingRight: 8,
-    paddingTop: 4,
-  },
-
-  headerTitle: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: NAVY,
-    letterSpacing: -1,
-  },
-
-  headerSubtitle: {
-    marginTop: 3,
-    fontSize: 14,
-    lineHeight: 19,
-    color: SLATE,
-  },
-
-  walletPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingLeft: 10,
-    paddingRight: 8,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: "#EFEAF8",
-  },
-
-  walletLabel: {
-    fontSize: 12,
-    color: "#6F6A82",
-  },
-
-  walletAmount: {
-    marginTop: -1,
-    fontSize: 22,
-    fontWeight: "800",
-    color: NAVY,
-  },
-
-  addButton: {
+  streakTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  streakIcon: {
     width: 42,
     height: 42,
-    borderRadius: 13,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#8A0057",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
   },
-
-  /* Today's rewards */
-
-  todayCard: {
-  width: "100%",
-  height: 118,
-  borderRadius: 18,
-  overflow: "hidden",
-  marginBottom: 20,
-  position: "relative",
-
-},
-
-// The PNG (2121x741) has a transparent border around the card artwork
-// (x 57-2063, y 108-607). Scale it so the artwork fills the 118px card
-// height, right-align it, and let the card's overflow clip the border.
-todayCardImage: {
-  position: "absolute",
-  top: -25.5,
-  right: -13.7,
-  width: 500.6,
-  height: 174.9,
-},
-
-todayOverlay: {
-  flex: 1,
-  paddingHorizontal: 16,
-  paddingVertical: 13,
-},
-
-  todayHeader: {
+  streakTitle: { color: C.INK, fontSize: 15.5, fontFamily: F.bold },
+  streakText: { marginTop: 2, color: C.MUTED, fontSize: 12, lineHeight: 16.5, fontFamily: F.regular },
+  bonus: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  todayTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  todayTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: NAVY,
-  },
-
-  todayAmount: {
-    fontSize: 21,
-    fontWeight: "800",
-    color: NAVY,
-  },
-
-  todayEarned: {
-    color: "#C94C21",
-  },
-
-  todayTrack: {
-    height: 16,
-    marginTop: 10,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.6)",
-    overflow: "hidden",
-  },
-
-  todayFill: {
-    height: "100%",
-    borderRadius: 8,
-    backgroundColor: ORANGE,
-  },
-
-  todayDescription: {
-    marginTop: 10,
-    fontSize: 13,
-    color: SLATE,
-  },
-
-  /* Section */
-
-  sectionHeader: {
-    marginBottom: 10,
-  },
-
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: NAVY,
-  },
-
-  sectionSubtitle: {
-    marginTop: 1,
-    fontSize: 14,
-    color: SLATE,
-  },
-
-  /* Activities */
-
-  activitiesContainer: {
-    gap: 8,
-    marginBottom: 12,
-  },
-
-  activityRow: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
-  },
-
-  activityRowCompleted: {
-    backgroundColor: "#EDF7EA",
-  },
-
-  activityIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F1E8FF",
-    marginRight: 11,
-  },
-
-  activityContent: {
-    flex: 1,
-    paddingRight: 6,
-  },
-
-  activityTitle: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#20134C",
-  },
-
-  activityDescription: {
-    marginTop: 2,
-    fontSize: 12,
-    lineHeight: 16,
-    color: SLATE,
-  },
-
-  rewardBadge: {
-    minWidth: 56,
-    alignItems: "center",
+    gap: 4,
     paddingHorizontal: 9,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: "#FFE7D6",
-    marginRight: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
   },
-
-  rewardBadgeCompleted: {
-    backgroundColor: "#DDF2DA",
-  },
-
-  rewardBadgeText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#C5531E",
-  },
-
-  rewardBadgeCompletedText: {
-    color: "#2E8B3E",
-  },
-
-  statusCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1.5,
-    borderColor: "#9E9BA9",
+  bonusText: { color: GOLD_TEXT, fontSize: 11.5, fontFamily: F.bold },
+  days: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
+  dayCol: { alignItems: "center", gap: 5 },
+  day: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
   },
+  dayDone: { backgroundColor: C.PLUM, borderColor: C.PLUM },
+  dayToday: { borderColor: C.GOLD, borderWidth: 2 },
+  dayLabel: { color: C.MUTED, fontSize: 10.5, fontFamily: F.semibold },
 
-  statusCircleCompleted: {
-    borderWidth: 0,
-    backgroundColor: "#2B1250",
-  },
-
-  /* Streak */
-
-  streakCard: {
+  board: { marginTop: 30, borderRadius: 22, backgroundColor: C.INK, ...softShadow, shadowOpacity: 0.2 },
+  boardClip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: "#FFEEE4",
-    marginBottom: 10,
-  },
-
-  streakIcon: {
-    marginRight: 8,
-  },
-
-  streakMain: {
-    flex: 1,
-    paddingRight: 8,
-  },
-
-  streakTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: NAVY,
-    marginBottom: 2,
-  },
-
-  streakDescription: {
-    fontSize: 11.5,
-    lineHeight: 15,
-    color: SLATE,
-  },
-
-  streakSide: {
-    width: 84,
-    alignSelf: "flex-start",
-    paddingTop: 4,
-  },
-
-  streakCount: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: NAVY_SOFT,
-    textAlign: "right",
-  },
-
-  streakTrack: {
-    height: 12,
-    marginTop: 10,
-    borderRadius: 6,
-    backgroundColor: "#E9DAD4",
+    gap: 12,
+    padding: 16,
+    borderRadius: 22,
     overflow: "hidden",
+    backgroundColor: C.INK,
   },
-
-  streakFill: {
-    height: "100%",
-    borderRadius: 6,
-    backgroundColor: ORANGE,
+  boardIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,253,252,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.45)",
   },
+  boardTitle: { color: C.CARD, fontSize: 16, fontFamily: F.bold },
+  boardText: { marginTop: 2, color: "rgba(255,253,252,0.72)", fontSize: 12.5, lineHeight: 17.5, fontFamily: F.regular },
+  boardArrow: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.CARD },
 
-  /* Leaderboard */
-
-  leaderboardCard: {
-  width: "100%",
-  height: 108,
-  borderRadius: 18,
-  overflow: "hidden",
-  marginBottom: 10,
-  
-},
-
-
-
-  // The PNG (2122x741) has a transparent border around the card artwork
-  // (x 26-2097, y 161-607). Scale it so the artwork fills the 108px card
-  // height, right-align it, and let the card's overflow clip the border.
-  leaderboardImage: {
-    position: "absolute",
-    top: -39,
-    right: -6.1,
-    width: 513.8,
-    height: 179.4,
-  },
-
-  leaderboardOverlay: {
-    flex: 1,
+  more: {
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    
-  },
-
-  leaderboardIcon: {
-    marginRight: 12,
-  },
-
-  leaderboardContent: {
-    flex: 1,
-    paddingRight: 34,
-  },
-
-  leaderboardTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: NAVY_SOFT,
-    marginBottom: 3,
-  },
-
-  leaderboardDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: SLATE,
-  },
-
-  leaderboardChevron: {
-    position: "absolute",
-    right: 10,
-    top: "50%",
-    marginTop: -14,
-  },
-
-  /* More ways to earn */
-
-  moreWaysCard: {
-    minHeight: 70,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.7)",
+    gap: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,253,252,0.7)",
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#C9C1D6",
+    borderColor: C.BORDER,
   },
-
-  moreWaysIcon: {
-    marginRight: 14,
-  },
-
-  moreWaysContent: {
-    flex: 1,
-  },
-
-  moreWaysTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: NAVY_SOFT,
-  },
-
-  moreWaysDescription: {
-    marginTop: 2,
-    fontSize: 12.5,
-    color: SLATE,
-  },
+  moreIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: C.SOFT },
+  moreTitle: { color: C.INK, fontSize: 14.5, fontFamily: F.bold },
+  moreText: { marginTop: 2, color: C.MUTED, fontSize: 12, fontFamily: F.regular },
+  soon: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: C.SOFT },
+  soonText: { color: C.PLUM, fontSize: 11, fontFamily: F.semibold },
 });

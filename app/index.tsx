@@ -4,6 +4,7 @@ import { StatusBar } from "react-native";
 
 import { AnimatedSplash, SPLASH_MIN_DURATION } from "../components/splash/AnimatedSplash";
 import useAuthStore from "../components/stores/authStore";
+import { track } from "../lib/analytics";
 
 // Launch screen: plays the animated splash while the saved session loads,
 // then opens the app (signed in) or the login flow.
@@ -16,6 +17,11 @@ export default function LaunchScreen() {
 
     // Let the animation play through once, even if the session loads instantly.
     const [animationDone, setAnimationDone] = useState(false);
+
+    // Analytics: the splash screen was shown (every app launch).
+    useEffect(() => {
+        track("visited_splash_screen");
+    }, []);
 
     useEffect(() => {
         initializeAuth();

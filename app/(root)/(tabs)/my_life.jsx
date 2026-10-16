@@ -43,6 +43,7 @@ import { useRewardsStore } from "../../../components/stores/rewardsStore";
 import { useUserStore } from "../../../components/stores/userStore";
 import { hasBirthDetails } from "../../../components/utils/birthDetails";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
+import { useScreenTime } from "../../../lib/analytics";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -173,6 +174,10 @@ export default function MyLife() {
   const tabSpace = useTabBarSpace();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
   const [activeTab, setActiveTab] = useState("daily");
+
+  // Analytics, per tab: visited_my_vritta_daily + my_vritta_daily_time_spent
+  // (weekly / monthly / yearly the same way).
+  useScreenTime(`my_vritta_${activeTab}`);
   // Load errors, keyed "profileId:period".
   const [errors, setErrors] = useState({});
 

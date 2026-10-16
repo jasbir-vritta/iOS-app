@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import ChatWelcome from "../../../components/chat/ChatWelcome";
-import { track } from "../../../lib/analytics";
+import { track, useChatTracking } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -101,6 +101,9 @@ export default function VedicChat() {
     ratePerMinute?: string;
     remainingTimeSeconds?: string;
   }>();
+
+  // Analytics: chat_started_<astrologer> + chat_<astrologer>_time_spent.
+  useChatTracking({ astrologerName, astrologerId, readingType: readingType || "vedic", sessionId, chatType: "ai" });
 
 
   
@@ -311,7 +314,7 @@ const initialSeconds = hasValidRemainingTime
       socket.onopen = () => {
         setConnecting(false);
         setChatActive(true);
-        track("chat_started", { chat_type: "ai", reading_type: "vedic", astrologer_id: astrologerId });
+        track("chat_started", { chat_type: "ai", reading_type: readingType || "vedic", astrologer_id: astrologerId });
       };
 
       socket.onmessage = (event) => {

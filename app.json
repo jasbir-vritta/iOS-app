@@ -89,7 +89,22 @@
           }
         }
       ],
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "@react-native-firebase/analytics",
+      "expo-sharing",
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "1104089305671582",
+          "clientToken": "c74fab86084867dcb84eb13efe787486",
+          "displayName": "Vritta",
+          "scheme": "fb1104089305671582",
+          "advertiserIDCollectionEnabled": false,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true,
+          "iosUserTrackingPermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

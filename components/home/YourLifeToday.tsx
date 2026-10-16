@@ -1,41 +1,45 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    Dimensions,
-    LayoutChangeEvent,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Dimensions,
+  LayoutChangeEvent,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import Reanimated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import Svg, { Circle, Path } from "react-native-svg";
 
 import { useMyLifeStore } from "../stores/myLifeStore";
 import { useUserStore } from "../stores/userStore";
-
-const C = {
-  INK: "#1C1820",
-  PLUM: "#2B1A3D",
-  MUTED: "#6B6470",
-  WHITE: "#FFFFFF",
-};
-
-const scale = Math.min(Dimensions.get("window").width, 430) / 430;
-const px = (value: number) => Math.round(value * scale);
+import {
+  C,
+  F,
+  HOME_PAD,
+  LIST_BOTTOM,
+  LIST_TOP,
+  normalizeStatus,
+  SectionHeader,
+  softShadow,
+  STATUS,
+} from "./homeUi";
 
 const GAP = 10;
-const H_PAD = 16; // must match your screen's horizontal padding
-const CARD_WIDTH_FRACTION = 0.31; // card width as a fraction of the row (bigger = wider cards)
-const CARD_RATIO = 1.35; // height = width * ratio
+const CARD_WIDTH_FRACTION = 0.46; // about two cards and a peek
+const CARD_H = 210;
 
-// Falls back to a safe icon if a glyph name doesn't exist in the installed version
-type IconName = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
-const safeIcon = (name: string, fallback: string = "star-four-points"): IconName => {
-  const glyphs = (MaterialCommunityIcons as any).glyphMap || {};
-  return (name in glyphs ? name : fallback) as IconName;
-};
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+type AreaKey = "love" | "career" | "money" | "health" | "travel";
 
 // Same text clean-up as My Life: the API may send strings, arrays or objects.
 const toText = (value: unknown): string => {
@@ -51,111 +55,268 @@ const toText = (value: unknown): string => {
   return "";
 };
 
-// Shown until the selected profile's guidance has loaded (or if it has none).
-const PENDING_DESCRIPTION = "Tap to see today's guidance.";
+/*
+ * Each area has its own look, from the locked palette only:
+ * two dark cards (Ink, Plum) between three light ones (Lavender, Ivory, Card).
+ * `fg` is the text colour (rgb), `accent` drives the badge, bar and art.
+ */
+type Look = {
+  bg: string;
+  border: string;
+  fg: string;
+  accent: string;
+  art: "heart" | "steps" | "coin" | "lotus" | "flight";
+};
 
-const areas = [
+const LIGHT = "255,253,252";
+const DARK = "28,24,32";
+
+const AREAS: { key: AreaKey; title: string; icon: IconName; look: Look }[] = [
   {
     key: "love",
-    title: "Love &\nRelationships",
+    title: "Love & Relationships",
     icon: "heart-outline",
-    deco: "leaf",
-    gradient: ["#FFD9E0", "#FFEFF2"],
-    accent: "#E5405E",
+    look: { bg: "#EFE8F7", border: "#DCCFEA", fg: DARK, accent: C.PLUM, art: "heart" },
   },
   {
     key: "career",
-    title: "Career &\nGrowth",
-    icon: "briefcase",
-    deco: "image-filter-hdr",
-    gradient: ["#FFE0B5", "#FFF4E2"],
-    accent: "#C8691E",
+    title: "Career & Growth",
+    icon: "briefcase-outline",
+    look: { bg: C.INK, border: C.INK, fg: LIGHT, accent: C.IVORY, art: "steps" },
   },
   {
     key: "money",
-    title: "Money &\nFinance",
-    icon: "cash-multiple",
-    deco: "leaf",
-    gradient: ["#D3F0D8", "#F0FAF1"],
-    accent: "#E2A21B",
+    title: "Money & Finance",
+    icon: "wallet-outline",
+    look: { bg: C.IVORY, border: "#E6D9C4", fg: DARK, accent: "#8A6A2E", art: "coin" },
   },
   {
     key: "health",
-    title: "Health &\nWellness",
+    title: "Health & Wellness",
     icon: "meditation",
-    deco: "flower",
-    gradient: ["#E6D6FA", "#F7F1FE"],
-    accent: "#D6336C",
+    look: { bg: C.CARD, border: C.LINE, fg: DARK, accent: C.PLUM, art: "lotus" },
   },
   {
     key: "travel",
-    title: "Travel &\nJourneys",
+    title: "Travel & Journeys",
     icon: "airplane",
-    deco: "map-outline",
-    gradient: ["#EAE3F3", "#F7F3FB"],
-    accent: "#2B1A3D",
+    look: { bg: C.PLUM, border: C.PLUM, fg: LIGHT, accent: C.GOLD, art: "flight" },
   },
-] as const;
+];
 
-const MY_LIFE_ROUTE = "/(root)/(tabs)/my_life";
+/* Faint artwork in the card corner, one per area. */
+function Art({ kind, color, w }: { kind: Look["art"]; color: string; w: number }) {
+  const o = 0.14;
+  if (kind === "heart") {
+    return (
+      <MaterialCommunityIcons name="heart" size={120} color={color} style={[styles.art, { right: -26, bottom: -30, opacity: 0.08 }]} />
+    );
+  }
+  if (kind === "lotus") {
+    return (
+      <MaterialCommunityIcons name="flower-tulip-outline" size={118} color={color} style={[styles.art, { right: -24, bottom: -22, opacity: 0.09 }]} />
+    );
+  }
+  if (kind === "coin") {
+    return (
+      <Svg width={130} height={130} style={[styles.art, { right: -40, bottom: -40 }]}>
+        <Circle cx={65} cy={65} r={58} stroke={color} strokeOpacity={o + 0.06} strokeWidth={2} fill="none" />
+        <Circle cx={65} cy={65} r={44} stroke={color} strokeOpacity={o} strokeWidth={1} fill="none" strokeDasharray="3 4" />
+        <Circle cx={65} cy={65} r={30} fill={color} fillOpacity={0.08} />
+      </Svg>
+    );
+  }
+  if (kind === "steps") {
+    // Rising bars: growth.
+    return (
+      <Svg width={110} height={90} style={[styles.art, { right: 10, bottom: 52 }]}>
+        {[0, 1, 2, 3].map((i) => (
+          <Path
+            key={i}
+            d={`M${8 + i * 26} 90 V${70 - i * 18} h16 V90`}
+            fill={color}
+            fillOpacity={0.06 + i * 0.025}
+          />
+        ))}
+      </Svg>
+    );
+  }
+  // Travel: a dotted flight path with a plane.
+  return (
+    <View style={[styles.art, { right: 0, top: 0 }]}>
+      <Svg width={w} height={90}>
+        <Path
+          d={`M${w * 0.18} 82 Q${w * 0.6} -6 ${w - 14} 34`}
+          stroke={color}
+          strokeOpacity={0.45}
+          strokeWidth={1.4}
+          strokeDasharray="2 6"
+          fill="none"
+        />
+        <Circle cx={w * 0.18} cy={82} r={2.5} fill={color} opacity={0.6} />
+      </Svg>
+      <MaterialCommunityIcons
+        name="airplane"
+        size={16}
+        color={color}
+        style={{ position: "absolute", right: 6, top: 25, transform: [{ rotate: "35deg" }], opacity: 0.8 }}
+      />
+    </View>
+  );
+}
+
+const openMyLife = () => router.push("/(root)/(tabs)/my_life" as any);
+
+type AreaData = { score?: unknown; status?: unknown; title?: unknown; description?: unknown; text?: unknown } | undefined;
+
+/* One life area: tap to flip over and read today's full description. */
+function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: AreaData; width: number }) {
+  const look = area.look;
+  const fg = (alpha: number) => `rgba(${look.fg},${alpha})`;
+  const dark = look.fg === LIGHT;
+
+  const score = Number(data?.score);
+  const hasScore = Number.isFinite(score);
+  const status = STATUS[normalizeStatus(data?.status)];
+  const summary =
+    toText(data?.title) || toText(data?.description || data?.text) || "Tap to see today’s guidance.";
+  const full =
+    toText(data?.description || data?.text) || toText(data?.title) || "Today’s reading for this area will appear here.";
+
+  // 0 = front, 1 = back.
+  const still = useReducedMotion();
+  const turn = useSharedValue(0);
+  const [flipped, setFlipped] = useState(false);
+
+  const flip = () => {
+    const next = !flipped;
+    setFlipped(next);
+    turn.value = withTiming(next ? 1 : 0, { duration: still ? 0 : 520, easing: Easing.out(Easing.cubic) });
+  };
+
+  const frontStyle = useAnimatedStyle(() => ({
+    opacity: turn.value < 0.5 ? 1 : 0,
+    transform: [{ perspective: 900 }, { rotateY: `${interpolate(turn.value, [0, 1], [0, 180])}deg` }],
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    opacity: turn.value >= 0.5 ? 1 : 0,
+    transform: [{ perspective: 900 }, { rotateY: `${interpolate(turn.value, [0, 1], [180, 360])}deg` }],
+  }));
+
+  const face = [styles.face, { backgroundColor: look.bg, borderColor: look.border }];
+
+  return (
+    <View style={[styles.card, { width, backgroundColor: look.bg }]}>
+      {/* Front */}
+      <Reanimated.View style={[StyleSheet.absoluteFill, frontStyle]} pointerEvents={flipped ? "none" : "auto"}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={`${area.title}: ${data ? status.label : "no reading yet"}. Tap to read more.`}
+          activeOpacity={0.92}
+          onPress={flip}
+          style={face}
+        >
+          <Art kind={look.art} color={look.accent} w={width} />
+
+          <View style={styles.top}>
+            <View
+              style={[
+                styles.badge,
+                dark
+                  ? { backgroundColor: fg(0.1), borderColor: fg(0.22) }
+                  : { backgroundColor: C.CARD, borderColor: "rgba(43,26,61,0.14)" },
+              ]}
+            >
+              <MaterialCommunityIcons name={area.icon} size={18} color={dark ? fg(1) : look.accent} />
+            </View>
+            {!!data && (
+              <View style={[styles.pill, { backgroundColor: status.bg }]}>
+                <View style={[styles.dot, { backgroundColor: status.color }]} />
+                <Text style={[styles.pillText, { color: status.color }]}>{status.label}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={{ flex: 1 }} />
+
+          <Text style={[styles.title, { color: fg(1) }]} numberOfLines={2}>
+            {area.title}
+          </Text>
+          <Text style={[styles.description, { color: fg(dark ? 0.72 : 0.62) }]} numberOfLines={2}>
+            {summary}
+          </Text>
+
+          <View style={styles.barRow}>
+            <View style={[styles.barTrack, { backgroundColor: dark ? fg(0.16) : "rgba(43,26,61,0.1)" }]}>
+              <View
+                style={[
+                  styles.barFill,
+                  { backgroundColor: look.accent, width: `${hasScore ? Math.max(4, Math.min(100, score)) : 0}%` },
+                ]}
+              />
+            </View>
+            <Text style={[styles.barValue, { color: dark ? fg(1) : look.accent }]}>
+              {hasScore ? Math.round(score) : "–"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Reanimated.View>
+
+      {/* Back: today's full description (tap anywhere to turn it back) */}
+      <Reanimated.View style={[StyleSheet.absoluteFill, backStyle]} pointerEvents={flipped ? "auto" : "none"}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={`${area.title}: ${full}. Tap to flip back.`}
+          activeOpacity={0.92}
+          onPress={flip}
+          style={face}
+        >
+          <View style={styles.backHead}>
+            <MaterialCommunityIcons name={area.icon} size={16} color={dark ? fg(1) : look.accent} />
+            <Text style={[styles.backTitle, { color: fg(1) }]} numberOfLines={1}>
+              {area.title.split(" & ")[0]}
+            </Text>
+            {hasScore && (
+              <Text style={[styles.backScore, { color: dark ? fg(1) : look.accent }]}>{Math.round(score)}</Text>
+            )}
+          </View>
+
+          {!!data && (
+            <View style={[styles.pill, styles.backPill, { backgroundColor: status.bg }]}>
+              <View style={[styles.dot, { backgroundColor: status.color }]} />
+              <Text style={[styles.pillText, { color: status.color }]}>{status.label}</Text>
+            </View>
+          )}
+
+          <ScrollView
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            style={styles.backScroll}
+            contentContainerStyle={{ paddingBottom: 4 }}
+          >
+            <Text style={[styles.backText, { color: fg(dark ? 0.86 : 0.78) }]}>{full}</Text>
+          </ScrollView>
+        </TouchableOpacity>
+      </Reanimated.View>
+    </View>
+  );
+}
 
 export default function YourLifeToday() {
-  const [rowWidth, setRowWidth] = useState(
-    Dimensions.get("window").width - H_PAD * 2
-  );
+  const [rowWidth, setRowWidth] = useState(Dimensions.get("window").width - HOME_PAD * 2);
 
-  const activeProfileId = useUserStore(
-    (state) => state.user?.active_profile_id
-  );
-
+  const activeProfileId = useUserStore((state) => state.user?.active_profile_id);
   const today = useMyLifeStore((state) =>
     // Same Daily horoscope as the My Life screen (loaded by DailyGuidance).
     activeProfileId ? state.profiles[activeProfileId]?.daily : null
   );
 
-  const lifeAreas = today?.areas;
-
-  const navigateToMyLife = () => {
-    router.push(MY_LIFE_ROUTE as any);
-  };
-
-  const onLayout = (e: LayoutChangeEvent) => {
-    setRowWidth(e.nativeEvent.layout.width);
-  };
-
-  // every size below is derived from the card width, so it scales perfectly
+  const onLayout = (e: LayoutChangeEvent) => setRowWidth(e.nativeEvent.layout.width);
   const cardW = Math.round(rowWidth * CARD_WIDTH_FRACTION);
-  const cardH = Math.round(cardW * CARD_RATIO);
-  const pad = Math.round(cardW * 0.09);
-
-  const titleLH = Math.round(cardW * 0.148);
-  const descLH = Math.round(cardW * 0.113);
 
   return (
-    <View style={styles.container} onLayout={onLayout}>
-      <View style={styles.header}>
-        <View style={styles.headingContainer}>
-          <Text style={styles.heading}>Your life today</Text>
-          <Text style={styles.subtitle}>
-            Personalised insights for what matters most
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View all life insights"
-          onPress={navigateToMyLife}
-          style={styles.viewAll}
-          hitSlop={8}
-        >
-          <Text style={styles.viewAllText}>View all</Text>
-          <MaterialCommunityIcons
-            name="arrow-right"
-            size={px(18)}
-            color={C.PLUM}
-          />
-        </Pressable>
-      </View>
+    <View onLayout={onLayout}>
+      <SectionHeader overline="INSIGHTS" title="Your life today" onViewAll={openMyLife} />
 
       <ScrollView
         horizontal
@@ -163,185 +324,36 @@ export default function YourLifeToday() {
         decelerationRate="fast"
         snapToInterval={cardW + GAP}
         snapToAlignment="start"
-        style={{ marginHorizontal: -H_PAD }}
-        contentContainerStyle={[
-          styles.cards,
-          { paddingHorizontal: H_PAD, paddingVertical: 4 },
-        ]}
+        style={{ marginHorizontal: -HOME_PAD }}
+        contentContainerStyle={{ paddingHorizontal: HOME_PAD, paddingTop: LIST_TOP, paddingBottom: LIST_BOTTOM, gap: GAP }}
       >
-        {areas.map((area) => {
-          const apiArea = lifeAreas?.[area.key];
-          const description =
-            toText(apiArea?.description || apiArea?.text) ||
-            PENDING_DESCRIPTION;
-
-          return (
-            <Pressable
-              key={area.key}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${area.key} guidance`}
-              onPress={navigateToMyLife}
-              style={({ pressed }) => [pressed && styles.cardPressed]}
-            >
-              <LinearGradient
-                colors={area.gradient as unknown as [string, string]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[
-                  styles.card,
-                  {
-                    width: cardW,
-                    height: cardH,
-                    borderRadius: Math.round(cardW * 0.14),
-                    padding: pad,
-                  },
-                ]}
-              >
-                {/* faint botanical decoration */}
-                <MaterialCommunityIcons
-                  name={safeIcon(area.deco, "leaf")}
-                  size={Math.round(cardW * 0.85)}
-                  color={area.accent}
-                  style={{
-                    position: "absolute",
-                    right: -Math.round(cardW * 0.14),
-                    bottom: -Math.round(cardW * 0.04),
-                    opacity: 0.12,
-                  }}
-                  pointerEvents="none"
-                />
-
-                <MaterialCommunityIcons
-                  name={safeIcon(area.icon)}
-                  size={Math.round(cardW * 0.29)}
-                  color={area.accent}
-                  style={{ marginBottom: Math.round(cardW * 0.07) }}
-                />
-
-                <Text
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                  allowFontScaling={false}
-                  style={[
-                    styles.cardTitle,
-                    {
-                      fontSize: Math.round(cardW * 0.118),
-                      lineHeight: titleLH,
-                      height: titleLH * 2, // always reserve 2 lines
-                    },
-                  ]}
-                >
-                  {area.title}
-                </Text>
-
-                <Text
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                  allowFontScaling={false}
-                  style={[
-                    styles.cardDescription,
-                    {
-                      fontSize: Math.round(cardW * 0.088),
-                      lineHeight: descLH,
-                      height: descLH * 2, // always reserve 2 lines
-                      marginTop: Math.round(cardW * 0.04),
-                      paddingRight: Math.round(cardW * 0.06),
-                    },
-                  ]}
-                >
-                  {description}
-                </Text>
-
-                <View
-                  style={[
-                    styles.arrow,
-                    {
-                      right: Math.round(cardW * 0.07),
-                      bottom: Math.round(cardW * 0.07),
-                      width: Math.round(cardW * 0.24),
-                      height: Math.round(cardW * 0.24),
-                      borderRadius: Math.round(cardW * 0.12),
-                    },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="arrow-right"
-                    size={Math.round(cardW * 0.13)}
-                    color={C.PLUM}
-                  />
-                </View>
-              </LinearGradient>
-            </Pressable>
-          );
-        })}
+        {AREAS.map((area) => (
+          <AreaCard key={area.key} area={area} data={today?.areas?.[area.key]} width={cardW} />
+        ))}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: px(14),
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: px(12),
-  },
-  headingContainer: {
-    flex: 1,
-  },
-  heading: {
-    color: C.INK,
-    fontSize: px(21),
-    lineHeight: px(26),
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: C.MUTED,
-    fontSize: px(12.5),
-    lineHeight: px(17),
-    marginTop: px(2),
-  },
-  viewAll: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: px(6),
-    marginLeft: px(8),
-  },
-  viewAllText: {
-    color: C.PLUM,
-    fontSize: px(14),
-    fontWeight: "600",
-  },
-  cards: {
-    gap: GAP,
-  },
-  card: {
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.7)",
-  },
-  cardPressed: {
-    opacity: 0.86,
-  },
-  cardTitle: {
-    color: C.INK,
-    fontWeight: "700",
-  },
-  cardDescription: {
-    color: C.MUTED,
-  },
-  arrow: {
-    position: "absolute",
-    backgroundColor: C.WHITE,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#2B1A3D",
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
+  card: { height: CARD_H, borderRadius: 22, ...softShadow },
+  face: { flex: 1, borderRadius: 22, overflow: "hidden", borderWidth: 1, padding: 14, backfaceVisibility: "hidden" },
+  art: { position: "absolute" },
+  top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  badge: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
+  dot: { width: 5, height: 5, borderRadius: 2.5 },
+  pillText: { fontSize: 9.5, fontFamily: F.semibold },
+  title: { fontSize: 15, lineHeight: 20, fontFamily: F.bold },
+  description: { fontSize: 12, lineHeight: 17, fontFamily: F.regular, marginTop: 4, minHeight: 34 },
+  barRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  barTrack: { flex: 1, height: 5, borderRadius: 3, overflow: "hidden" },
+  barFill: { height: 5, borderRadius: 3 },
+  barValue: { width: 30, textAlign: "right", fontSize: 12.5, fontFamily: F.bold },
+  backHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  backTitle: { flex: 1, fontSize: 14, fontFamily: F.bold },
+  backScore: { fontSize: 14, fontFamily: F.bold },
+  backPill: { alignSelf: "flex-start", marginTop: 8 },
+  backScroll: { flex: 1, marginTop: 8 },
+  backText: { fontSize: 12.5, lineHeight: 18.5, fontFamily: F.regular },
 });

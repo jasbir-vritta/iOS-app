@@ -2,7 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ImageBackground, Pressable, StatusBar, Text, View } from "react-native";
+import {
+  ImageBackground,
+  Pressable,
+  StatusBar,
+  View,
+} from "react-native";
+
+import { Text } from "../../../components/ui/BrandText";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const LANGUAGE_KEY = "app_language";

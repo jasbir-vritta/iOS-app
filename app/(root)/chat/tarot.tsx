@@ -21,7 +21,7 @@ import { useKeyboardInset } from "../../../components/utils/useKeyboardInset";
 
 import tarotCards from "../../../components/constants/tarot_cards.json";
 import ChatWelcome from "../../../components/chat/ChatWelcome";
-import { track } from "../../../lib/analytics";
+import { track, useChatTracking } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -308,6 +308,9 @@ export default function TarotChat() {
     ratePerMinute?: string;
     remainingTimeSeconds?: string;
   }>();
+
+  // Analytics: chat_started_<astrologer> + chat_<astrologer>_time_spent.
+  useChatTracking({ astrologerName, astrologerId, readingType: "tarot", sessionId, chatType: "ai" });
 
   const { width } = useWindowDimensions();
   const fanPad = (width - CARD_W) / 2;

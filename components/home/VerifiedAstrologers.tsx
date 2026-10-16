@@ -1,6 +1,5 @@
 
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -25,16 +24,19 @@ import { API_URL, authHeaders } from "../../lib/auth";
 import { useAstrologersStore } from "../stores/astrologersStore";
 import { minChatCredits, ensureChatCredits } from "../constants/chat";
 import { useUserStore } from "../stores/userStore";
+import { C as HOME, CardArt, F, HOME_PAD, LIST_BOTTOM, LIST_TOP, SectionHeader, softShadow } from "./homeUi";
 
+// Home palette: astrologers are people, so their actions use terracotta
+// (as on the Chat tab); gold marks "verified".
 const C = {
-  INK: "#1C1820",
-  PLUM: "#2B1A3D",
-  BUTTON: "#3A1659",
-  MUTED: "#68616A",
-  CARD: "#FFFFFF",
-  BORDER: "#D9CEC1",
-  VERIFIED: "#2998E3",
-  ORANGE: "#D2692F",
+  INK: HOME.INK,
+  PLUM: HOME.PLUM,
+  BUTTON: HOME.TERRACOTTA,
+  MUTED: HOME.MUTED,
+  CARD: HOME.CARD,
+  BORDER: HOME.BORDER,
+  VERIFIED: HOME.GOLD,
+  ORANGE: HOME.TERRACOTTA,
 };
 
 const px = (value: number) =>
@@ -42,13 +44,11 @@ const px = (value: number) =>
 
 const GAP = 10;
 
-const H_PAD = Math.round(
-  16 * (Math.min(Dimensions.get("window").width, 430) / 853)
-);
+const H_PAD = HOME_PAD;
 
-const CARD_WIDTH_FRACTION = 0.33;
-const LIST_PAD_TOP = px(4);
-const LIST_PAD_BOTTOM = px(12);
+const CARD_WIDTH_FRACTION = 0.42;
+const LIST_PAD_TOP = LIST_TOP;
+const LIST_PAD_BOTTOM = LIST_BOTTOM;
 
 const getReadingType = (specialty: string) => {
   const value = String(specialty ?? "").trim().toLowerCase();
@@ -56,6 +56,9 @@ const getReadingType = (specialty: string) => {
   if (value === "vedic astrology" || value === "vedic") return "vedic";
   if (value === "tarot" || value === "tarot reading") return "tarot";
   if (value === "numerology") return "numerology";
+  // KP and Lal Kitab chats use the Vedic chat screen (own school).
+  if (value === "kp" || value === "kp astrology" || value === "krishnamurti paddhati") return "kp";
+  if (value === "lal kitab" || value === "lalkitab") return "lalkitab";
 
   return null;
 };
@@ -80,6 +83,8 @@ const readingTitle = (type: string) => {
   if (type === "vedic") return "Vedic Astrology";
   if (type === "tarot") return "Tarot";
   if (type === "numerology") return "Numerology";
+  if (type === "kp") return "KP Astrology";
+  if (type === "lalkitab") return "Lal Kitab";
   return type;
 };
 
@@ -152,11 +157,9 @@ export default function VerifiedAstrologers() {
   }, [astrologers.length, loading, fetchAstrologers]);
 
   const cardW = Math.round(rowWidth * CARD_WIDTH_FRACTION);
-  const pad = Math.round(cardW * 0.045);
-  const inner = cardW - pad * 2;
-
-  // Increased thumbnail height from 60% to 75% of the inner card width.
-  const photoH = Math.round(inner * 0.75);
+  // Round photo, half-way over the soft band at the top.
+  const avatar = Math.round(cardW * 0.46);
+  const bandH = Math.round(avatar * 0.62);
 
   const viewportW = rowWidth + H_PAD * 2;
   const showArrow =
@@ -298,7 +301,7 @@ const startAstrologerChat = async (
       return;
     }
 
-    if (readingType === "vedic") {
+    if (readingType === "vedic" || readingType === "kp" || readingType === "lalkitab") {
       router.push({
         pathname: "/(root)/chat/vedic",
         params,
@@ -390,24 +393,11 @@ const startAstrologerChat = async (
 
   return (
     <View style={styles.container} onLayout={onLayout}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.heading}>Talk to verified astrologers</Text>
-          <Text style={styles.subtitle}>
-            Get personalised guidance from India’s top experts
-          </Text>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push("/(root)/(tabs)/chat" as any)}
-          style={styles.viewAll}
-          hitSlop={8}
-        >
-          <Text style={styles.viewAllText}>View all</Text>
-          <Icon name="arrow-right" size={px(14)} color={C.PLUM} />
-        </Pressable>
-      </View>
+      <SectionHeader
+        overline="TALK TO AN EXPERT"
+        title="Verified astrologers"
+        onViewAll={() => router.push("/(root)/(tabs)/chat" as any)}
+      />
 
       {loading && astrologers.length === 0 ? (
         <View style={styles.loader}>
@@ -443,7 +433,8 @@ const startAstrologerChat = async (
               styles.scroll,
               {
                 height:
-                  Math.max(tallestCard, px(270)) +
+                  // Real card height once measured (270 is only a first guess).
+                  (tallestCard || px(270)) +
                   LIST_PAD_TOP +
                   LIST_PAD_BOTTOM,
               },
@@ -464,210 +455,81 @@ const startAstrologerChat = async (
                   ? astrologer.rating
                   : null;
 
+              const online = Boolean(astrologer.online);
+
               return (
                 <View
                   key={id}
                   onLayout={onCardLayout}
-                  style={[
-                    styles.card,
-                    {
-                      width: cardW,
-                      padding: pad,
-                      borderRadius: Math.round(cardW * 0.1),
-                    },
-                  ]}
+                  style={[styles.card, { width: cardW }]}
                 >
-                  <LinearGradient
-                    colors={["#FDEBD3", "#F7D2A6"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[
-                      styles.photoContainer,
-                      {
-                        height: photoH,
-                        borderRadius: Math.round(cardW * 0.07),
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name="leaf"
-                      size={Math.round(cardW * 0.5)}
-                      color={C.ORANGE}
-                      style={{
-                        position: "absolute",
-                        right: -Math.round(cardW * 0.06),
-                        bottom: -Math.round(cardW * 0.04),
-                        opacity: 0.16,
-                      }}
-                    />
+                  {/* Soft band with faint orbits behind the photo */}
+                  <View style={[styles.band, { height: bandH }]}>
+                    <CardArt width={cardW} height={bandH} />
+                  </View>
 
-                    <Icon
-                      name="leaf"
-                      size={Math.round(cardW * 0.34)}
-                      color={C.ORANGE}
-                      style={{
-                        position: "absolute",
-                        left: -Math.round(cardW * 0.04),
-                        bottom: Math.round(cardW * 0.02),
-                        opacity: 0.12,
-                        transform: [{ scaleX: -1 }],
-                      }}
-                    />
+                  {rating !== null && (
+                    <View style={styles.rating}>
+                      <Icon name="star" size={11} color={HOME.GOLD} />
+                      <Text allowFontScaling={false} style={styles.ratingText}>
+                        {rating.toFixed(1)}
+                      </Text>
+                    </View>
+                  )}
 
-                    {imageUrl && !imageErrors[id] ? (
-                      <Image
-                        source={{ uri: imageUrl }}
-                        style={styles.photo}
-                        resizeMode="cover"
-                        onError={() =>
-                          setImageErrors((previous) => ({
-                            ...previous,
-                            [id]: true,
-                          }))
-                        }
-                      />
-                    ) : (
-                      <View style={styles.photoFallback}>
-                        <Icon
-                          name="account"
-                          size={Math.round(cardW * 0.4)}
-                          color={C.PLUM}
+                  {/* Round photo with a fine ring, online dot on its edge */}
+                  <View style={[styles.avatarRing, { width: avatar + 8, height: avatar + 8, borderRadius: (avatar + 8) / 2, marginTop: bandH - (avatar + 8) / 2 }]}>
+                    <View style={[styles.avatar, { width: avatar, height: avatar, borderRadius: avatar / 2 }]}>
+                      {imageUrl && !imageErrors[id] ? (
+                        <Image
+                          source={{ uri: imageUrl }}
+                          style={styles.photo}
+                          resizeMode="cover"
+                          onError={() =>
+                            setImageErrors((previous) => ({
+                              ...previous,
+                              [id]: true,
+                            }))
+                          }
                         />
-                      </View>
-                    )}
-
+                      ) : (
+                        <View style={styles.photoFallback}>
+                          <Text style={[styles.initial, { fontSize: Math.round(avatar * 0.38) }]}>
+                            {String(astrologer.name || "A").trim().charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <View
                       style={[
                         styles.onlineDot,
-                        {
-                          top: Math.round(cardW * 0.05),
-                          left: Math.round(cardW * 0.05),
-                          width: Math.round(cardW * 0.075),
-                          height: Math.round(cardW * 0.075),
-                          borderRadius: Math.round(cardW * 0.0375),
-                          backgroundColor: astrologer.online
-                            ? "#2DB55D"
-                            : "#B8B0B8",
-                        },
+                        { backgroundColor: online ? "#2E9E57" : "#B8B0B8" },
                       ]}
                     />
-
-                    {rating !== null && (
-                      <View
-                        style={[
-                          styles.rating,
-                          {
-                            top: Math.round(cardW * 0.04),
-                            right: Math.round(cardW * 0.04),
-                            gap: Math.round(cardW * 0.02),
-                            paddingHorizontal: Math.round(cardW * 0.05),
-                            paddingVertical: Math.round(cardW * 0.025),
-                            borderRadius: Math.round(cardW * 0.1),
-                          },
-                        ]}
-                      >
-                        <Icon
-                          name="star"
-                          size={Math.round(cardW * 0.085)}
-                          color="#F2A81D"
-                        />
-                        <Text
-                          allowFontScaling={false}
-                          style={[
-                            styles.ratingText,
-                            { fontSize: Math.round(cardW * 0.08) },
-                          ]}
-                        >
-                          {rating.toFixed(1)}
-                        </Text>
-                      </View>
-                    )}
-                  </LinearGradient>
+                  </View>
 
                   <View style={styles.details}>
-                    <View
-                      style={[
-                        styles.nameRow,
-                        { gap: Math.round(cardW * 0.03) },
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        allowFontScaling={false}
-                        style={[
-                          styles.name,
-                          { fontSize: Math.round(cardW * 0.098) },
-                        ]}
-                      >
+                    <View style={styles.nameRow}>
+                      <Text numberOfLines={1} allowFontScaling={false} style={styles.name}>
                         {astrologer.name}
                       </Text>
-                      <Icon
-                        name="check-decagram"
-                        size={Math.round(cardW * 0.11)}
-                        color={C.VERIFIED}
-                      />
+                      <Icon name="check-decagram" size={14} color={C.VERIFIED} />
                     </View>
 
-                    <Text
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                      allowFontScaling={false}
-                      style={[
-                        styles.specialty,
-                        {
-                          fontSize: Math.round(cardW * 0.08),
-                          marginTop: Math.round(cardW * 0.02),
-                        },
-                      ]}
-                    >
-                      {specialtyLabel}
+                    <Text numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false} style={styles.specialty}>
+                      {specialtyLabel || "Astrologer"}
                     </Text>
 
-                    <View
-                      style={[
-                        styles.consultationRow,
-                        {
-                          gap: Math.round(cardW * 0.03),
-                          marginTop: Math.round(cardW * 0.035),
-                        },
-                      ]}
-                    >
-                      <Icon
-                        name="chat-processing-outline"
-                        size={Math.round(cardW * 0.095)}
-                        color={C.ORANGE}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        allowFontScaling={false}
-                        style={[
-                          styles.consultationText,
-                          { fontSize: Math.round(cardW * 0.08) },
-                        ]}
-                      >
+                    <View style={styles.consultationRow}>
+                      <Icon name="chat-processing-outline" size={13} color={C.ORANGE} />
+                      <Text numberOfLines={1} allowFontScaling={false} style={styles.consultationText}>
                         {getConsultationLabel(astrologer.consultations || 0)}
                       </Text>
                     </View>
 
-                    <View
-                      style={[
-                        styles.priceBadge,
-                        {
-                          borderRadius: Math.round(cardW * 0.08),
-                          paddingHorizontal: Math.round(cardW * 0.06),
-                          paddingVertical: Math.round(cardW * 0.025),
-                          marginTop: Math.round(cardW * 0.045),
-                        },
-                      ]}
-                    >
-                      <Text
-                        allowFontScaling={false}
-                        style={[
-                          styles.priceText,
-                          { fontSize: Math.round(cardW * 0.075) },
-                        ]}
-                      >
-                        {!astrologer.online
+                    <View style={[styles.priceBadge, !online && styles.priceBadgeOff]}>
+                      <Text allowFontScaling={false} style={[styles.priceText, !online && styles.priceTextOff]}>
+                        {!online
                           ? "Available soon"
                           : user?.free_chat_minute_available
                             ? "1 min free"
@@ -681,26 +543,10 @@ const startAstrologerChat = async (
                       activeOpacity={0.8}
                       disabled={isStarting}
                       onPress={() => handleChatNow(astrologer)}
-                      style={[
-                        styles.chatButton,
-                        {
-                          height: Math.max(
-                            px(34),
-                            Math.round(cardW * 0.22)
-                          ),
-                          borderRadius: Math.round(cardW * 0.065),
-                          marginTop: Math.round(cardW * 0.06),
-                        },
-                        isStarting && styles.disabled,
-                      ]}
+                      style={[styles.chatButton, isStarting && styles.disabled]}
                     >
-                      <Text
-                        allowFontScaling={false}
-                        style={[
-                          styles.chatButtonText,
-                          { fontSize: Math.round(cardW * 0.092) },
-                        ]}
-                      >
+                      <Icon name="chat-outline" size={15} color={HOME.CARD} />
+                      <Text allowFontScaling={false} style={styles.chatButtonText}>
                         {isStarting ? "Starting..." : "Chat Now"}
                       </Text>
                     </TouchableOpacity>
@@ -787,7 +633,11 @@ const startAstrologerChat = async (
                           ? "star-four-points-outline"
                           : option === "tarot"
                             ? "cards-playing-outline"
-                            : "numeric-1-box-multiple-outline"
+                            : option === "kp"
+                              ? "compass-outline"
+                              : option === "lalkitab"
+                                ? "book-open-variant"
+                                : "numeric-1-box-multiple-outline"
                       }
                       size={px(22)}
                       color={C.PLUM}
@@ -828,7 +678,6 @@ const startAstrologerChat = async (
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: px(20),
     minWidth: 0,
   },
   header: {
@@ -845,7 +694,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: px(16),
     lineHeight: px(20),
-    fontWeight: "700",
+    fontFamily: F.bold,
     color: C.INK,
   },
   subtitle: {
@@ -863,7 +712,7 @@ const styles = StyleSheet.create({
   viewAllText: {
     color: C.PLUM,
     fontSize: px(14),
-    fontWeight: "600",
+    fontFamily: F.semibold,
   },
   scroll: {
     flexGrow: 0,
@@ -877,18 +726,48 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: C.CARD,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(217,206,193,0.45)",
+    borderColor: HOME.LINE,
     flexShrink: 0,
-    shadowColor: "#2B1A3D",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  photoContainer: {
+    alignItems: "center",
     overflow: "hidden",
-    position: "relative",
+    ...softShadow,
+  },
+  band: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: HOME.SOFT,
+  },
+  rating: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: C.CARD,
+  },
+  ratingText: {
+    color: C.INK,
+    fontSize: 11,
+    fontFamily: F.bold,
+  },
+  avatarRing: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "rgba(43,26,61,0.18)",
+  },
+  avatar: {
+    overflow: "hidden",
+    backgroundColor: HOME.IVORY,
   },
   photo: {
     width: "100%",
@@ -898,64 +777,92 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: HOME.SOFT,
+  },
+  initial: {
+    color: C.PLUM,
+    fontFamily: F.bold,
   },
   onlineDot: {
     position: "absolute",
-    borderWidth: 1.5,
+    right: 6,
+    bottom: 6,
+    width: 13,
+    height: 13,
+    borderRadius: 6.5,
+    borderWidth: 2,
     borderColor: C.CARD,
   },
-  rating: {
-    position: "absolute",
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: C.CARD,
-  },
-  ratingText: {
-    color: C.INK,
-    fontWeight: "700",
-  },
   details: {
-    flexShrink: 0,
-    paddingBottom: px(3),
+    alignSelf: "stretch",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
+    maxWidth: "100%",
   },
   name: {
     flexShrink: 1,
     color: C.INK,
-    fontWeight: "700",
+    fontSize: 14.5,
+    fontFamily: F.bold,
   },
   specialty: {
     color: C.MUTED,
+    fontSize: 11.5,
+    fontFamily: F.regular,
+    marginTop: 2,
+    textAlign: "center",
   },
   consultationRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
+    marginTop: 6,
   },
   consultationText: {
     color: C.MUTED,
-    flexShrink: 1,
+    fontSize: 11.5,
+    fontFamily: F.medium,
   },
   priceBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#DDF5DA",
+    marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    backgroundColor: "#E6F2EA",
+  },
+  priceBadgeOff: {
+    backgroundColor: "rgba(43,26,61,0.07)",
   },
   priceText: {
-    color: "#237A32",
-    fontWeight: "600",
+    color: "#2E7D4F",
+    fontSize: 10.5,
+    fontFamily: F.semibold,
+  },
+  priceTextOff: {
+    color: C.MUTED,
   },
   chatButton: {
-    width: "100%",
+    alignSelf: "stretch",
+    marginTop: 10,
+    height: 38,
+    borderRadius: 999,
     backgroundColor: C.BUTTON,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   chatButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    textAlign: "center",
+    color: HOME.CARD,
+    fontSize: 13,
+    fontFamily: F.bold,
   },
   nextButton: {
     position: "absolute",
@@ -978,6 +885,7 @@ const styles = StyleSheet.create({
     gap: px(8),
   },
   message: {
+    fontFamily: F.regular,
     fontSize: px(10),
     color: C.MUTED,
   },
@@ -1003,11 +911,12 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: px(21),
-    fontWeight: "800",
+    fontFamily: F.bold,
     color: C.INK,
     textAlign: "center",
   },
   modalSubtitle: {
+    fontFamily: F.regular,
     marginTop: px(8),
     fontSize: px(12),
     lineHeight: px(18),
@@ -1042,10 +951,11 @@ const styles = StyleSheet.create({
   },
   optionTitle: {
     fontSize: px(13),
-    fontWeight: "700",
+    fontFamily: F.bold,
     color: C.INK,
   },
   optionSubtitle: {
+    fontFamily: F.regular,
     marginTop: px(3),
     fontSize: px(10),
     color: C.MUTED,
@@ -1056,7 +966,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontSize: px(12),
-    fontWeight: "600",
+    fontFamily: F.semibold,
     color: C.MUTED,
   },
 });

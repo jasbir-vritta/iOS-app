@@ -8,12 +8,14 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
 } from "react-native";
 
+import { Text } from "../../components/ui/BrandText";
+
 import { useUserStore } from "../../components/stores/userStore";
+import { track } from "../../lib/analytics";
 import { API_URL, authHeaders } from "../../lib/auth";
 
 type PlaceResult = {
@@ -85,6 +87,11 @@ export default function Home() {
 
   const [selectedLocation, setSelectedLocation] =
     useState<PlaceResult | null>(null);
+
+  // Analytics: the onboarding screen was opened.
+  useEffect(() => {
+    track("visited_onboarding", { platform: Platform.OS });
+  }, []);
 
   /**
    * Load user details from backend.
@@ -524,6 +531,13 @@ export default function Home() {
         "Onboarding completed:",
         onboardingData
       );
+
+      // Analytics: onboarding saved (no birth details or name sent).
+      track("onboarding_completed", {
+        gender,
+        language,
+        platform: Platform.OS,
+      });
 
       // Update Zustand with the
       // complete onboarding data

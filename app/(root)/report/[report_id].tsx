@@ -7,6 +7,7 @@ import {
     Image,
     NativeScrollEvent,
     NativeSyntheticEvent,
+    Platform,
     Pressable,
     ScrollView,
     Share,
@@ -34,10 +35,12 @@ import {
     purchaseKey,
     purchaseReport,
     ReportOptions,
+    ReportOrder,
     ReportPurchaseError,
     useReportsStore,
 } from "../../../components/stores/reportsStore";
 import { refreshWalletCredits, useUserStore } from "../../../components/stores/userStore";
+import { metaEvents, track, useScreenTime } from "../../../lib/analytics";
 import {
     addIncompleteReport,
     removeIncompleteReport,
@@ -185,7 +188,8 @@ async function runPurchase(
   onFinished: () => void = () => {},
   variant: string | null = null,
   partner: PartnerDetails | null = null,
-  child: PartnerDetails | null = null
+  child: PartnerDetails | null = null,
+  onReady: (order: ReportOrder) => void = () => {}
 ) {
   if (!profileId) return;
   setLoading(true);
@@ -193,15 +197,30 @@ async function runPurchase(
   try {
     const result = await purchaseReport(profileId, report.id, lan, variant, partner, child);
 
+    // Analytics: the purchase API answered.
+    const details = {
+      report_id: report.id,
+      report_title: report.title,
+      price: report.price,
+      language: lan,
+      ...(variant ? { duration: variant } : {}),
+      for_partner: Boolean(partner),
+      for_child: Boolean(child),
+      platform: Platform.OS,
+    };
+    if (result.status === "failed") {
+      track("report_purchase_failed", { ...details, reason: "not_prepared_refunded" });
+    } else {
+      track("report_purchased", { ...details, status: result.status });
+      metaEvents.spentCredits(report.id, Number(report.price) || 0);
+    }
+
     // Bought: no longer an unfinished journey.
     await removeIncompleteReport(profileId, report.id).catch(() => {});
 
     if (result.status === "completed") {
-      onFinished();
-      Alert.alert("Your report is ready", `${report.title} has been added to your reports.`, [
-        { text: "Later", style: "cancel" },
-        { text: "Open", onPress: () => void openReportPage(result) },
-      ]);
+      // The writing sheet turns into "Your report is ready" (one sheet, no extra pop-up).
+      onReady(result);
     } else if (result.status === "failed") {
       onFinished();
       Alert.alert(
@@ -212,9 +231,16 @@ async function runPurchase(
   } catch (error) {
     onFinished();
     if (error instanceof ReportPurchaseError && error.status === 402) {
+      track("report_low_balance", { report_id: report.id, price: report.price, platform: Platform.OS });
       await refreshWalletCredits();
       onLowBalance();
     } else {
+      track("report_purchase_failed", {
+        report_id: report.id,
+        price: report.price,
+        reason: (error as Error)?.message || "unknown",
+        platform: Platform.OS,
+      });
       Alert.alert("Couldn't buy the report", (error as Error)?.message || "Please try again.");
     }
   } finally {
@@ -251,21 +277,6 @@ export default function ReportDetailScreen() {
     setTestimonialIndex(0);
     setBuyNowLoading(false);
   }, [report_id]);
-
-  /**
-   * Track the opened report for the active profile.
-   * Each profile has its own report journey storage.
-   */
-  useEffect(() => {
-    if (!report?.id || !activeProfileId) return;
-
-    void addIncompleteReport(
-      String(activeProfileId),
-      report.id
-    ).catch((error) => {
-      console.error("Failed to save report journey:", error);
-    });
-  }, [report?.id, activeProfileId]);
 
   // What buying needs: languages, durations (Future), partner (Matching), child (Baby).
   const options = useReportsStore((state) =>
@@ -314,6 +325,23 @@ export default function ReportDetailScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   // "Writing your report…" after paying (the user may close it and leave).
   const [writingOpen, setWritingOpen] = useState(false);
+  // The report finished while the writing sheet is up: it then offers to open it.
+  const [readyOrder, setReadyOrder] = useState<ReportOrder | null>(null);
+  const showReady = (order: ReportOrder) => {
+    setReadyOrder(order);
+    setWritingOpen(true);
+  };
+  const closeWriting = () => {
+    setWritingOpen(false);
+    setReadyOrder(null);
+  };
+  const openReady = () => {
+    const order = readyOrder;
+    if (order) track("report_opened", { report_id: order.report_id, source: "ready_sheet", platform: Platform.OS });
+    closeWriting();
+    // Let the sheet close before the report opens.
+    if (order) setTimeout(() => void openReportPage(order), 350);
+  };
   // Preview: a sample report link set on the backend (none = no Preview).
   const sampleUrl = useReportsStore((state) =>
     activeProfileId && report_id
@@ -332,6 +360,30 @@ export default function ReportDetailScreen() {
   const status = order?.status;
   const purchased = status === "completed" && Boolean(order?.pdf_url || order?.html_url);
   const preparing = status === "processing";
+
+  // Analytics: a report already bought for this profile is its own pair
+  // (visited_purchased_report + purchased_report_time_spent), otherwise
+  // visited_report + report_time_spent.
+  useScreenTime(purchased ? "purchased_report" : "report", { report_id: String(report_id || "") });
+
+  // Meta: View content, once per report page opened.
+  useEffect(() => {
+    if (report_id) metaEvents.viewContent("report", String(report_id), Number(report?.price) || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report_id]);
+
+  /**
+   * Track the opened report for the active profile ("Continue your journey"
+   * on Home). Bought reports are taken off, not added back when reopened.
+   */
+  useEffect(() => {
+    if (!report?.id || !activeProfileId) return;
+
+    const save = purchased || preparing ? removeIncompleteReport : addIncompleteReport;
+    void save(String(activeProfileId), report.id).catch((error) => {
+      console.error("Failed to save report journey:", error);
+    });
+  }, [report?.id, activeProfileId, purchased, preparing]);
 
   useEffect(() => {
     if (activeProfileId) void loadProfileReports(String(activeProfileId));
@@ -362,7 +414,8 @@ export default function ReportDetailScreen() {
             () => setWritingOpen(false),
             pending.variant,
             pending.partner,
-            pending.child
+            pending.child,
+            showReady
           );
         } else {
           setLanguage(pending.lan);
@@ -423,6 +476,7 @@ export default function ReportDetailScreen() {
   };
 
   const openReport = async () => {
+    track("report_opened", { report_id: report.id, source: "report_page", platform: Platform.OS });
     try {
       await openReportPage(order);
     } catch {
@@ -433,6 +487,7 @@ export default function ReportDetailScreen() {
   const shareReport = async () => {
     const link = order?.pdf_url || order?.html_url;
     if (!link) return;
+    track("report_shared", { report_id: report.id, platform: Platform.OS });
     try {
       await Share.share({
         message: `My ${report.title}: ${link}`,
@@ -453,12 +508,14 @@ export default function ReportDetailScreen() {
       () => setWritingOpen(false),
       variant,
       personRole === "partner" ? person : null,
-      personRole === "child" ? person : null
+      personRole === "child" ? person : null,
+      showReady
     );
 
   /** Preview: opens the sample report inside the app. */
   const previewSample = async () => {
     if (!sampleUrl) return;
+    track("report_sample_previewed", { report_id: report.id, platform: Platform.OS });
     try {
       await openReportPage({
         order_id: "sample",
@@ -475,18 +532,36 @@ export default function ReportDetailScreen() {
   /** Opens "Confirm Details" before paying from the wallet. */
   const handleBuyNow = () => {
     if (buyNowLoading || preparing || !report.id || !activeProfileId) return;
+    track("buy_now_clicked", {
+      report_id: report.id,
+      report_title: report.title,
+      price: report.price,
+      platform: Platform.OS,
+    });
+    metaEvents.addToCart(report.id, Number(report.price) || 0);
     void refreshWalletCredits();
     setSheetOpen(true);
   };
 
   const confirmBuy = () => {
+    track("report_purchase_confirmed", {
+      report_id: report.id,
+      report_title: report.title,
+      price: report.price,
+      language,
+      ...(variant ? { duration: variant } : {}),
+      platform: Platform.OS,
+    });
     setSheetOpen(false);
-    setWritingOpen(true);
+    setReadyOrder(null);
+    // Open the writing sheet once Confirm Details has closed (iOS shows one sheet at a time).
+    setTimeout(() => setWritingOpen(true), 350);
     void buy(language);
   };
 
   // Not enough balance: recharge, then the purchase continues here.
   const addCashToBuy = () => {
+    track("report_add_cash_clicked", { report_id: report.id, price: report.price, platform: Platform.OS });
     pendingBuy.current = {
       reportId: report.id,
       lan: language,
@@ -764,8 +839,12 @@ export default function ReportDetailScreen() {
         )}
       </ScrollView>
 
-      <WritingReportSheet visible={writingOpen} onClose={() => setWritingOpen(false)} />
-
+      <WritingReportSheet
+        visible={writingOpen}
+        onClose={closeWriting}
+        readyTitle={readyOrder ? readyOrder.report_name || report.title : null}
+        onOpen={openReady}
+      />
 
 
       <ConfirmReportSheet

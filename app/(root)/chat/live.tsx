@@ -26,7 +26,7 @@ import {
   type TarotPickerPhase,
 } from "../../../components/chat/TarotPicker";
 import { ensureChatCredits } from "../../../components/constants/chat";
-import { track } from "../../../lib/analytics";
+import { track, useChatTracking } from "../../../lib/analytics";
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import {
   applyWalletUpdate,
@@ -217,6 +217,9 @@ export default function LiveChat() {
   }>();
 
   const name = astrologerName || "Astrologer";
+
+  // Analytics: chat_started_<astrologer> + chat_<astrologer>_time_spent.
+  useChatTracking({ astrologerName: name, astrologerId, readingType, sessionId, chatType: "human" });
 
   const astrologer = useAstrologersStore((state) =>
     state.astrologers.find((a) => a.astrologer_id === astrologerId)

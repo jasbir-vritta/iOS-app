@@ -1,418 +1,460 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-    Dimensions,
-    ImageBackground,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from "react-native";
+import { ActivityIndicator, LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Reanimated, {
+  Easing,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 
-import {
-    loadMyLifeHoroscope,
-    useMyLifeStore,
-} from "../stores/myLifeStore";
+import { loadMyLifeHoroscope, useMyLifeStore } from "../stores/myLifeStore";
 import useProfilesStore from "../stores/profilesStore";
 import { useUserStore } from "../stores/userStore";
 import { hasBirthDetails } from "../utils/birthDetails";
+import { C, F, LIST_BOTTOM, softShadow } from "./homeUi";
 
-const GUIDANCE_BACKGROUND = require(
-  "../../assets/backgrounds/homepage_top_background.png"
-);
-
-const C = {
-  INK: "#1C1820",
-  PLUM: "#2B1A3D",
-  TERRACOTTA: "#A94C36",
-  GOLD: "#C49A4A",
-  IVORY: "#F7F1E8",
-  MUTED: "#68616A",
-  GREEN: "#26843B",
-};
+const AnimatedPath = Reanimated.createAnimatedComponent(Path);
 
 type AreaKey = "love" | "career" | "money" | "health" | "travel";
-type Status = "Favourable" | "Neutral" | "Challenging";
 
-type GuidanceItem = {
-  label: string;
-  key: AreaKey;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-};
-
-const GUIDANCE_ITEMS: GuidanceItem[] = [
-  { label: "Love", key: "love", icon: "heart-outline" },
-  { label: "Career", key: "career", icon: "briefcase-outline" },
-  { label: "Money", key: "money", icon: "wallet-outline" },
-  { label: "Health", key: "health", icon: "meditation" },
-  { label: "Travel", key: "travel", icon: "airplane" },
+const AREAS: { key: AreaKey; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
+  { key: "love", label: "Love", icon: "heart-outline" },
+  { key: "career", label: "Career", icon: "briefcase-outline" },
+  { key: "money", label: "Money", icon: "wallet-outline" },
+  { key: "health", label: "Health", icon: "meditation" },
+  { key: "travel", label: "Travel", icon: "airplane" },
 ];
 
-const normalizeStatus = (value: unknown): Status => {
-  const text = String(value ?? "").toLowerCase();
-
-  if (/challeng|watch|avoid|unfavo|difficult|bad|negative/.test(text)) {
-    return "Challenging";
+const toText = (value: unknown): string => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value).trim();
+  if (Array.isArray(value)) return value.map(toText).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    const v = value as Record<string, unknown>;
+    return toText(v.description ?? v.text ?? v.name ?? v.title);
   }
-
-  if (/favo|good|excellent|positive|great/.test(text)) {
-    return "Favourable";
-  }
-
-  return "Neutral";
+  return "";
 };
 
-const formatDate = (value: unknown): string => {
-  const date =
-    typeof value === "string" && value.trim()
-      ? new Date(value)
-      : new Date();
+const todayLabel = () =>
+  new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
-  const validDate = Number.isNaN(date.getTime())
-    ? new Date()
-    : date;
+// Same wording as My Life's "Overall energy".
+const energyLabel = (score: number) =>
+  score >= 80 ? "High energy" : score >= 70 ? "Balanced energy" : "Go gently";
 
-  return new Intl.DateTimeFormat("en-IN", {
-    weekday: "short",
-    day: "numeric",
-    month: "long",
-  })
-    .format(validDate)
-    .toUpperCase();
-};
+/* ---------------- sky: background by time of day (palette only) ---------------- */
 
-const getStatusColor = (status: Status) => {
-  switch (status) {
-    case "Favourable":
-      return C.GREEN;
-    case "Challenging":
-      return C.TERRACOTTA;
-    default:
-      return C.MUTED;
-  }
-};
+// Hour of the day in IST (with minutes).
+const istHour = () => ((Date.now() / 3600000 + 5.5) % 24 + 24) % 24;
 
-const getOverallEnergy = (statuses: Status[]) => {
-  const favourable = statuses.filter(
-    (status) => status === "Favourable"
-  ).length;
+type Sky = { colors: [string, string, string]; stars: boolean };
 
-  const challenging = statuses.filter(
-    (status) => status === "Challenging"
-  ).length;
+function skyFor(hour: number): Sky {
+  if (hour >= 5 && hour < 11) return { colors: ["#DDD0EC", "#E6DDF0", "#EFE6EA"], stars: false }; // morning
+  if (hour >= 11 && hour < 16) return { colors: ["#EADBC6", "#F0E4D4", "#F5ECE0"], stars: false }; // midday
+  if (hour >= 16 && hour < 19) return { colors: ["#E8D6C6", "#DDCDE4", "#D3C3E3"], stars: true }; // evening
+  return { colors: ["#CDBEE0", "#D8CCE7", "#E3DAEE"], stars: true }; // night
+}
 
-  if (favourable >= 3) return "Positive";
-  if (challenging >= 2) return "Challenging";
-  return "Balanced";
-};
+/* ---------------- day arc: the sun (or moon) travels across the card ---------------- */
+
+const ARC_H = 112;
+const BASE_Y = 98; // horizon
+const EDGE = 26;
+const TOP_Y = -40; // curve control point (apex sits halfway, clear of the score)
+
+// Day 6 AM–6 PM is the sun's arc; the rest is the moon's.
+function skyPosition(hour: number) {
+  const day = hour >= 6 && hour < 18;
+  const t = day ? (hour - 6) / 12 : (((hour - 18) + 24) % 24) / 12;
+  return { day, t: Math.max(0, Math.min(1, t)) };
+}
+
+// Point on the arc (quadratic curve from the left edge, over the top, to the right).
+function arcX(w: number, t: number) {
+  "worklet";
+  const u = 1 - t;
+  return u * u * EDGE + 2 * u * t * (w / 2) + t * t * (w - EDGE);
+}
+function arcY(t: number) {
+  "worklet";
+  const u = 1 - t;
+  return u * u * BASE_Y + 2 * u * t * TOP_Y + t * t * BASE_Y;
+}
+
+// A few fixed stars above the horizon (fractions of the width, px from top).
+const STARS = [
+  { x: 0.12, y: 30, r: 1.6, delay: 0 },
+  { x: 0.24, y: 58, r: 1.1, delay: 900 },
+  { x: 0.36, y: 18, r: 1.3, delay: 400 },
+  { x: 0.63, y: 22, r: 1.2, delay: 1300 },
+  { x: 0.76, y: 50, r: 1.6, delay: 700 },
+  { x: 0.88, y: 26, r: 1.1, delay: 1700 },
+];
+
+function Star({ x, y, r, delay, still }: { x: number; y: number; r: number; delay: number; still: boolean }) {
+  const glow = useSharedValue(0.5);
+  useEffect(() => {
+    if (still) return;
+    glow.value = withDelay(
+      delay,
+      withRepeat(withSequence(withTiming(1, { duration: 1400 }), withTiming(0.25, { duration: 1400 })), -1)
+    );
+  }, [delay, glow, still]);
+  const style = useAnimatedStyle(() => ({ opacity: glow.value }));
+  const size = r * 2 + 2;
+  return (
+    <Reanimated.View
+      style={[
+        { position: "absolute", left: x - size / 2, top: y - size / 2, width: size, height: size },
+        style,
+      ]}
+    >
+      <MaterialCommunityIcons name="star-four-points" size={size + 4} color={C.GOLD} style={{ margin: -2 }} />
+    </Reanimated.View>
+  );
+}
+
+// Sun rays: a ring of short lines that slowly turns.
+function Rays({ size }: { size: number }) {
+  const c = size / 2;
+  return (
+    <Svg width={size} height={size}>
+      {Array.from({ length: 12 }, (_, i) => {
+        const a = (i * Math.PI) / 6;
+        const r1 = c * 0.62;
+        const r2 = c * (i % 2 ? 0.8 : 0.92);
+        return (
+          <Line
+            key={i}
+            x1={c + r1 * Math.cos(a)}
+            y1={c + r1 * Math.sin(a)}
+            x2={c + r2 * Math.cos(a)}
+            y2={c + r2 * Math.sin(a)}
+            stroke={C.GOLD}
+            strokeWidth={1.4}
+            strokeLinecap="round"
+            opacity={0.7}
+          />
+        );
+      })}
+    </Svg>
+  );
+}
+
+const SUN = 44; // sun area (halo + rays)
+
+function DayArc({ width, hour, stars }: { width: number; hour: number; stars: boolean }) {
+  const { day, t } = skyPosition(hour);
+  const tone = day ? C.GOLD : C.PLUM;
+  const still = useReducedMotion();
+
+  // Glide from the start of the arc to now when Home opens.
+  const progress = useSharedValue(still ? t : 0);
+  const pulse = useSharedValue(0);
+  const spin = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = still ? t : withTiming(t, { duration: 1600, easing: Easing.out(Easing.cubic) });
+  }, [progress, still, t]);
+
+  useEffect(() => {
+    if (still) return;
+    pulse.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }), -1, true);
+    spin.value = withRepeat(withTiming(360, { duration: 40000, easing: Easing.linear }), -1);
+  }, [pulse, spin, still]);
+
+  // Path already travelled: the same curve cut at the current point.
+  const travelledProps = useAnimatedProps(() => {
+    const p = progress.value;
+    const cx = EDGE + p * (width / 2 - EDGE);
+    const cy = BASE_Y + p * (TOP_Y - BASE_Y);
+    return { d: `M${EDGE} ${BASE_Y} Q${cx} ${cy} ${arcX(width, p)} ${arcY(p)}` };
+  });
+
+  const bodyStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: arcX(width, progress.value) - SUN / 2 },
+      { translateY: arcY(progress.value) - SUN / 2 },
+    ],
+  }));
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: 0.32 - 0.16 * pulse.value,
+    transform: [{ scale: 1 + 0.28 * pulse.value }],
+  }));
+  const raysStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.value}deg` }] }));
+
+  const full = `M${EDGE} ${BASE_Y} Q${width / 2} ${TOP_Y} ${width - EDGE} ${BASE_Y}`;
+
+  return (
+    <View style={{ height: ARC_H }} pointerEvents="none">
+      {stars && STARS.map((s, i) => <Star key={i} x={s.x * width} y={s.y} r={s.r} delay={s.delay} still={still} />)}
+
+      <Svg width={width} height={ARC_H} style={StyleSheet.absoluteFill}>
+        <Line x1={EDGE - 10} y1={BASE_Y} x2={width - EDGE + 10} y2={BASE_Y} stroke={C.BORDER} strokeWidth={1} />
+        <Path d={full} stroke={tone} strokeOpacity={0.35} strokeWidth={1.2} strokeDasharray="2 5" fill="none" />
+        <AnimatedPath
+          animatedProps={travelledProps}
+          stroke={tone}
+          strokeOpacity={0.9}
+          strokeWidth={1.6}
+          fill="none"
+          strokeLinecap="round"
+        />
+        <Circle cx={EDGE} cy={BASE_Y} r={3} fill={tone} opacity={0.7} />
+        <Circle cx={width - EDGE} cy={BASE_Y} r={3} fill={tone} opacity={0.35} />
+      </Svg>
+
+      {/* Sun (day) or moon (night), gliding along the arc */}
+      <Reanimated.View style={[styles.body, bodyStyle]}>
+        <Reanimated.View
+          style={[styles.halo, { backgroundColor: day ? C.GOLD : C.PLUM }, haloStyle]}
+        />
+        {day ? (
+          <>
+            <Reanimated.View style={[StyleSheet.absoluteFill, raysStyle]}>
+              <Rays size={SUN} />
+            </Reanimated.View>
+            <View style={styles.sun} />
+          </>
+        ) : (
+          <MaterialCommunityIcons name="moon-waning-crescent" size={20} color={C.PLUM} />
+        )}
+      </Reanimated.View>
+
+      <Text style={[styles.arcLabel, { left: EDGE - 10 }]}>{day ? "6 AM" : "6 PM"}</Text>
+      <Text style={[styles.arcLabel, { right: EDGE - 10 }]}>{day ? "6 PM" : "6 AM"}</Text>
+    </View>
+  );
+}
+
+// Counts up to the score when it appears.
+function useCountUp(target: number | null, still: boolean) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (target === null || still) return;
+    const start = Date.now();
+    const duration = 1100;
+    let frame = 0;
+    const step = () => {
+      const k = Math.min(1, (Date.now() - start) / duration);
+      setValue(Math.round(target * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target, still]);
+  return still && target !== null ? target : value;
+}
+
+/* ---------------- Home hero ---------------- */
 
 export default function DailyGuidance() {
-  const width = Dimensions.get("window").width;
-  const scale = Math.min(width, 430) / 430;
-  const px = (value: number) => Math.round(value * scale);
-
-  const activeProfileId = useUserStore(
-    (state) => state.user?.active_profile_id
-  );
-
+  const activeProfileId = useUserStore((state) => state.user?.active_profile_id);
   const today = useMyLifeStore((state) =>
-    activeProfileId
-      ? state.profiles[activeProfileId]?.daily
-      : null
+    activeProfileId ? state.profiles[activeProfileId]?.daily : null
   );
-
   const activeProfile = useProfilesStore((state) =>
     state.profiles.find((profile) => profile.profile_id === activeProfileId)
   );
 
   // No birth place/time yet: nothing to calculate, ask to complete the profile.
-  const needsBirthDetails =
-    Boolean(activeProfile) && !hasBirthDetails(activeProfile);
-
+  const needsBirthDetails = Boolean(activeProfile) && !hasBirthDetails(activeProfile);
   const [loading, setLoading] = useState(false);
+  const [width, setWidth] = useState(0);
+  const [hour, setHour] = useState(istHour);
+  const still = useReducedMotion();
 
   useEffect(() => {
     if (!activeProfileId || needsBirthDetails) return;
-
     let cancelled = false;
 
-    const loadToday = async () => {
+    (async () => {
       setLoading(true);
-
       try {
         // Same Daily horoscope as the My Life screen.
         await loadMyLifeHoroscope("daily", activeProfileId);
       } catch (error) {
-        if (!cancelled) {
-          console.error("Home Today guidance error:", error);
-        }
+        if (!cancelled) console.error("Home Today guidance error:", error);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
-    };
-
-    loadToday();
+    })();
 
     return () => {
       cancelled = true;
     };
   }, [activeProfileId, needsBirthDetails]);
 
-  const areas = GUIDANCE_ITEMS.map((item) => ({
-    ...item,
-    status: normalizeStatus(
-      today?.areas?.[item.key]?.status
-    ),
-  }));
+  // Move the sun along every few minutes.
+  useEffect(() => {
+    const timer = setInterval(() => setHour(istHour()), 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const overallEnergy = getOverallEnergy(
-    areas.map((area) => area.status)
-  );
+  const areas = AREAS.map((area) => {
+    const score = Number(today?.areas?.[area.key]?.score);
+    return { ...area, score: Number.isFinite(score) ? Math.round(score) : null };
+  });
+  const scored = areas.filter((a) => a.score !== null) as { score: number }[];
+  const overall =
+    scored.length && !needsBirthDetails
+      ? Math.round(scored.reduce((sum, a) => sum + a.score, 0) / scored.length)
+      : null;
+  const shownScore = useCountUp(overall, still);
 
-  const headline = needsBirthDetails
+  const sky = skyFor(hour);
+  const sign = toText(today?.sign);
+  const title = needsBirthDetails
     ? "Complete your birth details"
-    : today?.title ||
-      "Your day, guided by the stars.";
+    : toText(today?.title) || "Your day, guided by the stars";
+  const text = needsBirthDetails
+    ? `Add the birth date, time and place for ${activeProfile?.name || "this profile"} to see today’s guidance.`
+    : toText(today?.text) ||
+      (loading ? "Reading the stars for your day…" : "Your daily guidance will appear here.");
 
-  const description = needsBirthDetails
-    ? `Add the birth date, time and place for ${activeProfile?.name || "this profile"} to see today's guidance.`
-    : today?.text ||
-      (loading
-        ? "Preparing your personal guidance..."
-        : "Your daily astrology guidance will appear here.");
+  const openGuidance = () =>
+    needsBirthDetails
+      ? router.push({ pathname: "/profile/edit_profile", params: { profileId: activeProfileId as string } })
+      : router.push("/(root)/(tabs)/my_life");
+
+  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
   return (
-    <ImageBackground
-      source={GUIDANCE_BACKGROUND}
-      resizeMode="cover"
-      imageStyle={{ borderRadius: px(15) }}
-      style={[styles.card, { minHeight: px(178) }]}
-    >
-      <View style={[styles.content, { padding: px(12) }]}>
-        <View style={styles.left}>
-          <Text style={[styles.date, { fontSize: px(8) }]}>
-            {formatDate(undefined)}
-          </Text>
+    <View style={styles.card}>
+      <View style={styles.clip} onLayout={onLayout}>
+        <LinearGradient colors={sky.colors} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
 
-          <Text style={[styles.heading, { fontSize: px(19) }]}>
-            {headline}
-          </Text>
+        {width > 0 && <DayArc width={width} hour={hour} stars={sky.stars} />}
 
-          <Text
-            numberOfLines={4}
-            style={[styles.description, { fontSize: px(10) }]}
-          >
-            {description}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              needsBirthDetails ? "Complete profile" : "Explore today's guidance"
-            }
-            onPress={() =>
-              needsBirthDetails
-                ? router.push({
-                    pathname: "/profile/edit_profile",
-                    params: { profileId: activeProfileId as string },
-                  })
-                : router.push("/(root)/(tabs)/my_life")
-            }
-            style={({ pressed }) => [
-              styles.button,
-              {
-                paddingVertical: px(8),
-                paddingHorizontal: px(11),
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.buttonText, { fontSize: px(9) }]}>
-              {needsBirthDetails ? "Complete Profile" : "Explore Today’s Guidance"}
-            </Text>
-
-            <MaterialCommunityIcons
-              name="arrow-right"
-              size={px(13)}
-              color={C.IVORY}
-            />
-          </Pressable>
+        {/* Overall energy, framed by the arc */}
+        <View style={styles.score} pointerEvents="none">
+          {overall !== null ? (
+            <>
+              <Text style={styles.scoreValue}>{shownScore}</Text>
+              <Text style={styles.scoreLabel}>{energyLabel(overall)}</Text>
+            </>
+          ) : loading ? (
+            <ActivityIndicator color={C.PLUM} style={{ marginTop: 6 }} />
+          ) : (
+            <MaterialCommunityIcons name="star-four-points-outline" size={26} color={C.PLUM} style={{ marginTop: 6 }} />
+          )}
         </View>
 
-        <View style={styles.right}>
-          <View style={[styles.energyCard, { padding: px(6) }]}>
-            <View style={styles.sunIcon}>
-              <MaterialCommunityIcons
-                name="white-balance-sunny"
-                size={px(16)}
-                color={C.GOLD}
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.energyLabel, { fontSize: px(7) }]}>
-                Overall Energy
-              </Text>
-
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.energyValue,
-                  {
-                    fontSize: px(10),
-                    color: getStatusColor(
-                      overallEnergy === "Positive"
-                        ? "Favourable"
-                        : overallEnergy === "Challenging"
-                          ? "Challenging"
-                          : "Neutral"
-                    ),
-                  },
-                ]}
-              >
-                {overallEnergy}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.statusCard, { padding: px(7) }]}>
-            {areas.map((item, index) => (
-              <View
-                key={item.key}
-                style={[
-                  styles.statusRow,
-                  {
-                    marginBottom:
-                      index === areas.length - 1 ? 0 : px(7),
-                  },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name={item.icon}
-                  size={px(12)}
-                  color={C.TERRACOTTA}
-                />
-
-                <Text style={[styles.statusLabel, { fontSize: px(7) }]}>
-                  {item.label}
-                </Text>
-
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.statusValue,
-                    {
-                      fontSize: px(7),
-                      color: getStatusColor(item.status),
-                    },
-                  ]}
-                >
-                  {item.status}
-                </Text>
+        <View style={styles.content}>
+          <View style={styles.meta}>
+            <Text style={styles.date} numberOfLines={1}>
+              {todayLabel()}
+            </Text>
+            {!!sign && !needsBirthDetails && (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name="moon-waning-crescent" size={12} color={C.PLUM} />
+                <Text style={styles.chipText}>Moon in {sign}</Text>
               </View>
-            ))}
+            )}
           </View>
+
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.text} numberOfLines={3}>
+            {text}
+          </Text>
+
+          {scored.length > 0 && !needsBirthDetails && (
+            <View style={styles.areas}>
+              {areas.map((area, index) => (
+                <View key={area.key} style={[styles.area, index > 0 && styles.areaLine]}>
+                  <MaterialCommunityIcons name={area.icon} size={16} color={C.PLUM} />
+                  <Text style={styles.areaScore}>{area.score ?? "–"}</Text>
+                  <Text style={styles.areaLabel} numberOfLines={1}>
+                    {area.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={needsBirthDetails ? "Complete profile" : "Read today’s guidance"}
+            onPress={openGuidance}
+            activeOpacity={0.85}
+            style={styles.cta}
+          >
+            <Text style={styles.ctaText}>{needsBirthDetails ? "Complete profile" : "Read today’s guidance"}</Text>
+            <MaterialCommunityIcons name="arrow-right" size={16} color={C.CARD} />
+          </TouchableOpacity>
         </View>
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: "100%",
-    borderRadius: 15,
-    overflow: "hidden",
+  card: { marginBottom: LIST_BOTTOM, borderRadius: 26, backgroundColor: C.IVORY, ...softShadow },
+  clip: { borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: C.LINE },
+  arcLabel: { position: "absolute", top: BASE_Y + 4, color: C.MUTED, fontSize: 10, fontFamily: F.medium },
+  body: { position: "absolute", left: 0, top: 0, width: SUN, height: SUN, alignItems: "center", justifyContent: "center" },
+  halo: { position: "absolute", width: 30, height: 30, borderRadius: 15 },
+  sun: {
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: C.GOLD,
+    shadowColor: C.GOLD,
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
   },
-  content: {
-    flex: 1,
-    minHeight: 178,
+  score: { position: "absolute", top: 48, left: 0, right: 0, alignItems: "center" },
+  scoreValue: { color: C.PLUM, fontSize: 30, lineHeight: 33, fontFamily: F.bold, letterSpacing: -0.5 },
+  scoreLabel: { color: C.MUTED, fontSize: 11.5, fontFamily: F.semibold, marginTop: 1 },
+  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18 },
+  meta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 },
+  date: { flexShrink: 1, color: C.PLUM, fontSize: 11, fontFamily: F.bold, letterSpacing: 1.2, textTransform: "uppercase", opacity: 0.8 },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  left: {
-    flex: 1.35,
-    zIndex: 2,
-    alignSelf: "stretch",
-    justifyContent: "center",
-    paddingRight: 5,
-  },
-  date: {
-    color: "#B87883",
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    marginBottom: 5,
-  },
-  heading: {
-    color: C.INK,
-    fontWeight: "700",
-    lineHeight: 22,
-  },
-  description: {
-    color: C.MUTED,
-    lineHeight: 13.5,
-    marginTop: 5,
-  },
-  button: {
-    marginTop: 8,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: "rgba(43,26,61,0.07)",
+  },
+  chipText: { color: C.PLUM, fontSize: 11.5, fontFamily: F.semibold },
+  title: { color: C.INK, fontSize: 23, lineHeight: 29, fontFamily: F.bold, letterSpacing: -0.4 },
+  text: { color: C.MUTED, fontSize: 14, lineHeight: 21, fontFamily: F.regular, marginTop: 6 },
+  areas: {
+    flexDirection: "row",
+    marginTop: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,253,252,0.85)",
+    borderWidth: 1,
+    borderColor: C.LINE,
+  },
+  area: { flex: 1, alignItems: "center", gap: 2 },
+  areaLine: { borderLeftWidth: 1, borderLeftColor: C.LINE },
+  areaScore: { color: C.INK, fontSize: 15, fontFamily: F.bold, marginTop: 2 },
+  areaLabel: { color: C.MUTED, fontSize: 10.5, fontFamily: F.medium },
+  cta: {
+    marginTop: 20,
+    height: 48,
+    borderRadius: 999,
     backgroundColor: C.PLUM,
-    borderRadius: 22,
-  },
-  buttonText: {
-    color: C.IVORY,
-    fontWeight: "600",
-  },
-  right: {
-    flex: 0.95,
-    zIndex: 2,
-    gap: 5,
-    justifyContent: "center",
-  },
-  energyCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,253,252,0.94)",
-  },
-  sunIcon: {
-    width: 23,
-    height: 23,
-    borderRadius: 12,
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF3D5",
+    gap: 8,
   },
-  energyLabel: {
-    color: C.MUTED,
-  },
-  energyValue: {
-    fontWeight: "700",
-    marginTop: 1,
-  },
-  statusCard: {
-    borderRadius: 10,
-    backgroundColor: "rgba(255,253,252,0.94)",
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  statusLabel: {
-    color: C.INK,
-    flex: 1,
-  },
-  statusValue: {
-    fontWeight: "500",
-    textAlign: "right",
-  },
+  ctaText: { color: C.CARD, fontSize: 14.5, fontFamily: F.bold },
 });

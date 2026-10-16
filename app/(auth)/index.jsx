@@ -17,7 +17,7 @@ import { VrittaLogo } from "../../components/auth/VrittaLogo";
 import countryCodes from "../../components/constants/country_codes.json";
 import useAuthStore from "../../components/stores/authStore";
 import { useKeyboardInset } from "../../components/utils/useKeyboardInset";
-import { identifyUser, track } from "../../lib/analytics";
+import { identifyUser, metaEvents, setUserProfile, track } from "../../lib/analytics";
 import { saveSession } from "../../lib/auth";
 import {
   appleFirebaseToken,
@@ -76,6 +76,12 @@ export default function Login() {
   // welcome -> phone -> otp; "verifying" while talking to Firebase/backend.
   const [screen, setScreen] = useState("welcome");
   const [mode, setMode] = useState("signup");
+
+  // Analytics: which version of the screen was seen (it opens on sign-up;
+  // "Log in" switches it).
+  useEffect(() => {
+    track(mode === "login" ? "visited_login" : "visited_signup", { platform: Platform.OS });
+  }, [mode]);
   const [statusText, setStatusText] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -119,10 +125,18 @@ export default function Login() {
 
     // Mixpanel: identify first so the event belongs to this user.
     await identifyUser(session.user_id, { phone: phoneNumber });
-    track(session.created ? "sign_up_completed" : "login_completed", {
+    // New account: remember how they signed up (kept, never overwritten).
+    if (session.created) {
+      await setUserProfile(
+        { signup_mode: method, signup_date: new Date().toISOString() },
+        { once: true }
+      ).catch(() => {});
+    }
+    track(session.created ? "signup_completed" : "login_completed", {
       sign_up_method: method,
       platform: Platform.OS,
     });
+    if (session.created) metaEvents.registration(method);
 
     if (!session.onboarded) {
       router.replace(ONBOARDING_ROUTE);

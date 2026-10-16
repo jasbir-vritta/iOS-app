@@ -4,7 +4,20 @@ import {
 } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Animated, {
+    Easing,
+    FadeIn,
+    FadeInDown,
+    useAnimatedStyle,
+    useReducedMotion,
+    useSharedValue,
+    withDelay,
+    withRepeat,
+    withSequence,
+    withSpring,
+    withTiming,
+} from "react-native-reanimated";
 import {
     ActivityIndicator,
     AppState,
@@ -15,13 +28,14 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
-    Text,
     TextInput,
     View,
 } from "react-native";
+
+import { Text } from "../../../components/ui/BrandText";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { track } from "../../../lib/analytics";
+import { metaEvents, track } from "../../../lib/analytics";
 import { useUserStore } from "../../../components/stores/userStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
 import {
@@ -107,13 +121,23 @@ const COLORS = {
   background: "#F4F0F8",
   card: "#FFFDFC",
   border: "#D9CEC1",
+  line: "rgba(217,206,193,0.6)",
   ink: "#1C1820",
   plum: "#2B1A3D",
+  soft: "#EFE8F7",
   terracotta: "#A94C36",
   gold: "#C49A4A",
   secondary: "#68616A",
-  success: "#2F7D3E",
-  successBg: "#E8F3E6",
+  success: "#2E7D4F",
+  successBg: "#E6F2EA",
+};
+
+const softShadow = {
+  shadowColor: "#2B1A3D",
+  shadowOpacity: 0.07,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 3,
 };
 
 /*
@@ -376,6 +400,7 @@ export default function WalletScreen() {
 
     try {
       setLoading(true);
+      metaEvents.initiateCheckout(plan.price_inr, plan.id);
 
       const headers = await authHeaders();
 
@@ -424,6 +449,7 @@ export default function WalletScreen() {
         }
 
         updateUser({ credits });
+        metaEvents.purchase(plan.price_inr, plan.id);
         track("recharge_completed", {
           amount_inr: plan.price_inr,
           credits: plan.credits,
@@ -461,6 +487,8 @@ export default function WalletScreen() {
           ? await payWithUpiId({ ...common, vpa: verifiedUpiId })
           : await payWithUpiApp({ ...common, upi_app_package_name: app!.packageName });
 
+      metaEvents.addPaymentInfo(plan.price_inr, plan.id);
+
       // 3. Backend checks Razorpay's signature and adds the credits.
       const verifyResponse = await fetch(
         `${API_URL}/wallet/topup/verify`,
@@ -495,6 +523,7 @@ export default function WalletScreen() {
         credits: Number(result.credits ?? 0),
       });
 
+      metaEvents.purchase(plan.price_inr, plan.id);
       track("recharge_completed", {
         amount_inr: plan.price_inr,
         credits: plan.credits,
@@ -547,65 +576,36 @@ export default function WalletScreen() {
             onPress={() => router.back()}
             hitSlop={12}
             style={styles.backButton}
+            accessibilityLabel="Go back"
           >
-            <Ionicons
-              name="chevron-back"
-              size={22}
-              color={COLORS.ink}
-            />
+            <Ionicons name="chevron-back" size={20} color={COLORS.ink} />
           </Pressable>
 
           <View style={styles.headerContent}>
-            <Text style={styles.title}>Low Balance!</Text>
-
-            <Text style={styles.subtitle}>
-              Recharge to continue without interruptions.
-            </Text>
-          </View>
-
-          <View style={styles.illustration}>
-            <MaterialCommunityIcons
-              name="wallet"
-              size={46}
-              color={COLORS.terracotta}
-            />
-
-            <MaterialCommunityIcons
-              name="star-four-points"
-              size={12}
-              color={COLORS.gold}
-              style={styles.sparkleOne}
-            />
-
-            <MaterialCommunityIcons
-              name="star-four-points"
-              size={9}
-              color={COLORS.gold}
-              style={styles.sparkleTwo}
-            />
+            <Text style={styles.title}>Add money</Text>
+            <Text style={styles.subtitle}>Recharge to chat, buy reports and more</Text>
           </View>
         </View>
 
-        {/* Current Balance */}
-        <View style={styles.balanceCard}>
-          <View>
-            <Text style={styles.balanceLabel}>
-              Current Wallet Balance
-            </Text>
+        {/* Current balance */}
+        <Animated.View entering={FadeInDown.duration(500)} style={styles.balanceCard}>
+          <View style={styles.balanceRing} />
+          <SpinRing />
+          <Twinkle style={styles.sparkleOne} size={12} delay={0} />
+          <Twinkle style={styles.sparkleTwo} size={8} delay={900} />
 
-            <Text style={styles.balanceValue}>
-              ₹{currentBalance.toFixed(2)}
-            </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.balanceLabel}>WALLET BALANCE</Text>
+            <CountUpBalance value={currentBalance} />
+            <Text style={styles.balanceHint}>Used for chats and reports</Text>
           </View>
 
-          <View style={styles.balanceIcon}>
-            <MaterialCommunityIcons
-              name="wallet-outline"
-              size={18}
-              color={COLORS.plum}
-            />
-          </View>
-        </View>
+          <Float>
+            <View style={styles.balanceIcon}>
+              <MaterialCommunityIcons name="wallet-outline" size={22} color={COLORS.card} />
+            </View>
+          </Float>
+        </Animated.View>
 
         {loadingPacks ? (
           <ActivityIndicator
@@ -616,13 +616,14 @@ export default function WalletScreen() {
           plan && (
             <>
               {/* Plans */}
+              <Animated.Text entering={FadeIn.delay(120)} style={styles.sectionTitle}>Choose an amount</Animated.Text>
               <View style={styles.plansRow}>
-                {packs.map((item) => {
+                {packs.map((item, index) => {
                   const active = item.id === plan.id;
 
                   return (
+                    <PackPop key={item.id} index={index} active={active}>
                     <Pressable
-                      key={item.id}
                       onPress={() => {
                         if (!loading) {
                           setSelectedPackId(item.id);
@@ -648,25 +649,26 @@ export default function WalletScreen() {
 
                       {item.bonus > 0 && (
                         <View style={styles.bonusPill}>
-                          <Text style={styles.bonusText}>
+                          <Text style={styles.bonusText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                             Extra ₹{item.bonus}
                           </Text>
                         </View>
                       )}
                     </Pressable>
+                    </PackPop>
                   );
                 })}
               </View>
 
               {/* What the selected pack adds */}
-              <Text style={styles.offerText}>
+              <Animated.Text key={plan.id} entering={FadeIn.duration(300)} style={styles.offerText}>
                 {plan.bonus > 0
                   ? `Congratulations! ₹${plan.credits} will be added to your wallet.`
                   : `₹${plan.credits} will be added to your wallet.`}
-              </Text>
+              </Animated.Text>
 
               {/* Payment Summary */}
-              <View style={styles.summaryCard}>
+              <Animated.View entering={FadeInDown.delay(250).duration(450)} style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>
                   Payment Summary
                 </Text>
@@ -711,7 +713,7 @@ export default function WalletScreen() {
                     ₹{plan.credits}
                   </Text>
                 </View>
-              </View>
+              </Animated.View>
             </>
           )
         )}
@@ -1001,6 +1003,7 @@ export default function WalletScreen() {
             !canPay && styles.payButtonDisabled,
           ]}
         >
+          {canPay && !loading && <Shine />}
           {loading ? (
             <>
               <ActivityIndicator
@@ -1040,6 +1043,138 @@ export default function WalletScreen() {
   );
 }
 
+/* Animations (all still when the phone asks for reduced motion) */
+
+/** Dashed ring that turns slowly behind the balance. */
+function SpinRing() {
+  const still = useReducedMotion();
+  const turn = useSharedValue(0);
+
+  useEffect(() => {
+    if (still) return;
+    turn.value = withRepeat(withTiming(360, { duration: 24000, easing: Easing.linear }), -1);
+  }, [still, turn]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.value}deg` }] }));
+  return <Animated.View style={[styles.balanceRingInner, style]} />;
+}
+
+/** Gold sparkle that fades and grows in a loop. */
+function Twinkle({ style, size, delay }: { style: object; size: number; delay: number }) {
+  const still = useReducedMotion();
+  const glow = useSharedValue(1);
+
+  useEffect(() => {
+    if (still) return;
+    glow.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(0.35, { duration: 1100, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad) })
+        ),
+        -1
+      )
+    );
+  }, [still, glow, delay]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: glow.value,
+    transform: [{ scale: 0.75 + glow.value * 0.35 }],
+  }));
+
+  return (
+    <Animated.View style={[style, animated]}>
+      <MaterialCommunityIcons name="star-four-points" size={size} color={COLORS.gold} />
+    </Animated.View>
+  );
+}
+
+/** Gentle up-and-down float. */
+function Float({ children }: { children: ReactNode }) {
+  const still = useReducedMotion();
+  const y = useSharedValue(0);
+
+  useEffect(() => {
+    if (still) return;
+    y.value = withRepeat(
+      withSequence(
+        withTiming(-4, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1600, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1
+    );
+  }, [still, y]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+/** Balance that counts up to its value (and to the new value after a recharge). */
+function CountUpBalance({ value }: { value: number }) {
+  const still = useReducedMotion();
+  const [shown, setShown] = useState(0);
+  const from = useRef(0);
+
+  useEffect(() => {
+    if (still) return;
+    const start = from.current;
+    const began = Date.now();
+    let frame = 0;
+    const step = () => {
+      const t = Math.min(1, (Date.now() - began) / 900);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const next = start + (value - start) * eased;
+      from.current = next;
+      setShown(next);
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value, still]);
+
+  return <Text style={styles.balanceValue}>₹{(still ? value : shown).toFixed(2)}</Text>;
+}
+
+/** Pack card: staggered entrance and a small spring pop when chosen. */
+function PackPop({ index, active, children }: { index: number; active: boolean; children: ReactNode }) {
+  const still = useReducedMotion();
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (still || !active) return;
+    scale.value = withSequence(withTiming(1.07, { duration: 120 }), withSpring(1, { damping: 9, stiffness: 180 }));
+  }, [active, still, scale]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View entering={FadeInDown.delay(150 + index * 70).duration(400)} style={[{ flex: 1 }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** Light streak that sweeps across the Pay button every few seconds. */
+function Shine() {
+  const still = useReducedMotion();
+  const x = useSharedValue(-120);
+
+  useEffect(() => {
+    if (still) return;
+    x.value = withRepeat(
+      withSequence(
+        withTiming(-120, { duration: 0 }),
+        withDelay(1800, withTiming(420, { duration: 900, easing: Easing.inOut(Easing.quad) }))
+      ),
+      -1
+    );
+  }, [still, x]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }, { skewX: "-20deg" }] }));
+  if (still) return null;
+  return <Animated.View pointerEvents="none" style={[styles.shine, style]} />;
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1051,139 +1186,177 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 17,
-    paddingBottom: 17,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
   },
 
   /* Header */
 
   header: {
-    minHeight: 110,
-    paddingTop: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
 
   backButton: {
-    width: 37,
-    height: 37,
-    marginLeft: -8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.line,
   },
 
   headerContent: {
-    alignItems: "center",
-    marginTop: 3,
-    paddingHorizontal: 34,
+    flex: 1,
   },
 
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
-    color: COLORS.terracotta,
+    color: COLORS.ink,
     letterSpacing: -0.3,
   },
 
   subtitle: {
-    marginTop: 3,
-    fontSize: 12,
+    marginTop: 1,
+    fontSize: 12.5,
     color: COLORS.secondary,
-    textAlign: "center",
-  },
-
-  illustration: {
-    position: "absolute",
-    right: 0,
-    top: 3,
-    width: 60,
-    height: 54,
-    alignItems: "center",
-    justifyContent: "center",
   },
 
   sparkleOne: {
     position: "absolute",
-    top: 0,
-    right: 2,
+    top: 18,
+    right: 92,
   },
 
   sparkleTwo: {
     position: "absolute",
-    bottom: 3,
-    left: 3,
+    bottom: 22,
+    right: 120,
   },
 
-  /* Current Balance */
+  /* Current balance */
 
   balanceCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 3,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: COLORS.card,
+    padding: 20,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: COLORS.plum,
+    ...softShadow,
+    shadowOpacity: 0.25,
+  },
+
+  balanceRing: {
+    position: "absolute",
+    top: -70,
+    right: -50,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,253,252,0.12)",
+  },
+
+  balanceRingInner: {
+    position: "absolute",
+    top: -36,
+    right: -16,
+    width: 122,
+    height: 122,
+    borderRadius: 61,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,253,252,0.16)",
   },
 
   balanceLabel: {
-    fontSize: 10,
-    color: COLORS.secondary,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    color: "rgba(255,253,252,0.65)",
   },
 
   balanceValue: {
-    marginTop: 1,
-    fontSize: 17,
+    marginTop: 4,
+    fontSize: 30,
+    fontWeight: "700",
+    letterSpacing: -0.5,
+    color: COLORS.card,
+  },
+
+  balanceHint: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "rgba(255,253,252,0.7)",
+  },
+
+  balanceIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,253,252,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(196,154,74,0.5)",
+  },
+
+  sectionTitle: {
+    marginTop: 24,
+    fontSize: 16,
     fontWeight: "700",
     color: COLORS.ink,
   },
 
-  balanceIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#EEE6F2",
-  },
-
   /* Plans */
 
+  // All packs in one row.
   plansRow: {
     flexDirection: "row",
-    gap: 7,
+    gap: 6,
     marginTop: 14,
   },
 
   planCard: {
     flex: 1,
     alignItems: "center",
-    paddingTop: 14,
-    paddingBottom: 8,
-    paddingHorizontal: 5,
-    borderRadius: 12,
+    paddingTop: 16,
+    paddingBottom: 10,
+    paddingHorizontal: 3,
+    borderRadius: 16,
     backgroundColor: COLORS.card,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderColor: COLORS.line,
+    ...softShadow,
+    shadowOpacity: 0.05,
   },
 
   planCardActive: {
     borderColor: COLORS.plum,
+    backgroundColor: COLORS.soft,
   },
 
   popularTag: {
     position: "absolute",
     top: -9,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 7,
+    borderRadius: 999,
     backgroundColor: COLORS.gold,
   },
 
   popularText: {
     fontSize: 8,
     fontWeight: "700",
-    letterSpacing: 0.4,
-    color: COLORS.ink,
+    letterSpacing: 0.5,
+    color: COLORS.card,
   },
 
   planAmount: {
@@ -1193,10 +1366,11 @@ const styles = StyleSheet.create({
   },
 
   bonusPill: {
-    marginTop: 5,
-    paddingHorizontal: 6,
+    marginTop: 6,
+    maxWidth: "100%",
+    paddingHorizontal: 5,
     paddingVertical: 3,
-    borderRadius: 7,
+    borderRadius: 999,
     backgroundColor: COLORS.successBg,
   },
 
@@ -1209,10 +1383,10 @@ const styles = StyleSheet.create({
   /* Summary */
 
   offerText: {
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     overflow: "hidden",
     fontSize: 13,
     fontWeight: "600",
@@ -1222,19 +1396,20 @@ const styles = StyleSheet.create({
   },
 
   summaryCard: {
-    marginTop: 15,
-    padding: 15,
-    borderRadius: 14,
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 20,
     backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.line,
+    ...softShadow,
   },
 
   summaryTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: COLORS.ink,
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   summaryRow: {
@@ -1245,8 +1420,8 @@ const styles = StyleSheet.create({
   },
 
   summaryLabel: {
-    fontSize: 13,
-    color: COLORS.ink,
+    fontSize: 13.5,
+    color: COLORS.secondary,
   },
 
   summaryValue: {
@@ -1257,49 +1432,49 @@ const styles = StyleSheet.create({
 
   divider: {
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: COLORS.line,
     marginVertical: 8,
   },
 
   totalLabel: {
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "700",
     color: COLORS.ink,
   },
 
   totalValue: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: "700",
-    color: COLORS.ink,
+    color: COLORS.plum,
   },
 
-  /* Payment Method */
+  /* Payment method */
 
   methodSection: {
-    marginTop: 15,
+    marginTop: 24,
   },
 
   methodSectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
     color: COLORS.ink,
   },
 
   methodEmpty: {
     marginTop: 8,
-    fontSize: 12,
+    fontSize: 12.5,
     color: COLORS.secondary,
   },
 
   methodCard: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 12,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 16,
     backgroundColor: COLORS.card,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderColor: COLORS.line,
   },
 
   notInstalled: {
@@ -1322,56 +1497,58 @@ const styles = StyleSheet.create({
   },
 
   installButton: {
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    height: 34,
+    paddingHorizontal: 16,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.plum,
   },
 
   installButtonText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: "700",
     color: COLORS.card,
   },
 
   dropdown: {
     marginTop: 6,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.line,
     overflow: "hidden",
+    ...softShadow,
   },
 
   dropdownItem: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
   },
 
   dropdownDivider: {
     borderTopWidth: 1,
-    borderTopColor: "#EEE6F2",
+    borderTopColor: COLORS.line,
   },
 
   dropdownItemActive: {
-    backgroundColor: "#F6F1FA",
+    backgroundColor: COLORS.soft,
   },
 
   methodCardActive: {
     borderColor: COLORS.plum,
+    backgroundColor: "#FAF7FD",
   },
 
   methodIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EEE6F2",
+    backgroundColor: COLORS.soft,
     overflow: "hidden",
   },
 
@@ -1383,7 +1560,7 @@ const styles = StyleSheet.create({
   methodTitle: {
     flex: 1,
     marginLeft: 12,
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "600",
     color: COLORS.ink,
   },
@@ -1393,10 +1570,10 @@ const styles = StyleSheet.create({
   upiBox: {
     marginTop: 8,
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.line,
   },
 
   upiRow: {
@@ -1407,21 +1584,21 @@ const styles = StyleSheet.create({
 
   upiInput: {
     flex: 1,
-    height: 42,
-    paddingHorizontal: 12,
-    borderRadius: 11,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     fontSize: 14,
     color: COLORS.ink,
   },
 
   upiVerify: {
-    height: 42,
-    minWidth: 78,
-    paddingHorizontal: 12,
-    borderRadius: 11,
+    height: 44,
+    minWidth: 84,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.plum,
@@ -1460,23 +1637,24 @@ const styles = StyleSheet.create({
 
   upiHint: {
     marginTop: 8,
-    fontSize: 11,
+    fontSize: 11.5,
     color: COLORS.secondary,
   },
 
   /* Status message */
 
   notice: {
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 10,
-    fontSize: 12,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 14,
+    overflow: "hidden",
+    fontSize: 12.5,
     textAlign: "center",
   },
 
   noticeError: {
-    color: COLORS.terracotta,
-    backgroundColor: "#F8E7E2",
+    color: "#B3392F",
+    backgroundColor: "#F8E4E1",
   },
 
   noticeSuccess: {
@@ -1485,43 +1663,46 @@ const styles = StyleSheet.create({
   },
 
   loadingPlans: {
-    marginTop: 20,
+    marginTop: 24,
   },
 
   /* Footer */
 
   contactBox: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
 
   contactLabel: {
-    marginBottom: 5,
+    marginBottom: 6,
     fontSize: 12.5,
     fontWeight: "600",
     color: COLORS.ink,
   },
 
   contactInput: {
-    height: 42,
-    paddingHorizontal: 12,
-    borderRadius: 11,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.card,
     fontSize: 14,
     color: COLORS.ink,
   },
 
   footer: {
-    paddingHorizontal: 17,
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
     backgroundColor: COLORS.background,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.line,
   },
 
   payButton: {
-    height: 48,
-    borderRadius: 14,
+    overflow: "hidden",
+    height: 52,
+    borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1529,13 +1710,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.plum,
   },
 
+  shine: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 60,
+    backgroundColor: "rgba(255,253,252,0.16)",
+  },
+
   payButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
 
   payText: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: COLORS.card,
   },
 });

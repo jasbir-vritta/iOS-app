@@ -1,20 +1,39 @@
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFonts } from "expo-font";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
   Image,
-  ImageBackground,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
+import Reanimated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { AUTH_FONTS, F } from "../../../components/auth/theme";
+import { HOME_PAD, SectionHeader, softShadow } from "../../../components/home/homeUi";
 
 import { useAstrologersStore } from "../../../components/stores/astrologersStore";
 import { useUserStore } from "../../../components/stores/userStore";
@@ -22,20 +41,7 @@ import TopBar from "../../../components/TopBar";
 import { ensureChatCredits, minChatCredits } from "../../../components/constants/chat";
 import { API_URL, authHeaders } from "../../../lib/auth";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
-/*
- * All sizes below are measured in pixels of the reference design (853px wide)
- * and scaled to the device, so the layout keeps the same proportions on any phone.
- */
-
-const K =
-  Math.min(Dimensions.get("window").width, 430) / 853;
-
-const px = (n: number) =>
-  Math.round(n * K * 100) / 100;
-
-const fs = (n: number) =>
-  Math.max(9, px(n));
-
+import { metaEvents, track } from "../../../lib/analytics";
 const C = {
   INK: "#1C1820",
   PLUM: "#2B1A3D",
@@ -73,6 +79,18 @@ const categories = [
     title: "Numerology",
     icon: "numeric-1-box-multiple-outline",
     w: 180,
+  },
+  {
+    id: "kp",
+    title: "KP",
+    icon: "compass-outline",
+    w: 100,
+  },
+  {
+    id: "lalkitab",
+    title: "Lal Kitab",
+    icon: "book-open-variant",
+    w: 150,
   },
   
 ];
@@ -115,6 +133,15 @@ const getReadingType = (specialty: string) => {
     return "numerology";
   }
 
+  // KP and Lal Kitab chats use the Vedic chat screen (own school).
+  if (value === "kp" || value === "kp astrology" || value === "krishnamurti paddhati") {
+    return "kp";
+  }
+
+  if (value === "lal kitab" || value === "lalkitab") {
+    return "lalkitab";
+  }
+
   return null;
 };
 
@@ -133,12 +160,141 @@ const getReadingTypeFromCategory = (category: string) => {
   if (category === "vedic") return "vedic";
   if (category === "tarot") return "tarot";
   if (category === "numerology") return "numerology";
+  if (category === "kp") return "kp";
+  if (category === "lalkitab") return "lalkitab";
   return null;
 };
 
+// Sections rise in one after another (as on Home).
+const enter = (index: number) => FadeInDown.delay(70 * index).duration(420);
+
+/* ---------------- header card motion ---------------- */
+
+const ORBIT = 220;
+
+// Slowly turning orbit rings with a small gold planet.
+function HeroOrbits({ still }: { still: boolean }) {
+  const spin = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    spin.value = withRepeat(withTiming(360, { duration: 60000, easing: Easing.linear }), -1);
+  }, [spin, still]);
+  const outer = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.value}deg` }] }));
+  const inner = useAnimatedStyle(() => ({ transform: [{ rotate: `${-spin.value * 1.6}deg` }] }));
+  const c = ORBIT / 2;
+
+  return (
+    <View style={n.orbits} pointerEvents="none">
+      <Reanimated.View style={[StyleSheet.absoluteFill, outer]}>
+        <Svg width={ORBIT} height={ORBIT}>
+          <Circle cx={c} cy={c} r={c - 4} stroke="rgba(255,253,252,0.12)" fill="none" />
+          <Circle cx={c} cy={4} r={4} fill={C.GOLD} />
+          <Circle cx={c} cy={4} r={9} fill={C.GOLD} opacity={0.18} />
+        </Svg>
+      </Reanimated.View>
+      <Reanimated.View style={[StyleSheet.absoluteFill, inner]}>
+        <Svg width={ORBIT} height={ORBIT}>
+          <Circle cx={c} cy={c} r={c * 0.68} stroke="rgba(255,253,252,0.14)" fill="none" strokeDasharray="2 6" />
+          <Circle cx={c + c * 0.68} cy={c} r={2.2} fill="rgba(255,253,252,0.7)" />
+        </Svg>
+      </Reanimated.View>
+      <Svg width={ORBIT} height={ORBIT} style={StyleSheet.absoluteFill}>
+        <Circle cx={c} cy={c} r={c * 0.38} stroke="rgba(255,253,252,0.08)" fill="none" />
+      </Svg>
+    </View>
+  );
+}
+
+// Gold stars that fade in and out at their own pace.
+const HERO_STARS = [
+  { left: "58%", top: 18, size: 9, delay: 0 },
+  { left: "72%", top: 64, size: 7, delay: 900 },
+  { left: "88%", top: 120, size: 8, delay: 500 },
+  { left: "46%", top: 44, size: 6, delay: 1400 },
+] as const;
+
+function HeroStar({ left, top, size, delay, still }: { left: string; top: number; size: number; delay: number; still: boolean }) {
+  const glow = useSharedValue(0.6);
+  useEffect(() => {
+    if (still) return;
+    glow.value = withDelay(
+      delay,
+      withRepeat(withSequence(withTiming(1, { duration: 1300 }), withTiming(0.2, { duration: 1300 })), -1)
+    );
+  }, [delay, glow, still]);
+  const style = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: 0.8 + glow.value * 0.3 }] }));
+  return (
+    <Reanimated.View style={[{ position: "absolute", left: left as any, top }, style]} pointerEvents="none">
+      <Icon name="star-four-points" size={size} color={C.GOLD} />
+    </Reanimated.View>
+  );
+}
+
+// Green "live" dot that sends out a soft ripple.
+function LiveDot({ still }: { still: boolean }) {
+  const wave = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    wave.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1);
+  }, [still, wave]);
+  const ripple = useAnimatedStyle(() => ({
+    opacity: 0.55 * (1 - wave.value),
+    transform: [{ scale: 1 + wave.value * 1.8 }],
+  }));
+  return (
+    <View style={n.liveWrap}>
+      {!still && <Reanimated.View style={[n.liveRipple, ripple]} />}
+      <View style={n.liveDot} />
+    </View>
+  );
+}
+
+// Counts up to a number when it appears.
+function CountUp({ value, still, style }: { value: number; still: boolean; style: any }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (still) return;
+    const start = Date.now();
+    const duration = 900;
+    let frame = 0;
+    const step = () => {
+      const k = Math.min(1, (Date.now() - start) / duration);
+      setShown(Math.round(value * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value, still]);
+  return <Text style={style}>{still ? value : shown}</Text>;
+}
+
+const consultLabel = (count: number) => {
+  if (count >= 100000) return `${(count / 100000).toFixed(1)}L chats`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}K chats`;
+  return `${count} chats`;
+};
+
+const LIST_TITLE: Record<string, string> = {
+  all: "All astrologers",
+  vedic: "Vedic astrologers",
+  tarot: "Tarot readers",
+  numerology: "Numerologists",
+  kp: "KP astrologers",
+  lalkitab: "Lal Kitab experts",
+};
+
 export default function Chat() {
+  // Analytics: visited_chat each time the Chat tab comes on screen.
+  useFocusEffect(
+    useCallback(() => {
+      track("visited_chat", { platform: Platform.OS });
+    }, [])
+  );
+
   const tabSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
+  const [fontsLoaded] = useFonts(AUTH_FONTS);
+  const still = useReducedMotion();
 
   const { user } = useUserStore() as any;
 
@@ -159,6 +315,7 @@ export default function Chat() {
   const [chatOptions, setChatOptions] =
     useState<string[]>([]);
 
+  const [pendingOption, setPendingOption] = useState("");
   const [chatModalVisible, setChatModalVisible] =
     useState(false);
 
@@ -287,7 +444,7 @@ const currentWalletBalance = Number(user?.credits ?? 0);
       return;
     }
 
-    if (readingType === "vedic") {
+    if (readingType === "vedic" || readingType === "kp" || readingType === "lalkitab") {
       
       router.push({
         pathname: "/(root)/chat/vedic",
@@ -418,6 +575,13 @@ if (selectedCategory !== "all") {
     query,
   ]);
 
+  // Online astrologers first.
+  const sortedList = useMemo(
+    () => [...list].sort((a, b) => Number(Boolean(b.online)) - Number(Boolean(a.online))),
+    [list]
+  );
+  const onlineCount = astrologers.filter((a) => a.online).length;
+
   const onCategory = (id: string) => {
     if (id === "filters") {
       return console.log(
@@ -438,9 +602,14 @@ if (selectedCategory !== "all") {
   /*
    * Open astrologer profile.
    */
+  // Profile pop-up tab: About, or Reviews (coming soon).
+  const [profileTab, setProfileTab] = useState<"about" | "reviews">("about");
+
   const openAstrologerProfile = (
     astrologer: Astrologer
   ) => {
+    setProfileTab("about");
+    metaEvents.viewContent("astrologer", astrologer.id, Number(astrologer.price) || undefined);
     setSelectedAstrologer(
       astrologer
     );
@@ -465,10 +634,10 @@ if (selectedCategory !== "all") {
           false
         }
         contentContainerStyle={{
-          paddingHorizontal: px(40),
+          paddingHorizontal: HOME_PAD,
           paddingTop:
             insets.top + 4,
-          paddingBottom: tabSpace + 40,
+          paddingBottom: tabSpace + 24,
         }}
       >
         {/* =========================================================
@@ -479,251 +648,94 @@ if (selectedCategory !== "all") {
           visible={chatModalVisible}
           transparent
           animationType="slide"
-          onRequestClose={() =>
-            setChatModalVisible(false)
-          }
+          onRequestClose={() => setChatModalVisible(false)}
         >
-          <Pressable
-            style={{
-              flex: 1,
-              justifyContent:
-                "flex-end",
-              backgroundColor:
-                "rgba(28,24,32,0.45)",
-            }}
-            onPress={() =>
-              setChatModalVisible(
-                false
-              )
-            }
-          >
+          <Pressable style={cm.backdrop} onPress={() => setChatModalVisible(false)}>
             <Pressable
-              style={{
-                backgroundColor:
-                  C.CARD,
-                borderTopLeftRadius:
-                  px(28),
-                borderTopRightRadius:
-                  px(28),
-                paddingHorizontal:
-                  px(28),
-                paddingTop: px(18),
-                paddingBottom:
-                  insets.bottom +
-                  px(18),
-              }}
-              onPress={(event) =>
-                event.stopPropagation()
-              }
+              style={[cm.sheet, { paddingBottom: insets.bottom + 16 }]}
+              onPress={(event) => event.stopPropagation()}
             >
-              <View
-                style={{
-                  alignSelf: "center",
-                  width: px(42),
-                  height: px(4),
-                  borderRadius: px(4),
-                  backgroundColor:
-                    C.BORDER,
-                  marginBottom:
-                    px(20),
-                }}
-              />
+              <View style={cm.handle} />
 
-              <Text
-                style={{
-                  fontSize: fs(24),
-                  fontWeight: "800",
-                  color: C.INK,
-                  textAlign: "center",
-                }}
-              >
-                Choose your reading
-              </Text>
+              {/* Astrologer */}
+              <View style={cm.head}>
+                <View style={cm.photoRing}>
+                  <View style={cm.photo}>
+                    {chatAstrologer?.photo ? (
+                      <Image source={{ uri: chatAstrologer.photo }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                    ) : (
+                      <Text style={cm.photoInitial}>{chatAstrologer?.avatar || chatAstrologer?.name?.[0] || "A"}</Text>
+                    )}
+                  </View>
+                  <View style={cm.onlineDot} />
+                </View>
 
-              <Text
-                style={{
-                  marginTop: px(8),
-                  fontSize: fs(14),
-                  lineHeight:
-                    fs(20),
-                  color: C.MUTED,
-                  textAlign:
-                    "center",
-                }}
-              >
-                {
-                  chatAstrologer?.name
-                }{" "}
-                offers multiple types
-                of guidance.
-              </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={cm.overline}>CHOOSE YOUR READING</Text>
+                  <Text style={cm.name} numberOfLines={1}>{chatAstrologer?.name}</Text>
+                  <Text style={cm.meta} numberOfLines={1}>
+                    ₹{chatAstrologer?.price}/min · {chatAstrologer?.experience}+ yrs
+                  </Text>
+                </View>
 
-              <View
-                style={{
-                  marginTop: px(20),
-                }}
-              >
-                {chatOptions.map(
-                  (option) => {
-                    const title =
-                      option ===
-                      "vedic"
-                        ? "Vedic Astrology"
-                        : option ===
-                          "tarot"
-                        ? "Tarot"
-                        : "Numerology";
-
-                    const icon =
-                      option ===
-                      "vedic"
-                        ? "star-four-points-outline"
-                        : option ===
-                          "tarot"
-                        ? "cards-playing-outline"
-                        : "numeric-1-box-multiple-outline";
-
-                    return (
-                      <Pressable
-                        key={option}
-                        disabled={
-                          startingChat
-                        }
-                        onPress={() => {
-                          if (
-                            !chatAstrologer
-                          )
-                            return;
-
-                          startAstrologerChat(
-                            chatAstrologer,
-                            option
-                          );
-                        }}
-                        style={{
-                          flexDirection:
-                            "row",
-                          alignItems:
-                            "center",
-                          paddingHorizontal:
-                            px(16),
-                          paddingVertical:
-                            px(15),
-                          marginBottom:
-                            px(10),
-                          borderRadius:
-                            px(18),
-                          borderWidth: 1,
-                          borderColor:
-                            C.BORDER,
-                          backgroundColor:
-                            C.CARD,
-                          opacity:
-                            startingChat
-                              ? 0.6
-                              : 1,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: px(44),
-                            height: px(44),
-                            borderRadius:
-                              px(22),
-                            alignItems:
-                              "center",
-                            justifyContent:
-                              "center",
-                            backgroundColor:
-                              "#F7F1E8",
-                          }}
-                        >
-                          <Icon
-                            name={
-                              icon as any
-                            }
-                            size={px(22)}
-                            color={
-                              C.PLUM
-                            }
-                          />
-                        </View>
-
-                        <View
-                          style={{
-                            flex: 1,
-                            marginLeft:
-                              px(14),
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize:
-                                fs(16),
-                              fontWeight:
-                                "700",
-                              color:
-                                C.INK,
-                            }}
-                          >
-                            {title}
-                          </Text>
-
-                          <Text
-                            style={{
-                              marginTop:
-                                px(3),
-                              fontSize:
-                                fs(12),
-                              color:
-                                C.MUTED,
-                            }}
-                          >
-                            Start your{" "}
-                            {title.toLowerCase()}{" "}
-                            chat
-                          </Text>
-                        </View>
-
-                        <Icon
-                          name="chevron-right"
-                          size={px(22)}
-                          color={
-                            C.MUTED
-                          }
-                        />
-                      </Pressable>
-                    );
-                  }
-                )}
+                <TouchableOpacity
+                  onPress={() => setChatModalVisible(false)}
+                  disabled={startingChat}
+                  hitSlop={10}
+                  style={cm.close}
+                  accessibilityLabel="Close"
+                >
+                  <Icon name="close" size={18} color={C.INK} />
+                </TouchableOpacity>
               </View>
 
-              <Pressable
-                disabled={
-                  startingChat
-                }
-                onPress={() =>
-                  setChatModalVisible(
-                    false
-                  )
-                }
-                style={{
-                  alignItems:
-                    "center",
-                  paddingVertical:
-                    px(12),
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fs(15),
-                    fontWeight: "600",
-                    color: C.MUTED,
-                  }}
-                >
-                  Cancel
-                </Text>
-              </Pressable>
+              <Text style={cm.lead}>
+                {chatAstrologer?.name?.split(" ")[0]} reads in {chatOptions.length} ways. Pick how you’d like to be guided.
+              </Text>
+
+              {/* Options */}
+              <View style={{ gap: 10, marginTop: 14 }}>
+                {chatOptions.map((option, index) => {
+                  const look = READING_LOOK[option] || READING_LOOK.vedic;
+                  const busy = startingChat && pendingOption === option;
+                  return (
+                    <Reanimated.View key={option} entering={FadeInDown.delay(80 + index * 70).duration(380)}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={startingChat}
+                        onPress={() => {
+                          if (!chatAstrologer) return;
+                          setPendingOption(option);
+                          startAstrologerChat(chatAstrologer, option);
+                        }}
+                        style={[cm.option, startingChat && !busy && { opacity: 0.5 }]}
+                      >
+                        <View style={[cm.medallion, { backgroundColor: look.tint }]}>
+                          <Icon name={look.icon as any} size={22} color={look.color} />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <Text style={cm.optionTitle}>{look.title}</Text>
+                          <Text style={cm.optionLine} numberOfLines={2}>{look.line}</Text>
+                        </View>
+
+                        <View style={cm.go}>
+                          {busy ? (
+                            <ActivityIndicator size="small" color={C.CARD} />
+                          ) : (
+                            <Icon name="arrow-right" size={18} color={C.CARD} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </Reanimated.View>
+                  );
+                })}
+              </View>
+
+              <View style={cm.foot}>
+                <Icon name="shield-check-outline" size={14} color={C.MUTED} />
+                <Text style={cm.footText}>Same price for every reading · charged per minute</Text>
+              </View>
             </Pressable>
           </Pressable>
         </Modal>
@@ -734,424 +746,222 @@ if (selectedCategory !== "all") {
 
         <TopBar />
 
-        {/* =========================================================
-            TOP BANNER
-        ========================================================= */}
+        {/* Brand fonts first, so text doesn't jump from the system font. */}
+        {fontsLoaded && (
+          <>
+            {/* Header card: who you can talk to right now */}
+            <Reanimated.View entering={enter(0)} style={n.hero}>
+              <View style={n.heroClip}>
+                <LinearGradient
+                  colors={[C.PLUM, "#3B2654"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <HeroOrbits still={still} />
+                {HERO_STARS.map((star, i) => (
+                  <HeroStar key={i} {...star} still={still} />
+                ))}
+                <Text style={n.heroOverline}>EXPERT GUIDANCE</Text>
+                <Text style={n.heroTitle}>Talk to a verified astrologer</Text>
+                <Text style={n.heroText}>
+                  Clarity for love, career, family and more, in a private chat.
+                </Text>
 
-        <ImageBackground
-          source={require(
-            "../../../assets/backgrounds/chat_top_banner.png"
-          )}
-          resizeMode="cover"
-          style={s.topBanner}
-        >
-          <Text style={s.eyebrow}>
-            EXPERT GUIDANCE
-          </Text>
+                <View style={n.heroStats}>
+                  <View style={n.stat}>
+                    <View style={n.statValueRow}>
+                      <LiveDot still={still} />
+                      <CountUp value={onlineCount} still={still} style={n.statValue} />
+                    </View>
+                    <Text style={n.statLabel}>Online now</Text>
+                  </View>
+                  <View style={n.statLine} />
+                  <View style={n.stat}>
+                    <CountUp value={astrologers.length} still={still} style={n.statValue} />
+                    <Text style={n.statLabel}>Experts</Text>
+                  </View>
+                  <View style={n.statLine} />
+                  <View style={n.stat}>
+                    <View style={n.statValueRow}>
+                      <Icon name="check-decagram" size={15} color={C.GOLD} />
+                      <Text style={n.statValue}>100%</Text>
+                    </View>
+                    <Text style={n.statLabel}>Verified</Text>
+                  </View>
+                </View>
+              </View>
+            </Reanimated.View>
 
-          <Text style={s.title}>
-            Astrologers
-          </Text>
-
-          <Text style={s.subtitle}>
-            Get clarity for love,
-            {"\n"}
-            career, family and more.
-          </Text>
-        </ImageBackground>
-
-        {/* =========================================================
-            CATEGORIES
-        ========================================================= */}
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            s.categoryRow
-          }
-        >
-          {categories.map(
-            (category) => {
-              const active =
-                category.id ===
-                selectedCategory;
-
-              return (
-                <Pressable
-                  key={category.id}
-                  onPress={() =>
-                    onCategory(
-                      category.id
-                    )
-                  }
-                  style={[
-                    s.category,
-                    {
-                      width: px(
-                        category.w
-                      ),
-                    },
-                    active &&
-                      s.categoryActive,
-                  ]}
-                >
-                  <Icon
-                    name={
-                      category.icon as any
-                    }
-                    size={px(28)}
-                    color={
-                      active
-                        ? C.CARD
-                        : C.PLUM
-                    }
-                  />
-
-                  <Text
-                    style={[
-                      s.categoryText,
-                      active &&
-                        s.categoryTextActive,
-                    ]}
-                  >
-                    {category.title}
-                  </Text>
-                </Pressable>
-              );
-            }
-          )}
-        </ScrollView>
-
-        {/* =========================================================
-            FIND MY MATCH
-        ========================================================= */}
-
-        <ImageBackground
-          source={require(
-            "../../../assets/backgrounds/chat_mid_banner.png"
-          )}
-          resizeMode="cover"
-          imageStyle={{
-            borderRadius: px(22),
-          }}
-          style={s.match}
-        >
-          <Text
-            style={s.matchTitle}
-          >
-            Not sure{" "}
-            <Text
-              style={{
-                color: "#EBBA52",
-              }}
-            >
-              who to choose?
-            </Text>
-          </Text>
-
-          <Text style={s.matchSub}>
-            Share what's on your mind
-            and we'll find the right
-            astrologer for you.
-          </Text>
-
-          <Pressable
-            style={s.matchBtn}
-          >
-            <Text
-              style={s.matchBtnText}
-            >
-              Find My Match
-            </Text>
-
-            <Icon
-              name="arrow-right"
-              size={px(30)}
-              color={C.PLUM}
-              style={{
-                marginLeft: px(10),
-              }}
-            />
-          </Pressable>
-        </ImageBackground>
-
-        {/* =========================================================
-            ASTROLOGER CARDS
-        ========================================================= */}
-
-        {loadingAstrologers ? (
-          <View
-            style={{
-              height: px(300),
-              alignItems:
-                "center",
-              justifyContent:
-                "center",
-            }}
-          >
-            <ActivityIndicator
-              size="large"
-              color={C.PLUM}
-            />
-
-            <Text
-              style={{
-                marginTop:
-                  px(12),
-                fontSize: fs(16),
-                color: C.MUTED,
-              }}
-            >
-              Loading astrologers...
-            </Text>
-          </View>
-        ) : list.length === 0 ? (
-          <View style={s.empty}>
-            <Text
-              style={{
-                fontSize: fs(34),
-                fontWeight: "700",
-                color: C.INK,
-              }}
-            >
-              No experts found
-            </Text>
-
-            <Text
-              style={{
-                marginTop: px(8),
-                fontSize: fs(26),
-                color: C.MUTED,
-              }}
-            >
-              Try another category
-            </Text>
-          </View>
-        ) : (
-          <View
-  style={{
-    marginTop: px(17),
-    gap: px(15),
-  }}
->
-  {list.map((a) => (
-    <Pressable
-      key={a.id}
-      onPress={() =>
-        openAstrologerProfile(a)
-      }
-      style={s.card}
-    >
-      {/* PHOTO */}
-      <View style={s.photo}>
-        {a.photo ? (
-          <Image
-            source={{
-              uri: a.photo,
-            }}
-            style={
-              StyleSheet.absoluteFill
-            }
-            resizeMode="cover"
-          />
-        ) : (
-          <View
-            style={
-              s.photoFallback
-            }
-          >
-            <Text
-              style={{
-                fontSize: fs(84),
-                fontWeight: "700",
-                color: C.PLUM,
-              }}
-            >
-              {a.avatar}
-            </Text>
-          </View>
-        )}
-
-        {/* CONSULTATIONS */}
-        <View style={s.consult}>
-          <Icon
-            name="account-group"
-            size={px(26)}
-            color={C.PLUM}
-          />
-
-          <Text
-            style={s.consultText}
-            numberOfLines={1}
-          >
-            {a.consultations}
-          </Text>
-        </View>
-      </View>
-
-      {/* INFO */}
-      <View style={s.info}>
-        {/* ONLINE */}
-        {a.online && (
-          <View style={s.onlineInfo}>
-            <View style={s.onlineInfoDot} />
-
-            <Text style={s.onlineInfoText}>
-              Online
-            </Text>
-          </View>
-        )}
-
-        {/* NAME */}
-        <View style={s.nameRow}>
-          <Text
-            style={s.name}
-            numberOfLines={1}
-          >
-            {a.name}
-          </Text>
-
-          <Icon
-            name="check-decagram"
-            size={px(36)}
-            color={C.GOLD}
-            style={{
-              marginLeft: px(8),
-            }}
-          />
-        </View>
-
-        {/* TYPE */}
-        <Text style={s.type}>
-          {a.specialties.join(" · ")}
-        </Text>
-
-        {/* ARCHETYPE + EXPERIENCE */}
-        <View style={s.chipRow}>
-          <View style={s.chip}>
-            <Icon
-              name={
-                a.archetypeIcon as any
-              }
-              size={px(26)}
-              color={C.PLUM}
-            />
-
-            <Text
-              style={s.chipText}
-              numberOfLines={1}
-            >
-              {a.archetype}
-            </Text>
-          </View>
-
-          <View
-            style={[
-              s.chip,
-              {
-                flexShrink: 1,
-              },
-            ]}
-          >
-            <Text style={s.chipText}>
-              {a.experience}+
-              {" "}
-              years
-            </Text>
-          </View>
-        </View>
-
-        {/* TOPICS */}
-        <View style={s.topicRow}>
-          {a.topics.map((t) => (
-            <View
-              key={t.label}
-              style={s.topic}
-            >
-              <Icon
-                name={
-                  t.icon as any
-                }
-                size={px(24)}
-                color={C.PLUM}
-              />
-
-              <Text
-                style={s.topicText}
-                numberOfLines={1}
+            {/* Categories */}
+            <Reanimated.View entering={enter(1)} style={n.segmentWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={n.segment}
               >
-                {t.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
+              {categories.map((category) => {
+                const active = category.id === selectedCategory;
+                return (
+                  <TouchableOpacity
+                    key={category.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    activeOpacity={0.85}
+                    onPress={() => onCategory(category.id)}
+                    style={[n.segmentItem, active && n.segmentItemActive]}
+                  >
+                    <Text
+                      style={[n.segmentText, active && n.segmentTextActive]}
+                      numberOfLines={1}
+                    >
+                      {category.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              </ScrollView>
+            </Reanimated.View>
 
-      {/* PRICE */}
-      <View style={s.priceCol}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "baseline",
-          }}
-        >
-          <Text style={s.price}>
-            {a.price}
-          </Text>
+            <Reanimated.View entering={enter(2)}>
+              <SectionHeader
+                overline={`${list.length} VERIFIED EXPERT${list.length === 1 ? "" : "S"}`}
+                title={LIST_TITLE[selectedCategory] || "All astrologers"}
+              />
+            </Reanimated.View>
 
-          <Text style={s.perMin}>
-            /min
-          </Text>
-        </View>
+            {/* =========================================================
+                ASTROLOGER CARDS
+            ========================================================= */}
 
-        <View style={s.offerRow}>
-          <Text style={s.oldPrice}>
-            {a.oldPrice}
-          </Text>
+            {loadingAstrologers && astrologers.length === 0 ? (
+              <View style={n.state}>
+                <ActivityIndicator size="large" color={C.PLUM} />
+                <Text style={n.stateText}>Finding astrologers…</Text>
+              </View>
+            ) : sortedList.length === 0 ? (
+              <View style={n.state}>
+                <Icon name="account-search-outline" size={30} color={C.PLUM} />
+                <Text style={n.stateTitle}>No experts found</Text>
+                <Text style={n.stateText}>Try another category</Text>
+              </View>
+            ) : (
+              <Reanimated.View entering={enter(3)} style={{ gap: 12 }}>
+                {sortedList.map((a) => {
+                  const topics = (a.topics || []).slice(0, 2);
+                  const showOld = Number(a.oldPrice) > Number(a.price);
 
-          <View style={s.offer}>
-            <Text style={s.offerText}>
-              {a.discount}
-            </Text>
-          </View>
-        </View>
+                  return (
+                    <TouchableOpacity
+                      key={a.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${a.name}, ${a.online ? "online" : "offline"}, ₹${a.price} per minute`}
+                      activeOpacity={0.92}
+                      onPress={() => openAstrologerProfile(a)}
+                      style={n.card}
+                    >
+                      <View style={n.cardTop}>
+                        {/* Round photo with an online ring */}
+                        <View style={[n.ring, { borderColor: a.online ? "#2E9E57" : "rgba(43,26,61,0.16)" }]}>
+                          <View style={n.avatar}>
+                            {a.photo ? (
+                              <Image source={{ uri: a.photo }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                            ) : (
+                              <Text style={n.initial}>{a.avatar}</Text>
+                            )}
+                          </View>
+                          {a.online && <View style={n.ringDot} />}
+                        </View>
 
-        <Text
-          style={[
-            s.minCredits,
-            user?.free_chat_minute_available && s.freeMinute,
-          ]}
-        >
-          {user?.free_chat_minute_available
-            ? "1 min free"
-            : `Min ₹${minChatCredits(a.price)}`}
-        </Text>
-      </View>
+                        <View style={n.cardInfo}>
+                          <View style={n.nameRow}>
+                            <Text style={n.name} numberOfLines={1}>
+                              {a.name}
+                            </Text>
+                            <Icon name="check-decagram" size={15} color={C.GOLD} />
+                          </View>
+                          <Text style={n.spec} numberOfLines={1}>
+                            {a.specialties.join(" · ")}
+                          </Text>
+                          <View style={n.metaRow}>
+                            <Icon name="chat-processing-outline" size={12} color={C.TERRACOTTA} />
+                            <Text style={n.meta}>{consultLabel(Number(a.consultations) || 0)}</Text>
+                            <Text style={n.metaDot}>·</Text>
+                            <Text style={n.meta}>{a.experience}+ yrs</Text>
+                          </View>
+                        </View>
 
-      {/* CHAT */}
-      <Pressable
-        onPress={(event) => {
-          event.stopPropagation();
-          handleAstrologerChat(a);
-        }}
-        style={s.chatBtn}
-      >
-        <Icon
-          name="message-processing"
-          size={px(36)}
-          color="#fff"
-        />
+                        <View style={n.priceCol}>
+                          <Text style={n.price}>
+                            ₹{a.price}
+                            <Text style={n.perMin}>/min</Text>
+                          </Text>
+                          {showOld && (
+                            <View style={n.offerRow}>
+                              <Text style={n.oldPrice}>₹{a.oldPrice}</Text>
+                              {!!a.discount && (
+                                <View style={n.offer}>
+                                  <Text style={n.offerText}>{a.discount}</Text>
+                                </View>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      </View>
 
-        <Text style={s.chatText}>
-          Chat
-        </Text>
-      </Pressable>
-    </Pressable>
-  ))}
-</View>
+                      {/* Archetype and topics */}
+                      <View style={n.chips}>
+                        {!!a.archetype && (
+                          <View style={[n.chip, n.chipStrong]}>
+                            <Icon name={(a.archetypeIcon || "star-four-points-outline") as any} size={12} color={C.PLUM} />
+                            <Text style={[n.chipText, { color: C.PLUM }]} numberOfLines={1}>
+                              {a.archetype}
+                            </Text>
+                          </View>
+                        )}
+                        {topics.map((t) => (
+                          <View key={t.label} style={n.chip}>
+                            <Icon name={t.icon as any} size={12} color={C.MUTED} />
+                            <Text style={n.chipText} numberOfLines={1}>
+                              {t.label}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      <View style={n.cardFoot}>
+                        <View style={n.footLeft}>
+                          <View style={[n.statusDot, { backgroundColor: a.online ? "#2E9E57" : "#B8B0B8" }]} />
+                          <Text style={[n.status, { color: a.online ? "#2E7D4F" : C.MUTED }]}>
+                            {a.online ? "Online" : "Offline"}
+                          </Text>
+                          <Text style={n.metaDot}>·</Text>
+                          <Text
+                            style={[n.minCredit, user?.free_chat_minute_available && n.freeMinute]}
+                            numberOfLines={1}
+                          >
+                            {user?.free_chat_minute_available ? "1 min free" : `Min ₹${minChatCredits(a.price)}`}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          accessibilityLabel={`Chat with ${a.name}`}
+                          activeOpacity={0.85}
+                          disabled={startingChat}
+                          onPress={() => handleAstrologerChat(a)}
+                          style={[n.chatBtn, startingChat && { opacity: 0.6 }]}
+                        >
+                          <Icon name="chat-outline" size={15} color={C.CARD} />
+                          <Text style={n.chatText}>Chat</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </Reanimated.View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -1160,601 +970,197 @@ if (selectedCategory !== "all") {
       ========================================================= */}
 
       <Modal
-        visible={
-          selectedAstrologer !== null
-        }
+        visible={selectedAstrologer !== null}
         animationType="slide"
         presentationStyle="fullScreen"
-        onRequestClose={
-          closeAstrologerProfile
-        }
+        onRequestClose={closeAstrologerProfile}
       >
         {selectedAstrologer && (
-          <View
-            style={
-              modalStyles.container
-            }
-          >
-            <ScrollView
-              showsVerticalScrollIndicator={
-                false
-              }
-              contentContainerStyle={{
-                paddingBottom:
-                  px(130),
-              }}
-            >
-              {/* =================================================
-                  PROFILE IMAGE
-              ================================================= */}
-
-              <View
-  style={[
-    modalStyles.hero,
-    {
-      position: "relative",
-    },
-  ]}
->
+          <View style={m.container}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
+              {/* Photo */}
+              <View style={m.hero}>
                 {selectedAstrologer.photo ? (
+                  // Photo starts below the status bar and fills the width, so the
+                  // head is never cut off (any extra is trimmed at the bottom).
                   <Image
-                    source={{
-                      uri: selectedAstrologer.photo,
+                    source={{ uri: selectedAstrologer.photo }}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      // Starts at the top edge of the screen on every phone (status bars differ).
+                      top: Math.max(-8, insets.top - 64),
+                      height: Dimensions.get("window").width * 1.25,
                     }}
-                    style={
-                      StyleSheet.absoluteFill
-                    }
                     resizeMode="cover"
                   />
                 ) : (
-                  <View
-                    style={
-                      modalStyles.heroFallback
-                    }
-                  >
-                    <Text
-                      style={
-                        modalStyles.heroInitial
-                      }
-                    >
-                      {
-                        selectedAstrologer.avatar
-                      }
-                    </Text>
+                  <View style={m.heroFallback}>
+                    <Text style={m.heroInitial}>{selectedAstrologer.avatar}</Text>
                   </View>
                 )}
+                <LinearGradient
+                  colors={["rgba(28,24,32,0.35)", "rgba(28,24,32,0)", "rgba(28,24,32,0)", "rgba(43,26,61,0.55)"]}
+                  locations={[0, 0.25, 0.6, 1]}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
 
-                {/* Back button */}
-                <Pressable
-  onPress={() => {
-    console.log("BACK BUTTON PRESSED");
-    closeAstrologerProfile();
-  }}
-  style={[
-    modalStyles.backButton,
-    {
-      position: "absolute",
-      top: insets.top + px(1),
-      left: px(16),
-      width: px(68),
-      height: px(68),
-      zIndex: 99999,
-      elevation: 999,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-  ]}
-  hitSlop={20}
->
-  <Icon
-    name="arrow-left"
-    size={px(48)}
-    color={C.PLUM}
-  />
-</Pressable>
-
-                {/* Share button */}
-                <Pressable
-                  style={[
-                    modalStyles.shareButton,
-    {
-      position: "absolute",
-      top: insets.top + px(1),
-      right: px(16),
-      width: px(68),
-      height: px(68),
-      zIndex: 99999,
-      elevation: 999,
-      justifyContent: "center",
-      alignItems: "center",
-    }]
-                  }
+                <TouchableOpacity
+                  onPress={closeAstrologerProfile}
+                  hitSlop={12}
+                  accessibilityLabel="Go back"
+                  style={[m.roundBtn, { top: insets.top + 8, left: HOME_PAD }]}
                 >
-                  <Icon
-                    name="share-variant"
-                    size={px(48)}
-                    color={
-                      C.PLUM
-                    }
-                  />
-                </Pressable>
+                  <Icon name="arrow-left" size={22} color={C.PLUM} />
+                </TouchableOpacity>
 
-                {/* Online */}
-                {selectedAstrologer.online && (
-                  <View
-                    style={
-                      modalStyles.heroOnline
-                    }
-                  >
-                    <View
-                      style={
-                        modalStyles.heroOnlineDot
-                      }
-                    />
+                <TouchableOpacity
+                  onPress={() =>
+                    Share.share({
+                      message: `Talk to ${selectedAstrologer.name}, a verified ${selectedAstrologer.type.toLowerCase()} expert on Vritta.`,
+                    }).catch(() => {})
+                  }
+                  hitSlop={12}
+                  accessibilityLabel={`Share ${selectedAstrologer.name}`}
+                  style={[m.roundBtn, { top: insets.top + 8, right: HOME_PAD }]}
+                >
+                  <Icon name="share-variant" size={20} color={C.PLUM} />
+                </TouchableOpacity>
 
-                    <Text
-                      style={
-                        modalStyles.heroOnlineText
-                      }
-                    >
-                      Online
-                    </Text>
-                  </View>
-                )}
+                <View style={[m.status, { backgroundColor: selectedAstrologer.online ? "rgba(46,125,79,0.92)" : "rgba(28,24,32,0.7)" }]}>
+                  <View style={[m.statusDot, { backgroundColor: selectedAstrologer.online ? "#7EE2A3" : "#B8B0B8" }]} />
+                  <Text style={m.statusText}>{selectedAstrologer.online ? "Online now" : "Offline"}</Text>
+                </View>
               </View>
 
-              {/* =================================================
-                  PROFILE INFORMATION
-              ================================================= */}
-
-              <View
-                style={
-                  modalStyles.profileCard
-                }
-              >
-                {/* Name */}
-                <View
-                  style={
-                    modalStyles.profileNameRow
-                  }
-                >
-                  <Text
-                    style={
-                      modalStyles.profileName
-                    }
-                    numberOfLines={1}
-                  >
-                    {
-                      selectedAstrologer.name
-                    }
+              {/* Profile */}
+              <View style={m.card}>
+                <View style={m.nameRow}>
+                  <Text style={m.name} numberOfLines={1}>
+                    {selectedAstrologer.name}
                   </Text>
+                  <Icon name="check-decagram" size={18} color={C.GOLD} />
+                </View>
+                <Text style={m.type}>{selectedAstrologer.specialties.join(" · ") || selectedAstrologer.type}</Text>
 
-                  <Icon
-                    name="check-decagram"
-                    size={px(31)}
-                    color={C.GOLD}
-                  />
+                <View style={m.chips}>
+                  {!!selectedAstrologer.archetype && (
+                    <View style={[m.chip, m.chipStrong]}>
+                      <Icon name={(selectedAstrologer.archetypeIcon || "star-four-points-outline") as any} size={13} color={C.PLUM} />
+                      <Text style={[m.chipText, { color: C.PLUM }]}>{selectedAstrologer.archetype}</Text>
+                    </View>
+                  )}
+                  {(selectedAstrologer.topics || []).slice(0, 3).map((t) => (
+                    <View key={t.label} style={m.chip}>
+                      <Icon name={t.icon as any} size={13} color={C.MUTED} />
+                      <Text style={m.chipText}>{t.label}</Text>
+                    </View>
+                  ))}
                 </View>
 
-                {/* Type */}
-                <Text
-                  style={
-                    modalStyles.profileType
-                  }
-                >
-                  {
-                    selectedAstrologer.type
-                  }
-                </Text>
-
-                {/* Archetype + Experience */}
-                <View
-                  style={
-                    modalStyles.profileChipRow
-                  }
-                >
-                  <View
-                    style={
-                      modalStyles.profileChip
-                    }
-                  >
-                    <Icon
-                      name={
-                        selectedAstrologer.archetypeIcon as any
-                      }
-                      size={px(25)}
-                      color={C.PLUM}
-                    />
-
-                    <Text
-                      style={
-                        modalStyles.profileChipText
-                      }
-                    >
-                      {
-                        selectedAstrologer.archetype
-                      }
-                    </Text>
+                <View style={m.stats}>
+                  <View style={m.stat}>
+                    <Text style={m.statValue}>{consultLabel(Number(selectedAstrologer.consultations) || 0)}</Text>
+                    <Text style={m.statLabel}>Consultations</Text>
                   </View>
-
-                  <View
-                    style={
-                      modalStyles.profileChip
-                    }
-                  >
-                    <Icon
-                      name="star-outline"
-                      size={px(25)}
-                      color={C.PLUM}
-                    />
-
-                    <Text
-                      style={
-                        modalStyles.profileChipText
-                      }
-                    >
-                      {
-                        selectedAstrologer.experience
-                      }
-                      + years
-                    </Text>
+                  <View style={m.statLine} />
+                  <View style={m.stat}>
+                    <Text style={m.statValue}>{selectedAstrologer.experience}+ yrs</Text>
+                    <Text style={m.statLabel}>Experience</Text>
+                  </View>
+                  <View style={m.statLine} />
+                  <View style={m.stat}>
+                    <View style={m.statRow}>
+                      <Icon name="check-decagram" size={14} color={C.GOLD} />
+                      <Text style={m.statValue}>Verified</Text>
+                    </View>
+                    <Text style={m.statLabel}>Expert</Text>
                   </View>
                 </View>
+              </View>
 
-                {/* Description */}
-                <Text
-                  style={
-                    modalStyles.profileDescription
-                  }
-                >
-                  {
-                    selectedAstrologer.description
-                  }
-                </Text>
-
-                {/* =================================================
-                    STATS
-                ================================================= */}
-
-                <View
-                  style={
-                    modalStyles.statsRow
-                  }
-                >
-                  <View
-                    style={
-                      modalStyles.stat
-                    }
-                  >
-                    <Icon
-                      name="certificate-outline"
-                      size={px(31)}
-                      color={C.PLUM}
-                    />
-
-                    <View
-                      style={
-                        modalStyles.statText
-                      }
+              {/* About | Reviews */}
+              <View style={m.tabs}>
+                {(["about", "reviews"] as const).map((tab) => {
+                  const active = profileTab === tab;
+                  return (
+                    <TouchableOpacity
+                      key={tab}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      activeOpacity={0.85}
+                      onPress={() => setProfileTab(tab)}
+                      style={[m.tab, active && m.tabActive]}
                     >
-                      <Text
-                        style={
-                          modalStyles.statValue
-                        }
-                      >
-                        {selectedAstrologer.consultations.toLocaleString()}+
+                      <Text style={[m.tabText, active && m.tabTextActive]}>
+                        {tab === "about" ? "About" : "Reviews"}
                       </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-                      <Text
-                        style={
-                          modalStyles.statLabel
-                        }
-                      >
-                        consultations
+              {profileTab === "about" ? (
+                <View style={m.section}>
+                  <Text style={m.overline}>ABOUT</Text>
+                  <Text style={m.sectionTitle}>Meet {selectedAstrologer.name.split(" ")[0]}</Text>
+                  <Text style={m.sectionText}>
+                    {selectedAstrologer.description ||
+                      `Namaste, I’m ${selectedAstrologer.name}. I help you understand your strengths, challenges and the right direction forward.`}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[m.section, m.soonCard]}>
+                  <View style={m.soonIcon}>
+                    <Icon name="star-outline" size={24} color={C.GOLD} />
+                  </View>
+                  <View style={m.soonPill}>
+                    <Text style={m.soonPillText}>Coming soon</Text>
+                  </View>
+                  <Text style={m.soonTitle}>Reviews are on their way</Text>
+                  <Text style={m.soonText}>
+                    Soon you’ll be able to read what others say about {selectedAstrologer.name.split(" ")[0]} and share your own experience.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Price and chat */}
+            <View style={[m.bar, { paddingBottom: insets.bottom + 12 }]}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={m.barPrice}>
+                  ₹{selectedAstrologer.price}
+                  <Text style={m.barPerMin}>/min</Text>
+                </Text>
+                <View style={m.barOfferRow}>
+                  {Number(selectedAstrologer.oldPrice) > Number(selectedAstrologer.price) && (
+                    <Text style={m.barOld}>₹{selectedAstrologer.oldPrice}/min</Text>
+                  )}
+                  {(user?.free_chat_minute_available || !!selectedAstrologer.discount) && (
+                    <View style={m.offer}>
+                      <Text style={m.offerText}>
+                        {user?.free_chat_minute_available ? "1 min free" : selectedAstrologer.discount}
                       </Text>
                     </View>
-                  </View>
-
-                  <View
-                    style={
-                      modalStyles.statDivider
-                    }
-                  />
-
-                  <View
-                    style={
-                      modalStyles.stat
-                    }
-                  >
-                    <Icon
-                      name="star"
-                      size={px(30)}
-                      color={C.GOLD}
-                    />
-
-                    <View
-                      style={
-                        modalStyles.statText
-                      }
-                    >
-                      <Text
-                        style={
-                          modalStyles.statValue
-                        }
-                      >
-                        4.8
-                      </Text>
-
-                      <Text
-                        style={
-                          modalStyles.statLabel
-                        }
-                      >
-                        (1.2K reviews)
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* =================================================
-                  TABS
-              ================================================= */}
-
-              <View
-                style={
-                  modalStyles.tabs
-                }
-              >
-                <View
-                  style={[
-                    modalStyles.tab,
-                    modalStyles.activeTab,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      modalStyles.tabText,
-                      modalStyles.activeTabText,
-                    ]}
-                  >
-                    About
-                  </Text>
-                </View>
-
-                <View
-                  style={
-                    modalStyles.tab
-                  }
-                >
-                  <Text
-                    style={
-                      modalStyles.tabText
-                    }
-                  >
-                    Reviews
-                  </Text>
-                </View>
-
-                <View
-                  style={
-                    modalStyles.tab
-                  }
-                >
-                  <Text
-                    style={
-                      modalStyles.tabText
-                    }
-                  >
-                    Expertise
-                  </Text>
-                </View>
-              </View>
-
-              {/* =================================================
-                  ABOUT ME
-              ================================================= */}
-
-              <View
-                style={
-                  modalStyles.sectionCard
-                }
-              >
-                <View
-                  style={
-                    modalStyles.sectionTitleRow
-                  }
-                >
-                  <Icon
-                    name="book-open-outline"
-                    size={px(30)}
-                    color={C.PLUM}
-                  />
-
-                  <Text
-                    style={
-                      modalStyles.sectionTitle
-                    }
-                  >
-                    About Me
-                  </Text>
-                </View>
-
-                <Text
-                  style={
-                    modalStyles.sectionText
-                  }
-                >
-                  {`Namaste, I’m ${selectedAstrologer.name}. For many years I have studied ${selectedAstrologer.type.toLowerCase()} and gained deep insights into how guidance can influence your life. I help you understand your strengths, challenges and the right direction forward.`}
-                </Text>
-              </View>
-
-              {/* =================================================
-                  EXPERTISE
-              ================================================= */}
-
-              <View
-                style={
-                  modalStyles.sectionCard
-                }
-              >
-                <View
-                  style={
-                    modalStyles.sectionTitleRow
-                  }
-                >
-                  <Icon
-                    name="flower-outline"
-                    size={px(32)}
-                    color={C.PLUM}
-                  />
-
-                  <Text
-                    style={
-                      modalStyles.sectionTitle
-                    }
-                  >
-                    Expertise
-                  </Text>
-
-                  <Icon
-                    name="chevron-right"
-                    size={px(25)}
-                    color={C.PLUM}
-                    style={{
-                      marginLeft:
-                        "auto",
-                    }}
-                  />
-                </View>
-
-                <View
-                  style={
-                    modalStyles.expertiseRow
-                  }
-                >
-                  {selectedAstrologer.topics.map(
-                    (topic) => (
-                      <View
-                        key={
-                          topic.label
-                        }
-                        style={
-                          modalStyles.expertiseChip
-                        }
-                      >
-                        <Text
-                          style={
-                            modalStyles.expertiseText
-                          }
-                        >
-                          {
-                            topic.label
-                          }
-                        </Text>
-                      </View>
-                    )
                   )}
                 </View>
               </View>
-            </ScrollView>
 
-            {/* =================================================
-                FIXED BOTTOM CTA
-            ================================================= */}
-
-            <View
-              style={[
-                modalStyles.bottomBar,
-                {
-                  paddingBottom:
-                    insets.bottom +
-                    px(10),
-                },
-              ]}
-            >
-              <View
-                style={
-                  modalStyles.bottomPrice
-                }
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={m.chatNow}
+                onPress={async () => {
+                  if (!selectedAstrologer) return;
+                  const astrologer = selectedAstrologer;
+                  closeAstrologerProfile();
+                  await handleAstrologerChat(astrologer);
+                }}
               >
-                <View
-                  style={{
-                    flexDirection:
-                      "row",
-                    alignItems:
-                      "baseline",
-                  }}
-                >
-                  <Text
-                    style={
-                      modalStyles.bottomPriceText
-                    }
-                  >
-                    {
-                      selectedAstrologer.price
-                    }
-                  </Text>
-
-                  <Text
-                    style={
-                      modalStyles.bottomPerMin
-                    }
-                  >
-                    /min
-                  </Text>
-                </View>
-
-                <Text
-                  style={
-                    modalStyles.bottomOldPrice
-                  }
-                >
-                  {
-                    selectedAstrologer.oldPrice
-                  }
-                  /min
-                </Text>
-              </View>
-
-              <View
-                style={
-                  modalStyles.bottomOffer
-                }
-              >
-                <Text
-                  style={
-                    modalStyles.bottomOfferText
-                  }
-                >
-                  {user?.free_chat_minute_available
-                    ? "1 min free"
-                    : selectedAstrologer.discount}
-                </Text>
-              </View>
-
-              <Pressable
-  style={modalStyles.chatNow}
-  onPress={async () => {
-    if (!selectedAstrologer) return;
-
-    closeAstrologerProfile();
-
-    await handleAstrologerChat(
-      selectedAstrologer
-    );
-  }}
->
-  <Icon
-    name="message-processing"
-    size={px(30)}
-    color="#fff"
-  />
-
-  <Text style={modalStyles.chatNowText}>
-    Chat Now
-  </Text>
-</Pressable>
+                <Icon name="chat-outline" size={18} color={C.CARD} />
+                <Text style={m.chatNowText}>Chat now</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1767,785 +1173,410 @@ if (selectedCategory !== "all") {
    MAIN SCREEN STYLES
 ============================================================= */
 
-const s = StyleSheet.create({
-  header: {
-    height: px(65),
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: px(6),
-  },
-
-  viewingRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    minWidth: 0,
-  },
-
-  avatarRing: {
-    width: px(56),
-    height: px(56),
-    borderRadius: px(28),
-    borderWidth: px(3),
-    borderColor: "#E8742A",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor:
-      "rgba(255,255,255,0.5)",
-  },
-
-  avatarLetter: {
-    fontSize: fs(30),
-    fontWeight: "600",
-    color: "#E8742A",
-  },
-
-  viewing: {
-    flexShrink: 1,
-    marginLeft: px(14),
-    marginRight: px(6),
-    fontSize: fs(31),
-    fontWeight: "600",
-    color: C.INK,
-  },
-
-  history: {
-    height: px(65),
-    paddingHorizontal: px(18),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(20),
-    backgroundColor: C.GLASS,
-    borderWidth: 1,
-    borderColor:
-      "rgba(150,130,185,0.22)",
-  },
-
-  historyText: {
-    marginLeft: px(10),
-    fontSize: fs(29),
-    fontWeight: "500",
-    color: C.INK,
-  },
-
-  wallet: {
-    height: px(65),
-    marginLeft: px(17),
-    paddingLeft: px(18),
-    paddingRight: px(6),
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: px(20),
-    backgroundColor: C.GLASS,
-    borderWidth: 1,
-    borderColor:
-      "rgba(150,130,185,0.22)",
-    gap: px(14),
-  },
-
-  walletLabel: {
-    fontSize: fs(23),
-    color: C.MUTED,
-  },
-
-  walletAmount: {
-    fontSize: fs(30),
-    fontWeight: "700",
-    color: C.INK,
-    marginTop: -px(2),
-  },
-
-  walletPlus: {
-    width: px(52),
-    height: px(52),
-    borderRadius: px(12),
-    backgroundColor: C.PLUM,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  topBanner: {
-    marginHorizontal: -px(40),
-    paddingHorizontal: px(45),
-    paddingTop: px(22),
-    paddingBottom: px(18),
-    minHeight: px(178),
-    justifyContent: "center",
-  },
-
-  eyebrow: {
-    fontSize: fs(22),
-    fontWeight: "700",
-    letterSpacing: px(8),
-    color: "#3A3350",
-  },
-
-  title: {
-    marginTop: px(4),
-    fontSize: fs(70),
-    lineHeight: px(78),
-    fontWeight: "800",
-    color: C.INK,
-  },
-
-  subtitle: {
-    marginTop: px(2),
-    fontSize: fs(27),
-    color: C.MUTED,
-  },
-
-  categoryRow: {
-    paddingTop: px(18),
-    paddingBottom: px(2),
-    gap: px(12),
-  },
-
-  category: {
-    height: px(58),
-    paddingHorizontal: px(18),
-    borderRadius: px(18),
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: px(9),
-    backgroundColor: C.CARD,
-    borderWidth: 1,
-    borderColor: C.BORDER,
-  },
-
-  categoryActive: {
-    backgroundColor: C.PLUM,
-    borderColor: C.PLUM,
-  },
-
-  categoryText: {
-    fontSize: fs(21),
-    fontWeight: "600",
-    color: C.INK,
-  },
-
-  categoryTextActive: {
-    color: C.CARD,
-  },
-
-  match: {
-    marginTop: px(20),
-    minHeight: px(215),
-    borderRadius: px(22),
-    overflow: "hidden",
-    paddingLeft: px(36),
-    paddingRight: px(250),
-    paddingVertical: px(26),
-    backgroundColor: "#3A1B63",
-    justifyContent: "center",
-  },
-
-  matchTitle: {
-    fontSize: fs(38),
-    lineHeight: px(46),
-    fontWeight: "800",
-    color: "#fff",
-  },
-
-  matchSub: {
-    marginTop: px(8),
-    fontSize: fs(26),
-    lineHeight: px(34),
-    color: "#fff",
-  },
-
-  matchBtn: {
-    alignSelf: "flex-start",
-    marginTop: px(14),
-    height: px(52),
-    paddingHorizontal: px(26),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(14),
-    backgroundColor: "#fff",
-  },
-
-  matchBtnText: {
-    fontSize: fs(25),
-    fontWeight: "700",
-    color: C.PLUM,
-  },
-
-  card: {
-    height: px(233),
-    paddingLeft: px(16),
-    paddingRight: px(15),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(24),
-    backgroundColor: C.CARD,
-    borderWidth: 1,
-    borderColor: C.BORDER,
-  },
-
-  photo: {
-    width: px(202),
-    height: px(218),
-    borderRadius: px(18),
-    overflow: "hidden",
-    backgroundColor: "#F1EAE0",
-  },
-
-  photoFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F1EAE0",
-  },
-
-  online: {
-    position: "absolute",
-    top: px(8),
-    left: px(8),
-    height: px(30),
-    paddingHorizontal: px(12),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(15),
-    backgroundColor:
-      "rgba(28,24,32,0.72)",
-  },
-
-  onlineDot: {
-    width: px(13),
-    height: px(13),
-    borderRadius: px(7),
-    marginRight: px(7),
-    backgroundColor: "#22C55E",
-  },
-
-
-  
-
-  onlineText: {
-    fontSize: fs(20),
-    color: "#fff",
-  },
-
-  consult: {
-    position: "absolute",
-    bottom: px(8),
-    left: px(8),
-    height: px(30),
-    paddingHorizontal: px(10),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(15),
-    backgroundColor:
-      "rgba(255,255,255,0.9)",
-  },
-
-  consultText: {
-    marginLeft: px(5),
-    fontSize: fs(18),
-    fontWeight: "600",
-    color: C.PLUM,
-  },
-
-  info: {
-    flex: 1,
-    marginLeft: px(18),
-    minWidth: 0,
-  },
-
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  name: {
-    flexShrink: 1,
-    fontSize: fs(27),
-    fontWeight: "800",
-    color: C.INK,
-  },
-
-  type: {
-    marginTop: px(6),
-    fontSize: fs(19),
-    color: C.MUTED,
-  },
-
-  chipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: px(8),
-    marginTop: px(10),
-  },
-
-  chip: {
-    maxWidth: "70%",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: px(10),
-    paddingVertical: px(7),
-    borderRadius: px(12),
-    backgroundColor: C.CHIP,
-  },
-
-  chipText: {
-    marginLeft: px(6),
-    fontSize: fs(17),
-    fontWeight: "600",
-    color: C.PLUM,
-  },
-
-  topicRow: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: px(7),
-  marginTop: px(9),
-  paddingRight: px(155),
-  maxHeight: px(42),
-  overflow: "hidden",
-},
-
-  topic: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: px(9),
-    paddingVertical: px(6),
-    borderRadius: px(10),
-    backgroundColor: "#F7F1E8",
-  },
-
-  topicText: {
-    marginLeft: px(4),
-    fontSize: fs(16),
-    color: C.MUTED,
-  },
-
-  priceCol: {
-    position: "absolute",
-    right: px(15),
-    top: px(18),
-    alignItems: "flex-end",
-  },
-
-  price: {
-    fontSize: fs(27),
-    fontWeight: "800",
-    color: C.PLUM,
-  },
-
-  perMin: {
-    fontSize: fs(16),
-    color: C.MUTED,
-  },
-
-  offerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: px(3),
-  },
-
-  freeMinute: {
-    color: "#26784B",
-    fontWeight: "700",
-  },
-  minCredits: {
-    marginTop: px(3),
-    fontSize: px(11),
-    fontWeight: "500",
-    color: C.MUTED,
-  },
-  oldPrice: {
-    fontSize: fs(16),
-    textDecorationLine:
-      "line-through",
-    color: C.MUTED,
-  },
-
-  offer: {
-    marginLeft: px(5),
-    paddingHorizontal: px(5),
-    paddingVertical: px(2),
-    borderRadius: px(5),
-    backgroundColor: "#E7F5E9",
-  },
-
-  offerText: {
-    fontSize: fs(13),
-    fontWeight: "700",
-    color: "#238A3B",
-  },
-
-  chatBtn: {
-    position: "absolute",
-    right: px(15),
-    bottom: px(15),
-    height: px(48),
-    paddingHorizontal: px(18),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(15),
-    backgroundColor: C.TERRACOTTA,
-  },
-
-  chatText: {
-    marginLeft: px(6),
-    fontSize: fs(19),
-    fontWeight: "700",
-    color: "#fff",
-  },
-
-  empty: {
-    height: px(300),
-    alignItems: "center",
-    justifyContent: "center",
-  },
- onlineInfo: {
-  flexDirection: "row",
-  alignItems: "center",
-  alignSelf: "flex-start",
-  paddingHorizontal: 7,
-  paddingVertical: 3,
-  borderRadius: 999,
-  backgroundColor: "#E8F3E6",
-},
-
-onlineInfoDot: {
-  width: 6,
-  height: 6,
-  borderRadius: 3,
-  backgroundColor: "#5C8A4A",
-  marginRight: 4,
-},
-
-onlineInfoText: {
-  fontSize: 8,
-  lineHeight: 14,
-  fontWeight: "500",
-  color: "#2F7D3E",
-},
-});
-
 /* =============================================================
    MODAL STYLES
 ============================================================= */
 
-const modalStyles = StyleSheet.create({
-  container: {
-    flex: 1,
+const m = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.BG },
+  hero: { height: 420, overflow: "hidden", backgroundColor: "#EFE8F7" },
+  heroFallback: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#EFE8F7" },
+  heroInitial: { fontSize: 72, fontFamily: F.bold, color: C.PLUM },
+  roundBtn: {
+    position: "absolute",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,253,252,0.94)",
+    zIndex: 10,
+  },
+  status: {
+    position: "absolute",
+    left: HOME_PAD,
+    bottom: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { color: C.CARD, fontSize: 12.5, fontFamily: F.semibold },
+
+  card: {
+    marginTop: -28,
+    marginHorizontal: HOME_PAD,
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "rgba(217,206,193,0.6)",
+    ...softShadow,
+  },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  name: { flexShrink: 1, color: C.INK, fontSize: 23, fontFamily: F.bold, letterSpacing: -0.3 },
+  type: { marginTop: 3, color: C.MUTED, fontSize: 13.5, fontFamily: F.regular },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 14 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: C.CHIP,
+  },
+  chipStrong: { backgroundColor: "#EFE8F7" },
+  chipText: { color: C.MUTED, fontSize: 12, fontFamily: F.medium },
+  stats: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 18,
     backgroundColor: C.BG,
   },
+  stat: { flex: 1, alignItems: "center" },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  statValue: { color: C.INK, fontSize: 15, fontFamily: F.bold },
+  statLabel: { marginTop: 2, color: C.MUTED, fontSize: 11, fontFamily: F.medium },
+  statLine: { width: 1, height: 28, backgroundColor: "rgba(217,206,193,0.8)" },
 
-  hero: {
-    height: px(430),
-    overflow: "hidden",
-    backgroundColor: "#F1EAE0",
-  },
-
-  heroFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F1EAE0",
-  },
-
-  heroInitial: {
-    fontSize: fs(120),
-    fontWeight: "700",
-    color: C.PLUM,
-  },
-
-  backButton: {
-    position: "absolute",
-    top: px(45),
-    left: px(22),
-    width: px(50),
-    height: px(50),
-    borderRadius: px(25),
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor:
-      "rgba(255,255,255,0.9)",
-  },
-
-  shareButton: {
-    position: "absolute",
-    top: px(45),
-    right: px(22),
-    width: px(50),
-    height: px(50),
-    borderRadius: px(25),
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor:
-      "rgba(255,255,255,0.9)",
-  },
-
-  heroOnline: {
-    position: "absolute",
-    bottom: px(18),
-    left: px(20),
-    height: px(38),
-    paddingHorizontal: px(14),
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: px(19),
-    backgroundColor:
-      "rgba(28,24,32,0.75)",
-  },
-
-  heroOnlineDot: {
-    width: px(13),
-    height: px(13),
-    borderRadius: px(7),
-    marginRight: px(7),
-    backgroundColor: "#22C55E",
-  },
-
-  heroOnlineText: {
-    fontSize: fs(20),
-    fontWeight: "600",
-    color: "#fff",
-  },
-
-  profileCard: {
-    marginTop: -px(22),
-    marginHorizontal: px(18),
-    paddingHorizontal: px(22),
-    paddingVertical: px(22),
-    borderRadius: px(24),
+  section: {
+    marginTop: 16,
+    marginHorizontal: HOME_PAD,
+    padding: 18,
+    borderRadius: 24,
     backgroundColor: C.CARD,
     borderWidth: 1,
-    borderColor: C.BORDER,
+    borderColor: "rgba(217,206,193,0.6)",
+    ...softShadow,
+    shadowOpacity: 0.05,
   },
-
-  profileNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  profileName: {
-    flex: 1,
-    fontSize: fs(31),
-    fontWeight: "800",
-    color: C.INK,
-  },
-
-  profileType: {
-    marginTop: px(6),
-    fontSize: fs(20),
-    color: C.MUTED,
-  },
-
-  profileChipRow: {
-    flexDirection: "row",
-    gap: px(8),
-    marginTop: px(13),
-  },
-
-  profileChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: px(11),
-    paddingVertical: px(8),
-    borderRadius: px(12),
-    backgroundColor: C.CHIP,
-  },
-
-  profileChipText: {
-    marginLeft: px(6),
-    fontSize: fs(17),
-    fontWeight: "600",
-    color: C.PLUM,
-  },
-
-  profileDescription: {
-    marginTop: px(15),
-    fontSize: fs(19),
-    lineHeight: px(28),
-    color: C.MUTED,
-  },
-
-  statsRow: {
-    marginTop: px(20),
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  stat: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  statDivider: {
-    width: 1,
-    height: px(40),
-    backgroundColor: C.BORDER,
-    marginHorizontal: px(14),
-  },
-
-  statText: {
-    marginLeft: px(9),
-  },
-
-  statValue: {
-    fontSize: fs(22),
-    fontWeight: "800",
-    color: C.INK,
-  },
-
-  statLabel: {
-    marginTop: px(2),
-    fontSize: fs(15),
-    color: C.MUTED,
-  },
-
+  overline: { color: C.PLUM, fontSize: 11, fontFamily: F.bold, letterSpacing: 1.6, opacity: 0.8 },
   tabs: {
-    marginTop: px(20),
-    marginHorizontal: px(18),
     flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: C.BORDER,
-  },
-
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: px(14),
-  },
-
-  activeTab: {
-    borderBottomWidth: px(3),
-    borderBottomColor: C.PLUM,
-  },
-
-  tabText: {
-    fontSize: fs(18),
-    fontWeight: "600",
-    color: C.MUTED,
-  },
-
-  activeTabText: {
-    color: C.PLUM,
-  },
-
-  sectionCard: {
-    marginTop: px(16),
-    marginHorizontal: px(18),
-    paddingHorizontal: px(20),
-    paddingVertical: px(20),
-    borderRadius: px(22),
+    marginTop: 16,
+    marginHorizontal: HOME_PAD,
+    padding: 4,
+    borderRadius: 999,
     backgroundColor: C.CARD,
     borderWidth: 1,
     borderColor: C.BORDER,
   },
-
-  sectionTitleRow: {
-    flexDirection: "row",
+  tab: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  tabActive: { backgroundColor: C.PLUM },
+  tabText: { color: C.MUTED, fontSize: 13.5, fontFamily: F.semibold },
+  tabTextActive: { color: C.CARD },
+  soonCard: { alignItems: "center", paddingVertical: 24 },
+  soonIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
-  },
-
-  sectionTitle: {
-    marginLeft: px(9),
-    fontSize: fs(23),
-    fontWeight: "800",
-    color: C.INK,
-  },
-
-  sectionText: {
-    marginTop: px(12),
-    fontSize: fs(18),
-    lineHeight: px(28),
-    color: C.MUTED,
-  },
-
-  expertiseRow: {
-    marginTop: px(15),
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: px(9),
-  },
-
-  expertiseChip: {
-    paddingHorizontal: px(12),
-    paddingVertical: px(9),
-    borderRadius: px(12),
+    justifyContent: "center",
     backgroundColor: C.CHIP,
+    borderWidth: 1,
+    borderColor: "#E6D9C4",
   },
+  soonPill: { marginTop: 12, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: "#EFE8F7" },
+  soonPillText: { color: C.PLUM, fontSize: 11, fontFamily: F.bold, letterSpacing: 0.4 },
+  soonTitle: { marginTop: 8, color: C.INK, fontSize: 17, fontFamily: F.bold, textAlign: "center" },
+  soonText: { marginTop: 6, color: C.MUTED, fontSize: 13.5, lineHeight: 20, fontFamily: F.regular, textAlign: "center" },
+  sectionTitle: { marginTop: 3, color: C.INK, fontSize: 18, fontFamily: F.bold },
+  sectionText: { marginTop: 8, color: C.MUTED, fontSize: 14, lineHeight: 21.5, fontFamily: F.regular },
 
-  expertiseText: {
-    fontSize: fs(16),
-    fontWeight: "600",
-    color: C.PLUM,
-  },
-
-  bottomBar: {
+  bar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: px(18),
-    paddingTop: px(12),
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
+    paddingHorizontal: HOME_PAD,
+    paddingTop: 12,
     backgroundColor: C.CARD,
     borderTopWidth: 1,
-    borderTopColor: C.BORDER,
+    borderTopColor: "rgba(217,206,193,0.6)",
   },
-
-  bottomPrice: {
-    marginRight: px(12),
-  },
-
-  bottomPriceText: {
-    fontSize: fs(28),
-    fontWeight: "800",
-    color: C.PLUM,
-  },
-
-  bottomPerMin: {
-    fontSize: fs(16),
-    color: C.MUTED,
-  },
-
-  bottomOldPrice: {
-    marginTop: px(2),
-    fontSize: fs(15),
-    textDecorationLine:
-      "line-through",
-    color: C.MUTED,
-  },
-
-  bottomOffer: {
-    paddingHorizontal: px(8),
-    paddingVertical: px(6),
-    borderRadius: px(8),
-    backgroundColor: "#E7F5E9",
-  },
-
-  bottomOfferText: {
-    fontSize: fs(14),
-    fontWeight: "700",
-    color: "#238A3B",
-  },
-
+  barPrice: { color: C.INK, fontSize: 20, fontFamily: F.bold },
+  barPerMin: { color: C.MUTED, fontSize: 12.5, fontFamily: F.regular },
+  barOfferRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  barOld: { color: C.MUTED, fontSize: 12, fontFamily: F.regular, textDecorationLine: "line-through" },
+  offer: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "#E6F2EA" },
+  offerText: { color: "#2E7D4F", fontSize: 10.5, fontFamily: F.semibold },
   chatNow: {
-    marginLeft: "auto",
-    height: px(52),
-    paddingHorizontal: px(20),
+    height: 48,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    backgroundColor: C.TERRACOTTA,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: px(16),
+    gap: 8,
+  },
+  chatNowText: { color: C.CARD, fontSize: 15, fontFamily: F.bold },
+});
+
+/* =============================================================
+   PAGE STYLES (same look as Home)
+============================================================= */
+
+const n = StyleSheet.create({
+  hero: { marginTop: 14, borderRadius: 26, backgroundColor: C.PLUM, ...softShadow, shadowOpacity: 0.25 },
+  heroClip: { borderRadius: 26, overflow: "hidden", padding: 20, backgroundColor: C.PLUM },
+  heroOverline: { color: "rgba(255,253,252,0.65)", fontSize: 11, fontFamily: F.bold, letterSpacing: 1.6 },
+  heroTitle: { marginTop: 8, color: C.CARD, fontSize: 25, lineHeight: 30, fontFamily: F.bold, letterSpacing: -0.4, paddingRight: 40 },
+  heroText: { marginTop: 8, color: "rgba(255,253,252,0.78)", fontSize: 14, lineHeight: 21, fontFamily: F.regular },
+  heroStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 18,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,253,252,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,253,252,0.14)",
+  },
+  stat: { flex: 1, alignItems: "center" },
+  statValueRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statValue: { color: C.CARD, fontSize: 17, fontFamily: F.bold },
+  statLabel: { marginTop: 2, color: "rgba(255,253,252,0.62)", fontSize: 11, fontFamily: F.medium },
+  statLine: { width: 1, height: 28, backgroundColor: "rgba(255,253,252,0.14)" },
+  liveWrap: { width: 8, height: 8, alignItems: "center", justifyContent: "center" },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#4CC27A" },
+  liveRipple: { position: "absolute", width: 8, height: 8, borderRadius: 4, backgroundColor: "#4CC27A" },
+  orbits: { position: "absolute", top: -ORBIT * 0.38, right: -ORBIT * 0.32, width: ORBIT, height: ORBIT },
+
+  segmentWrap: {
+    marginTop: 16,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: C.BORDER,
+  },
+  segment: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 2,
+  },
+  segmentItem: { minWidth: 56, height: 38, paddingHorizontal: 16, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  segmentItemActive: { backgroundColor: C.PLUM },
+  segmentText: { color: C.MUTED, fontSize: 13, fontFamily: F.semibold },
+  segmentTextActive: { color: C.CARD },
+
+  state: { height: 220, alignItems: "center", justifyContent: "center", gap: 8 },
+  stateTitle: { color: C.INK, fontSize: 17, fontFamily: F.bold },
+  stateText: { color: C.MUTED, fontSize: 13.5, fontFamily: F.regular },
+
+  card: {
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "rgba(217,206,193,0.6)",
+    ...softShadow,
+  },
+  cardTop: { flexDirection: "row", alignItems: "center" },
+  ring: { width: 66, height: 66, borderRadius: 33, borderWidth: 2, padding: 2 },
+  avatar: {
+    flex: 1,
+    borderRadius: 30,
+    overflow: "hidden",
+    backgroundColor: "#EFE8F7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  initial: { color: C.PLUM, fontSize: 24, fontFamily: F.bold },
+  ringDot: {
+    position: "absolute",
+    right: 1,
+    bottom: 1,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#2E9E57",
+    borderWidth: 2,
+    borderColor: C.CARD,
+  },
+  cardInfo: { flex: 1, minWidth: 0, marginLeft: 12 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  name: { flexShrink: 1, color: C.INK, fontSize: 16, fontFamily: F.bold },
+  spec: { marginTop: 2, color: C.MUTED, fontSize: 12.5, fontFamily: F.regular },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 5 },
+  meta: { color: C.MUTED, fontSize: 11.5, fontFamily: F.medium },
+  metaDot: { color: C.MUTED, fontSize: 11.5, marginHorizontal: 2 },
+  priceCol: { alignItems: "flex-end", marginLeft: 8 },
+  price: { color: C.INK, fontSize: 17, fontFamily: F.bold },
+  perMin: { color: C.MUTED, fontSize: 11.5, fontFamily: F.regular },
+  offerRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  oldPrice: { color: C.MUTED, fontSize: 11.5, fontFamily: F.regular, textDecorationLine: "line-through" },
+  offer: { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: "#E6F2EA" },
+  offerText: { color: "#2E7D4F", fontSize: 10, fontFamily: F.semibold },
+
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12, maxHeight: 26, overflow: "hidden" },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: C.CHIP,
+  },
+  chipStrong: { backgroundColor: "#EFE8F7" },
+  chipText: { color: C.MUTED, fontSize: 11.5, fontFamily: F.medium, maxWidth: 130 },
+
+  cardFoot: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(217,206,193,0.6)",
+  },
+  footLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
+  status: { fontSize: 12, fontFamily: F.semibold },
+  minCredit: { flexShrink: 1, color: C.MUTED, fontSize: 12, fontFamily: F.medium },
+  freeMinute: { color: "#2E7D4F", fontFamily: F.semibold },
+  chatBtn: {
+    height: 38,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: C.TERRACOTTA,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  chatText: { color: C.CARD, fontSize: 13.5, fontFamily: F.bold },
+});
+
+// "Choose your reading" sheet: one look per reading type.
+const READING_LOOK: Record<string, { title: string; line: string; icon: string; tint: string; color: string }> = {
+  vedic: {
+    title: "Vedic Astrology",
+    line: "Your birth chart, dashas and yogas",
+    icon: "star-four-points-outline",
+    tint: "#F6EEDD",
+    color: "#8A6A2C",
+  },
+  kp: {
+    title: "KP Astrology",
+    line: "Precise timing for a specific question",
+    icon: "compass-outline",
+    tint: "#EFE8F7",
+    color: C.PLUM,
+  },
+  lalkitab: {
+    title: "Lal Kitab",
+    line: "Chart reading with simple remedies",
+    icon: "book-open-variant",
+    tint: "#F7F1E8",
+    color: "#5B4A3A",
+  },
+  tarot: {
+    title: "Tarot",
+    line: "Draw cards for clarity on what’s happening now",
+    icon: "cards-playing-outline",
+    tint: "#EFE8F7",
+    color: C.PLUM,
+  },
+  numerology: {
+    title: "Numerology",
+    line: "Your birth date and name numbers",
+    icon: "numeric-1-box-multiple-outline",
+    tint: "#F6EEDD",
+    color: "#8A6A2C",
+  },
+};
+
+const cm = StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(28,24,32,0.5)" },
+  sheet: {
+    backgroundColor: C.CARD,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: C.BORDER, marginBottom: 16 },
+
+  head: { flexDirection: "row", alignItems: "center", gap: 14 },
+  photoRing: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    padding: 3,
+    borderWidth: 1.5,
+    borderColor: "rgba(196,154,74,0.7)",
+  },
+  photo: {
+    flex: 1,
+    borderRadius: 30,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFE8F7",
+  },
+  photoInitial: { color: C.PLUM, fontSize: 22, fontFamily: F.bold },
+  onlineDot: {
+    position: "absolute",
+    right: 2,
+    bottom: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#2E9E5B",
+    borderWidth: 2,
+    borderColor: C.CARD,
+  },
+  overline: { color: C.GOLD, fontSize: 10.5, letterSpacing: 1.3, fontFamily: F.bold },
+  name: { marginTop: 2, color: C.INK, fontSize: 19, fontFamily: F.bold },
+  meta: { marginTop: 1, color: C.MUTED, fontSize: 12.5, fontFamily: F.medium },
+  close: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F4F0F8",
+    alignSelf: "flex-start",
+  },
+  lead: { marginTop: 14, color: C.MUTED, fontSize: 13.5, lineHeight: 19, fontFamily: F.regular },
+
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: C.CARD,
+    borderWidth: 1,
+    borderColor: "rgba(217,206,193,0.8)",
+    shadowColor: "#2B1A3D",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  medallion: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  optionTitle: { color: C.INK, fontSize: 15.5, fontFamily: F.bold },
+  optionLine: { marginTop: 2, color: C.MUTED, fontSize: 12.5, lineHeight: 17, fontFamily: F.regular },
+  go: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: C.PLUM,
   },
 
-  chatNowText: {
-    marginLeft: px(7),
-    fontSize: fs(18),
-    fontWeight: "700",
-    color: "#fff",
-  },
-
-  
+  foot: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 },
+  footText: { color: C.MUTED, fontSize: 11.5, fontFamily: F.medium },
 });
