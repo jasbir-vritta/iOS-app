@@ -30,14 +30,16 @@ import { AUTH_FONTS, F } from "../../../components/auth/theme";
 import { C, CardArt, HOME_PAD, softShadow } from "../../../components/home/homeUi";
 import { LeaderboardPeriod, LeaderboardUser, useMantraStore } from "../../../components/stores/mantraStore";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
+import { useT } from "../../../lib/i18n";
 
 const SILVER = "#9A9AA6";
 const BRONZE = "#B07A4F";
 
+// Translation keys; the text is looked up when shown (follows the app language).
 const PERIODS: { key: LeaderboardPeriod; label: string; reset: string }[] = [
-  { key: "daily", label: "Daily", reset: "Resets at midnight" },
-  { key: "weekly", label: "Weekly", reset: "Resets every Monday" },
-  { key: "monthly", label: "Monthly", reset: "Resets on the 1st" },
+  { key: "daily", label: "leaderboard.daily", reset: "leaderboard.resetDaily" },
+  { key: "weekly", label: "leaderboard.weekly", reset: "leaderboard.resetWeekly" },
+  { key: "monthly", label: "leaderboard.monthly", reset: "leaderboard.resetMonthly" },
 ];
 
 const LEADERBOARD_TOP = require("../../../assets/images/leaderboard_top.png");
@@ -119,6 +121,7 @@ function Crowned({ size, children }: { size: number; children: React.ReactNode }
 }
 
 function PodiumSpot({ user, place }: { user?: LeaderboardUser; place: 1 | 2 | 3 }) {
+  const t = useT();
   const first = place === 1;
   const size = first ? 88 : 68;
   const ring = first ? C.GOLD : place === 2 ? SILVER : BRONZE;
@@ -142,15 +145,16 @@ function PodiumSpot({ user, place }: { user?: LeaderboardUser; place: 1 | 2 | 3 
       {first ? <Crowned size={size + 10}>{circle}</Crowned> : circle}
 
       <Text style={[s.podiumName, first && s.podiumNameFirst]} numberOfLines={2}>
-        {user.is_current_user ? `${user.name} (You)` : user.name}
+        {user.is_current_user ? t("leaderboard.you", { name: user.name }) : user.name}
       </Text>
       <Text style={[s.podiumChants, first && s.podiumChantsFirst]}>{formatChants(user.chants)}</Text>
-      <Text style={s.podiumLabel}>chants</Text>
+      <Text style={s.podiumLabel}>{t("leaderboard.chants")}</Text>
     </Reanimated.View>
   );
 }
 
 function RankRow({ user, last }: { user: LeaderboardUser; last: boolean }) {
+  const t = useT();
   return (
     <View style={[s.row, !last && s.rowDivider, user.is_current_user && s.rowCurrent]}>
       <View style={s.rankPill}>
@@ -158,7 +162,7 @@ function RankRow({ user, last }: { user: LeaderboardUser; last: boolean }) {
       </View>
       <Avatar user={user} size={40} />
       <Text style={s.rowName} numberOfLines={1}>
-        {user.is_current_user ? `${user.name} (You)` : user.name}
+        {user.is_current_user ? t("leaderboard.you", { name: user.name }) : user.name}
       </Text>
       <Text style={s.rowChants}>{formatChants(user.chants)}</Text>
       <View style={s.rowFire}>
@@ -172,6 +176,7 @@ export default function Leaderboard() {
   const tabSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
+  const t = useT();
 
   const leaderboard = useMantraStore((state) => state.leaderboard);
   const myRank = useMantraStore((state) => state.myRank);
@@ -212,17 +217,17 @@ export default function Leaderboard() {
     <View style={[s.screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.headerButton} onPress={goBack} hitSlop={8} accessibilityLabel="Go back">
+        <TouchableOpacity style={s.headerButton} onPress={goBack} hitSlop={8} accessibilityLabel={t("mantra.goBack")}>
           <MaterialCommunityIcons name="chevron-left" size={26} color={C.INK} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Mantra leaderboard</Text>
+        <Text style={s.headerTitle} numberOfLines={1}>
+          {t("leaderboard.title")}
+        </Text>
         <TouchableOpacity
           style={s.headerButton}
           hitSlop={8}
-          accessibilityLabel="About the leaderboard"
-          onPress={() =>
-            Alert.alert("Mantra leaderboard", "Every chant you do counts. Rankings show the most chants for each period.")
-          }
+          accessibilityLabel={t("leaderboard.aboutA11y")}
+          onPress={() => Alert.alert(t("leaderboard.title"), t("leaderboard.aboutText"))}
         >
           <MaterialCommunityIcons name="information-outline" size={20} color={C.INK} />
         </TouchableOpacity>
@@ -239,7 +244,9 @@ export default function Leaderboard() {
               style={[s.segmentItem, active && s.segmentItemActive]}
               onPress={() => setSelected(p.key)}
             >
-              <Text style={[s.segmentText, active && s.segmentTextActive]}>{p.label}</Text>
+              <Text style={[s.segmentText, active && s.segmentTextActive]} numberOfLines={1}>
+                {t(p.label)}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -248,7 +255,7 @@ export default function Leaderboard() {
       <View style={s.resetRow}>
         <MaterialCommunityIcons name="calendar-month-outline" size={15} color={C.MUTED} />
         <Text style={s.resetText}>
-          {activePeriod.label} · {activePeriod.reset}
+          {t("leaderboard.periodReset", { period: t(activePeriod.label), reset: t(activePeriod.reset) })}
         </Text>
       </View>
 
@@ -258,16 +265,16 @@ export default function Leaderboard() {
         </View>
       ) : error && leaderboard.length === 0 ? (
         <View style={s.centered}>
-          <Text style={s.emptyTitle}>Couldn’t load the leaderboard</Text>
+          <Text style={s.emptyTitle}>{t("leaderboard.loadError")}</Text>
           <TouchableOpacity style={s.retryButton} onPress={() => fetchLeaderboard(selected)}>
-            <Text style={s.retryText}>Try again</Text>
+            <Text style={s.retryText}>{t("common.retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : leaderboard.length === 0 ? (
         <View style={s.centered}>
           <MaterialCommunityIcons name="meditation" size={42} color={C.PLUM} />
-          <Text style={s.emptyTitle}>No chants yet</Text>
-          <Text style={s.emptyText}>Be the first to chant and top the leaderboard.</Text>
+          <Text style={s.emptyTitle}>{t("leaderboard.emptyTitle")}</Text>
+          <Text style={s.emptyText}>{t("leaderboard.emptyText")}</Text>
         </View>
       ) : (
         <>
@@ -311,9 +318,9 @@ export default function Leaderboard() {
                 <Avatar user={myRank} size={44} soft />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.meName} numberOfLines={1}>
-                    {myRank.name} (You)
+                    {t("leaderboard.you", { name: myRank.name })}
                   </Text>
-                  <Text style={s.meChants}>{formatChants(myRank.chants)} chants</Text>
+                  <Text style={s.meChants}>{t("leaderboard.chantsCount", { count: formatChants(myRank.chants) })}</Text>
                 </View>
                 <MaterialCommunityIcons name="meditation" size={22} color={C.GOLD} />
               </View>

@@ -11,6 +11,7 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { useT } from "../../lib/i18n";
 import {
   CHAT_WELCOME,
   ChatWelcomeType,
@@ -34,7 +35,8 @@ export default function ChatWelcome({
   // Old chats show it straight away.
   fresh?: boolean;
 }) {
-  const name = astrologerName?.trim() || "Your astrologer";
+  const t = useT();
+  const name = astrologerName?.trim() || t("chat.yourAstrologer");
   const { messages, note } = CHAT_WELCOME[type](name);
 
   const [waited, setWaited] = useState(false);
@@ -59,7 +61,7 @@ export default function ChatWelcome({
           style={{ backgroundColor: bubbleColor, borderColor, borderWidth: 1 }}
         >
           <TypingDots />
-          <Text className="ml-2 text-[13px] text-[#68616A]">{name} is typing…</Text>
+          <Text className="ml-2 text-[13px] text-[#68616A]">{t("chat.typing", { name })}</Text>
         </Reanimated.View>
       </View>
     );

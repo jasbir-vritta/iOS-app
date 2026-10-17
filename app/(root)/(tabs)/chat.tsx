@@ -40,6 +40,7 @@ import { useUserStore } from "../../../components/stores/userStore";
 import TopBar from "../../../components/TopBar";
 import { ensureChatCredits, minChatCredits } from "../../../components/constants/chat";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { useT } from "../../../lib/i18n";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 import { metaEvents, track } from "../../../lib/analytics";
 const C = {
@@ -55,40 +56,41 @@ const C = {
   GLASS: "rgba(255,253,252,0.88)",
 };
 
+// `title` is a translation key.
 const categories = [
    {
     id: "all",
-    title: "All",
+    title: "chat.cat.all",
     icon: "apps",
     w: 110,
   },
   {
     id: "vedic",
-    title: "Vedic",
+    title: "chat.cat.vedic",
     icon: "star-outline",
     w: 150,
   },
   {
     id: "tarot",
-    title: "Tarot",
+    title: "chat.cat.tarot",
     icon: "cards-playing-outline",
     w: 135,
   },
   {
     id: "numerology",
-    title: "Numerology",
+    title: "chat.cat.numerology",
     icon: "numeric-1-box-multiple-outline",
     w: 180,
   },
   {
     id: "kp",
-    title: "KP",
+    title: "chat.cat.kp",
     icon: "compass-outline",
     w: 100,
   },
   {
     id: "lalkitab",
-    title: "Lal Kitab",
+    title: "chat.cat.lalkitab",
     icon: "book-open-variant",
     w: 150,
   },
@@ -144,6 +146,19 @@ const getReadingType = (specialty: string) => {
 
   return null;
 };
+
+// Specialty in the app language (backend sends specialty_labels; the raw
+// English values stay for picking the chat type).
+const labelOf = (astrologer: any, value: string): string =>
+  astrologer?.specialty_labels?.[value] ?? value;
+
+// Astrologers shown with an "AI" tag next to their online status
+// (set here in the app only): Ishita Verma, Vasudha Rao, Vikram Joshi.
+const AI_TAGGED = new Set([
+  "5d0804c4-1eb1-4262-9044-feb0ab6b9c13",
+  "9c56ed30-a49d-4b47-b742-13984d01d1ab",
+  "8bc7b7ee-a148-47cb-b0b7-d78268a3e4c6",
+]);
 
 const getAstrologerReadingTypes = (astrologer: Astrologer) => {
   const specialties =
@@ -268,19 +283,20 @@ function CountUp({ value, still, style }: { value: number; still: boolean; style
   return <Text style={style}>{still ? value : shown}</Text>;
 }
 
-const consultLabel = (count: number) => {
-  if (count >= 100000) return `${(count / 100000).toFixed(1)}L chats`;
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}K chats`;
-  return `${count} chats`;
+const consultLabel = (count: number, t: (key: string, vars?: Record<string, string | number>) => string) => {
+  if (count >= 100000) return t("chat.chatsCount", { count: `${(count / 100000).toFixed(1)}L` });
+  if (count >= 1000) return t("chat.chatsCount", { count: `${(count / 1000).toFixed(1)}K` });
+  return t("chat.chatsCount", { count });
 };
 
+// Translation keys.
 const LIST_TITLE: Record<string, string> = {
-  all: "All astrologers",
-  vedic: "Vedic astrologers",
-  tarot: "Tarot readers",
-  numerology: "Numerologists",
-  kp: "KP astrologers",
-  lalkitab: "Lal Kitab experts",
+  all: "chat.list.all",
+  vedic: "chat.list.vedic",
+  tarot: "chat.list.tarot",
+  numerology: "chat.list.numerology",
+  kp: "chat.list.kp",
+  lalkitab: "chat.list.lalkitab",
 };
 
 export default function Chat() {
@@ -291,6 +307,7 @@ export default function Chat() {
     }, [])
   );
 
+  const t = useT();
   const tabSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
@@ -475,8 +492,8 @@ const currentWalletBalance = Number(user?.credits ?? 0);
 
     // e.g. "This astrologer is busy right now."
     Alert.alert(
-      "Can't start chat",
-      error instanceof Error ? error.message : "Please try again."
+      t("chat.live.cantStart"),
+      error instanceof Error ? error.message : t("chat.pleaseTryAgain")
     );
   } finally {
     setStartingChat(false);
@@ -562,7 +579,7 @@ if (selectedCategory !== "all") {
         a.archetype,
         a.description,
         ...a.topics.map(
-          (t) => t.label
+          (topic) => topic.label
         ),
       ]
         .join(" ")
@@ -593,11 +610,14 @@ if (selectedCategory !== "all") {
   };
 
   /*
-   * Fetch astrologers.
+   * Fetch astrologers each time the tab opens (chat counts and online
+   * status change; the list stays on screen while it refreshes).
    */
-  useEffect(() => {
-  fetchAstrologers();
-}, [fetchAstrologers]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchAstrologers();
+    }, [fetchAstrologers])
+  );
 
   /*
    * Open astrologer profile.
@@ -671,10 +691,13 @@ if (selectedCategory !== "all") {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={cm.overline}>CHOOSE YOUR READING</Text>
+                  <Text style={cm.overline}>{t("chat.choose.overline")}</Text>
                   <Text style={cm.name} numberOfLines={1}>{chatAstrologer?.name}</Text>
                   <Text style={cm.meta} numberOfLines={1}>
-                    ₹{chatAstrologer?.price}/min · {chatAstrologer?.experience}+ yrs
+                    {t("chat.priceAndYears", {
+                      price: chatAstrologer?.price ?? "",
+                      years: chatAstrologer?.experience ?? "",
+                    })}
                   </Text>
                 </View>
 
@@ -683,14 +706,17 @@ if (selectedCategory !== "all") {
                   disabled={startingChat}
                   hitSlop={10}
                   style={cm.close}
-                  accessibilityLabel="Close"
+                  accessibilityLabel={t("common.close")}
                 >
                   <Icon name="close" size={18} color={C.INK} />
                 </TouchableOpacity>
               </View>
 
               <Text style={cm.lead}>
-                {chatAstrologer?.name?.split(" ")[0]} reads in {chatOptions.length} ways. Pick how you’d like to be guided.
+                {t("chat.choose.lead", {
+                  name: chatAstrologer?.name?.split(" ")[0] ?? "",
+                  count: chatOptions.length,
+                })}
               </Text>
 
               {/* Options */}
@@ -715,8 +741,8 @@ if (selectedCategory !== "all") {
                         </View>
 
                         <View style={{ flex: 1 }}>
-                          <Text style={cm.optionTitle}>{look.title}</Text>
-                          <Text style={cm.optionLine} numberOfLines={2}>{look.line}</Text>
+                          <Text style={cm.optionTitle}>{t(look.title)}</Text>
+                          <Text style={cm.optionLine} numberOfLines={2}>{t(look.line)}</Text>
                         </View>
 
                         <View style={cm.go}>
@@ -734,7 +760,7 @@ if (selectedCategory !== "all") {
 
               <View style={cm.foot}>
                 <Icon name="shield-check-outline" size={14} color={C.MUTED} />
-                <Text style={cm.footText}>Same price for every reading · charged per minute</Text>
+                <Text style={cm.footText}>{t("chat.choose.foot")}</Text>
               </View>
             </Pressable>
           </Pressable>
@@ -762,10 +788,10 @@ if (selectedCategory !== "all") {
                 {HERO_STARS.map((star, i) => (
                   <HeroStar key={i} {...star} still={still} />
                 ))}
-                <Text style={n.heroOverline}>EXPERT GUIDANCE</Text>
-                <Text style={n.heroTitle}>Talk to a verified astrologer</Text>
+                <Text style={n.heroOverline}>{t("chat.hero.overline")}</Text>
+                <Text style={n.heroTitle}>{t("chat.hero.title")}</Text>
                 <Text style={n.heroText}>
-                  Clarity for love, career, family and more, in a private chat.
+                  {t("chat.hero.text")}
                 </Text>
 
                 <View style={n.heroStats}>
@@ -774,12 +800,12 @@ if (selectedCategory !== "all") {
                       <LiveDot still={still} />
                       <CountUp value={onlineCount} still={still} style={n.statValue} />
                     </View>
-                    <Text style={n.statLabel}>Online now</Text>
+                    <Text style={n.statLabel} numberOfLines={1}>{t("chat.onlineNow")}</Text>
                   </View>
                   <View style={n.statLine} />
                   <View style={n.stat}>
                     <CountUp value={astrologers.length} still={still} style={n.statValue} />
-                    <Text style={n.statLabel}>Experts</Text>
+                    <Text style={n.statLabel} numberOfLines={1}>{t("chat.hero.experts")}</Text>
                   </View>
                   <View style={n.statLine} />
                   <View style={n.stat}>
@@ -787,7 +813,7 @@ if (selectedCategory !== "all") {
                       <Icon name="check-decagram" size={15} color={C.GOLD} />
                       <Text style={n.statValue}>100%</Text>
                     </View>
-                    <Text style={n.statLabel}>Verified</Text>
+                    <Text style={n.statLabel} numberOfLines={1}>{t("chat.verified")}</Text>
                   </View>
                 </View>
               </View>
@@ -815,7 +841,7 @@ if (selectedCategory !== "all") {
                       style={[n.segmentText, active && n.segmentTextActive]}
                       numberOfLines={1}
                     >
-                      {category.title}
+                      {t(category.title)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -825,8 +851,12 @@ if (selectedCategory !== "all") {
 
             <Reanimated.View entering={enter(2)}>
               <SectionHeader
-                overline={`${list.length} VERIFIED EXPERT${list.length === 1 ? "" : "S"}`}
-                title={LIST_TITLE[selectedCategory] || "All astrologers"}
+                overline={
+                  list.length === 1
+                    ? t("chat.list.countOne")
+                    : t("chat.list.countMany", { count: list.length })
+                }
+                title={t(LIST_TITLE[selectedCategory] || "chat.list.all")}
               />
             </Reanimated.View>
 
@@ -837,13 +867,13 @@ if (selectedCategory !== "all") {
             {loadingAstrologers && astrologers.length === 0 ? (
               <View style={n.state}>
                 <ActivityIndicator size="large" color={C.PLUM} />
-                <Text style={n.stateText}>Finding astrologers…</Text>
+                <Text style={n.stateText}>{t("chat.finding")}</Text>
               </View>
             ) : sortedList.length === 0 ? (
               <View style={n.state}>
                 <Icon name="account-search-outline" size={30} color={C.PLUM} />
-                <Text style={n.stateTitle}>No experts found</Text>
-                <Text style={n.stateText}>Try another category</Text>
+                <Text style={n.stateTitle}>{t("chat.empty.title")}</Text>
+                <Text style={n.stateText}>{t("chat.empty.text")}</Text>
               </View>
             ) : (
               <Reanimated.View entering={enter(3)} style={{ gap: 12 }}>
@@ -855,7 +885,10 @@ if (selectedCategory !== "all") {
                     <TouchableOpacity
                       key={a.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`${a.name}, ${a.online ? "online" : "offline"}, ₹${a.price} per minute`}
+                      accessibilityLabel={t(a.online ? "chat.card.a11yOnline" : "chat.card.a11yOffline", {
+                        name: a.name,
+                        price: a.price,
+                      })}
                       activeOpacity={0.92}
                       onPress={() => openAstrologerProfile(a)}
                       style={n.card}
@@ -881,20 +914,20 @@ if (selectedCategory !== "all") {
                             <Icon name="check-decagram" size={15} color={C.GOLD} />
                           </View>
                           <Text style={n.spec} numberOfLines={1}>
-                            {a.specialties.join(" · ")}
+                            {a.specialties.map((s) => labelOf(a, s)).join(" · ")}
                           </Text>
                           <View style={n.metaRow}>
                             <Icon name="chat-processing-outline" size={12} color={C.TERRACOTTA} />
-                            <Text style={n.meta}>{consultLabel(Number(a.consultations) || 0)}</Text>
+                            <Text style={n.meta}>{consultLabel(Number(a.consultations) || 0, t)}</Text>
                             <Text style={n.metaDot}>·</Text>
-                            <Text style={n.meta}>{a.experience}+ yrs</Text>
+                            <Text style={n.meta}>{t("chat.years", { years: a.experience })}</Text>
                           </View>
                         </View>
 
                         <View style={n.priceCol}>
                           <Text style={n.price}>
                             ₹{a.price}
-                            <Text style={n.perMin}>/min</Text>
+                            <Text style={n.perMin}>{t("common.perMin")}</Text>
                           </Text>
                           {showOld && (
                             <View style={n.offerRow}>
@@ -919,11 +952,11 @@ if (selectedCategory !== "all") {
                             </Text>
                           </View>
                         )}
-                        {topics.map((t) => (
-                          <View key={t.label} style={n.chip}>
-                            <Icon name={t.icon as any} size={12} color={C.MUTED} />
+                        {topics.map((topic) => (
+                          <View key={topic.label} style={n.chip}>
+                            <Icon name={topic.icon as any} size={12} color={C.MUTED} />
                             <Text style={n.chipText} numberOfLines={1}>
-                              {t.label}
+                              {topic.label}
                             </Text>
                           </View>
                         ))}
@@ -933,27 +966,34 @@ if (selectedCategory !== "all") {
                         <View style={n.footLeft}>
                           <View style={[n.statusDot, { backgroundColor: a.online ? "#2E9E57" : "#B8B0B8" }]} />
                           <Text style={[n.status, { color: a.online ? "#2E7D4F" : C.MUTED }]}>
-                            {a.online ? "Online" : "Offline"}
+                            {a.online ? t("chat.online") : t("chat.offline")}
                           </Text>
+                          {AI_TAGGED.has(a.astrologer_id) && (
+                            <View style={n.aiTag}>
+                              <Text style={n.aiTagText}>AI</Text>
+                            </View>
+                          )}
                           <Text style={n.metaDot}>·</Text>
                           <Text
                             style={[n.minCredit, user?.free_chat_minute_available && n.freeMinute]}
                             numberOfLines={1}
                           >
-                            {user?.free_chat_minute_available ? "1 min free" : `Min ₹${minChatCredits(a.price)}`}
+                            {user?.free_chat_minute_available
+                              ? t("chat.oneMinFree")
+                              : t("chat.minAmount", { amount: minChatCredits(a.price) })}
                           </Text>
                         </View>
 
                         <TouchableOpacity
                           accessibilityRole="button"
-                          accessibilityLabel={`Chat with ${a.name}`}
+                          accessibilityLabel={t("chat.chatWith", { name: a.name })}
                           activeOpacity={0.85}
                           disabled={startingChat}
                           onPress={() => handleAstrologerChat(a)}
                           style={[n.chatBtn, startingChat && { opacity: 0.6 }]}
                         >
                           <Icon name="chat-outline" size={15} color={C.CARD} />
-                          <Text style={n.chatText}>Chat</Text>
+                          <Text style={n.chatText} numberOfLines={1}>{t("chat.chat")}</Text>
                         </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
@@ -1010,7 +1050,7 @@ if (selectedCategory !== "all") {
                 <TouchableOpacity
                   onPress={closeAstrologerProfile}
                   hitSlop={12}
-                  accessibilityLabel="Go back"
+                  accessibilityLabel={t("common.back")}
                   style={[m.roundBtn, { top: insets.top + 8, left: HOME_PAD }]}
                 >
                   <Icon name="arrow-left" size={22} color={C.PLUM} />
@@ -1019,11 +1059,14 @@ if (selectedCategory !== "all") {
                 <TouchableOpacity
                   onPress={() =>
                     Share.share({
-                      message: `Talk to ${selectedAstrologer.name}, a verified ${selectedAstrologer.type.toLowerCase()} expert on Vritta.`,
+                      message: t("chat.shareMessage", {
+                        name: selectedAstrologer.name,
+                        type: selectedAstrologer.type.toLowerCase(),
+                      }),
                     }).catch(() => {})
                   }
                   hitSlop={12}
-                  accessibilityLabel={`Share ${selectedAstrologer.name}`}
+                  accessibilityLabel={t("chat.shareA11y", { name: selectedAstrologer.name })}
                   style={[m.roundBtn, { top: insets.top + 8, right: HOME_PAD }]}
                 >
                   <Icon name="share-variant" size={20} color={C.PLUM} />
@@ -1031,8 +1074,16 @@ if (selectedCategory !== "all") {
 
                 <View style={[m.status, { backgroundColor: selectedAstrologer.online ? "rgba(46,125,79,0.92)" : "rgba(28,24,32,0.7)" }]}>
                   <View style={[m.statusDot, { backgroundColor: selectedAstrologer.online ? "#7EE2A3" : "#B8B0B8" }]} />
-                  <Text style={m.statusText}>{selectedAstrologer.online ? "Online now" : "Offline"}</Text>
+                  <Text style={m.statusText}>{selectedAstrologer.online ? t("chat.onlineNow") : t("chat.offline")}</Text>
                 </View>
+
+                {/* Own pill, opposite the online status */}
+                {AI_TAGGED.has(selectedAstrologer.astrologer_id) && (
+                  <View style={m.aiTag}>
+                    <Icon name="robot-outline" size={14} color={C.CARD} />
+                    <Text style={m.aiTagText}>AI</Text>
+                  </View>
+                )}
               </View>
 
               {/* Profile */}
@@ -1043,7 +1094,7 @@ if (selectedCategory !== "all") {
                   </Text>
                   <Icon name="check-decagram" size={18} color={C.GOLD} />
                 </View>
-                <Text style={m.type}>{selectedAstrologer.specialties.join(" · ") || selectedAstrologer.type}</Text>
+                <Text style={m.type}>{selectedAstrologer.specialties.map((s) => labelOf(selectedAstrologer, s)).join(" · ") || labelOf(selectedAstrologer, selectedAstrologer.type)}</Text>
 
                 <View style={m.chips}>
                   {!!selectedAstrologer.archetype && (
@@ -1052,31 +1103,31 @@ if (selectedCategory !== "all") {
                       <Text style={[m.chipText, { color: C.PLUM }]}>{selectedAstrologer.archetype}</Text>
                     </View>
                   )}
-                  {(selectedAstrologer.topics || []).slice(0, 3).map((t) => (
-                    <View key={t.label} style={m.chip}>
-                      <Icon name={t.icon as any} size={13} color={C.MUTED} />
-                      <Text style={m.chipText}>{t.label}</Text>
+                  {(selectedAstrologer.topics || []).slice(0, 3).map((topic) => (
+                    <View key={topic.label} style={m.chip}>
+                      <Icon name={topic.icon as any} size={13} color={C.MUTED} />
+                      <Text style={m.chipText}>{topic.label}</Text>
                     </View>
                   ))}
                 </View>
 
                 <View style={m.stats}>
                   <View style={m.stat}>
-                    <Text style={m.statValue}>{consultLabel(Number(selectedAstrologer.consultations) || 0)}</Text>
-                    <Text style={m.statLabel}>Consultations</Text>
+                    <Text style={m.statValue}>{consultLabel(Number(selectedAstrologer.consultations) || 0, t)}</Text>
+                    <Text style={m.statLabel} numberOfLines={1}>{t("chat.profile.consultations")}</Text>
                   </View>
                   <View style={m.statLine} />
                   <View style={m.stat}>
-                    <Text style={m.statValue}>{selectedAstrologer.experience}+ yrs</Text>
-                    <Text style={m.statLabel}>Experience</Text>
+                    <Text style={m.statValue}>{t("chat.years", { years: selectedAstrologer.experience })}</Text>
+                    <Text style={m.statLabel} numberOfLines={1}>{t("chat.profile.experience")}</Text>
                   </View>
                   <View style={m.statLine} />
                   <View style={m.stat}>
                     <View style={m.statRow}>
                       <Icon name="check-decagram" size={14} color={C.GOLD} />
-                      <Text style={m.statValue}>Verified</Text>
+                      <Text style={m.statValue}>{t("chat.verified")}</Text>
                     </View>
-                    <Text style={m.statLabel}>Expert</Text>
+                    <Text style={m.statLabel} numberOfLines={1}>{t("chat.profile.expert")}</Text>
                   </View>
                 </View>
               </View>
@@ -1095,7 +1146,7 @@ if (selectedCategory !== "all") {
                       style={[m.tab, active && m.tabActive]}
                     >
                       <Text style={[m.tabText, active && m.tabTextActive]}>
-                        {tab === "about" ? "About" : "Reviews"}
+                        {tab === "about" ? t("chat.profile.about") : t("chat.profile.reviews")}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -1104,11 +1155,13 @@ if (selectedCategory !== "all") {
 
               {profileTab === "about" ? (
                 <View style={m.section}>
-                  <Text style={m.overline}>ABOUT</Text>
-                  <Text style={m.sectionTitle}>Meet {selectedAstrologer.name.split(" ")[0]}</Text>
+                  <Text style={m.overline}>{t("chat.profile.aboutOverline")}</Text>
+                  <Text style={m.sectionTitle}>
+                    {t("chat.profile.meet", { name: selectedAstrologer.name.split(" ")[0] })}
+                  </Text>
                   <Text style={m.sectionText}>
                     {selectedAstrologer.description ||
-                      `Namaste, I’m ${selectedAstrologer.name}. I help you understand your strengths, challenges and the right direction forward.`}
+                      t("chat.profile.defaultAbout", { name: selectedAstrologer.name })}
                   </Text>
                 </View>
               ) : (
@@ -1117,11 +1170,11 @@ if (selectedCategory !== "all") {
                     <Icon name="star-outline" size={24} color={C.GOLD} />
                   </View>
                   <View style={m.soonPill}>
-                    <Text style={m.soonPillText}>Coming soon</Text>
+                    <Text style={m.soonPillText}>{t("common.comingSoon")}</Text>
                   </View>
-                  <Text style={m.soonTitle}>Reviews are on their way</Text>
+                  <Text style={m.soonTitle}>{t("chat.profile.reviewsSoonTitle")}</Text>
                   <Text style={m.soonText}>
-                    Soon you’ll be able to read what others say about {selectedAstrologer.name.split(" ")[0]} and share your own experience.
+                    {t("chat.profile.reviewsSoonText", { name: selectedAstrologer.name.split(" ")[0] })}
                   </Text>
                 </View>
               )}
@@ -1132,16 +1185,16 @@ if (selectedCategory !== "all") {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={m.barPrice}>
                   ₹{selectedAstrologer.price}
-                  <Text style={m.barPerMin}>/min</Text>
+                  <Text style={m.barPerMin}>{t("common.perMin")}</Text>
                 </Text>
                 <View style={m.barOfferRow}>
                   {Number(selectedAstrologer.oldPrice) > Number(selectedAstrologer.price) && (
-                    <Text style={m.barOld}>₹{selectedAstrologer.oldPrice}/min</Text>
+                    <Text style={m.barOld}>₹{selectedAstrologer.oldPrice}{t("common.perMin")}</Text>
                   )}
                   {(user?.free_chat_minute_available || !!selectedAstrologer.discount) && (
                     <View style={m.offer}>
                       <Text style={m.offerText}>
-                        {user?.free_chat_minute_available ? "1 min free" : selectedAstrologer.discount}
+                        {user?.free_chat_minute_available ? t("chat.oneMinFree") : selectedAstrologer.discount}
                       </Text>
                     </View>
                   )}
@@ -1159,7 +1212,7 @@ if (selectedCategory !== "all") {
                 }}
               >
                 <Icon name="chat-outline" size={18} color={C.CARD} />
-                <Text style={m.chatNowText}>Chat now</Text>
+                <Text style={m.chatNowText} numberOfLines={1}>{t("chat.chatNow")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1205,6 +1258,19 @@ const m = StyleSheet.create({
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { color: C.CARD, fontSize: 12.5, fontFamily: F.semibold },
+  aiTag: {
+    position: "absolute",
+    right: HOME_PAD,
+    bottom: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(92,44,110,0.88)",
+  },
+  aiTagText: { color: C.CARD, fontSize: 12.5, fontFamily: F.bold, letterSpacing: 0.4 },
 
   card: {
     marginTop: -28,
@@ -1443,6 +1509,13 @@ const n = StyleSheet.create({
   footLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0 },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
   status: { fontSize: 12, fontFamily: F.semibold },
+  aiTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: "rgba(92,44,110,0.1)",
+  },
+  aiTagText: { color: C.PLUM, fontSize: 10.5, fontFamily: F.bold, letterSpacing: 0.4 },
   minCredit: { flexShrink: 1, color: C.MUTED, fontSize: 12, fontFamily: F.medium },
   freeMinute: { color: "#2E7D4F", fontFamily: F.semibold },
   chatBtn: {
@@ -1457,39 +1530,40 @@ const n = StyleSheet.create({
   chatText: { color: C.CARD, fontSize: 13.5, fontFamily: F.bold },
 });
 
-// "Choose your reading" sheet: one look per reading type.
+// "Choose your reading" sheet: one look per reading type
+// (`title` and `line` are translation keys).
 const READING_LOOK: Record<string, { title: string; line: string; icon: string; tint: string; color: string }> = {
   vedic: {
-    title: "Vedic Astrology",
-    line: "Your birth chart, dashas and yogas",
+    title: "chat.reading.vedicTitle",
+    line: "chat.reading.vedicLine",
     icon: "star-four-points-outline",
     tint: "#F6EEDD",
     color: "#8A6A2C",
   },
   kp: {
-    title: "KP Astrology",
-    line: "Precise timing for a specific question",
+    title: "chat.reading.kpTitle",
+    line: "chat.reading.kpLine",
     icon: "compass-outline",
     tint: "#EFE8F7",
     color: C.PLUM,
   },
   lalkitab: {
-    title: "Lal Kitab",
-    line: "Chart reading with simple remedies",
+    title: "chat.reading.lalkitabTitle",
+    line: "chat.reading.lalkitabLine",
     icon: "book-open-variant",
     tint: "#F7F1E8",
     color: "#5B4A3A",
   },
   tarot: {
-    title: "Tarot",
-    line: "Draw cards for clarity on what’s happening now",
+    title: "chat.reading.tarotTitle",
+    line: "chat.reading.tarotLine",
     icon: "cards-playing-outline",
     tint: "#EFE8F7",
     color: C.PLUM,
   },
   numerology: {
-    title: "Numerology",
-    line: "Your birth date and name numbers",
+    title: "chat.reading.numerologyTitle",
+    line: "chat.reading.numerologyLine",
     icon: "numeric-1-box-multiple-outline",
     tint: "#F6EEDD",
     color: "#8A6A2C",

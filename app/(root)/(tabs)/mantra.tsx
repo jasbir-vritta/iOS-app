@@ -33,6 +33,7 @@ import { useUserStore } from "../../../components/stores/userStore";
 import TopBar from "../../../components/TopBar";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 import { track, useScreenTime } from "../../../lib/analytics";
+import { useT } from "../../../lib/i18n";
 
 type Mantra = {
   id: string;
@@ -52,7 +53,29 @@ type Mantra = {
 
 const MANTRAS = mantrasData as Mantra[];
 
+// Category values match mantra.json; labels are translated when shown.
 const CATEGORIES = ["All", "Peace", "Prosperity", "Love", "Health", "Career", "Devotional"];
+
+type T = ReturnType<typeof useT>;
+
+// Translated text for a mantra (by id), falling back to the English data.
+const mantraText = (t: T, mantra: Mantra) => {
+  const pick = (key: string, fallback: string) => {
+    const text = t(key);
+    return text === key ? fallback : text;
+  };
+  return {
+    name: pick(`mantra.name.${mantra.id}`, mantra.name),
+    deity: pick(`mantra.deity.${mantra.id}`, mantra.deity),
+    description: pick(`mantra.desc.${mantra.id}`, mantra.description),
+  };
+};
+
+const categoryLabel = (t: T, category: string) => {
+  const key = `mantra.category.${category}`;
+  const text = t(key);
+  return text === key ? category : text;
+};
 
 // Same keys as the mantra screen: chants are counted per profile, across mantras.
 const ROUND = 108;
@@ -78,6 +101,7 @@ const RING = 104;
 const STROKE = 7;
 
 function RoundRing({ chants, still }: { chants: number; still: boolean }) {
+  const t = useT();
   const r = (RING - STROKE) / 2;
   const length = 2 * Math.PI * r;
   const fill = useSharedValue(still ? chants / ROUND : 0);
@@ -117,7 +141,7 @@ function RoundRing({ chants, still }: { chants: number; still: boolean }) {
         />
       </Svg>
       <Text style={st.ringValue}>{chants}</Text>
-      <Text style={st.ringLabel}>of {ROUND}</Text>
+      <Text style={st.ringLabel}>{t("mantra.ringOf", { count: ROUND })}</Text>
     </View>
   );
 }
@@ -130,6 +154,7 @@ export default function MantraScreen() {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
   const still = useReducedMotion();
+  const t = useT();
   const profileId = useUserStore((state) => state.user?.active_profile_id);
 
   const [search, setSearch] = useState("");
@@ -175,10 +200,13 @@ export default function MantraScreen() {
         mantra.name.toLowerCase().includes(query) ||
         mantra.deity.toLowerCase().includes(query) ||
         mantra.description.toLowerCase().includes(query) ||
-        mantra.categories.some((category) => category.toLowerCase().includes(query));
+        mantra.categories.some((category) => category.toLowerCase().includes(query)) ||
+        // Also match the text shown in the app's language.
+        Object.values(mantraText(t, mantra)).some((text) => text.toLowerCase().includes(query)) ||
+        mantra.categories.some((category) => categoryLabel(t, category).toLowerCase().includes(query));
       return matchesCategory && matchesSearch;
     });
-  }, [search, selectedCategory]);
+  }, [search, selectedCategory, t]);
 
   // Favourites are kept per profile on the phone.
   const toggleFavorite = (id: string) => {
@@ -191,6 +219,7 @@ export default function MantraScreen() {
 
   const current = MANTRAS.find((m) => m.id === round.lastId) ?? MANTRAS[0];
   const started = round.chants > 0;
+  const currentText = current ? mantraText(t, current) : null;
 
   return (
     <View style={st.screen}>
@@ -205,8 +234,8 @@ export default function MantraScreen() {
         {fontsLoaded && (
           <>
             <Reanimated.View entering={enter(0)}>
-              <Text style={st.title}>Mantras</Text>
-              <Text style={st.subtitle}>Chant for peace, prosperity and positive energy</Text>
+              <Text style={st.title}>{t("mantra.title")}</Text>
+              <Text style={st.subtitle}>{t("mantra.subtitle")}</Text>
             </Reanimated.View>
 
             {/* Your sadhana: this round of 108 */}
@@ -216,19 +245,19 @@ export default function MantraScreen() {
                   <CardArt width={200} height={140} color={C.CARD} />
                   <View style={st.heroRow}>
                     <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={st.heroOverline}>YOUR SADHANA</Text>
+                      <Text style={st.heroOverline}>{t("mantra.sadhana")}</Text>
                       <Text style={st.heroTitle} numberOfLines={2}>
-                        {started ? current.name : "Begin today’s chanting"}
+                        {started ? currentText?.name : t("mantra.beginToday")}
                       </Text>
                       <Text style={st.heroText} numberOfLines={2}>
                         {started
-                          ? `${ROUND - round.chants} chants left in this round.`
-                          : `Complete ${ROUND} chants to finish a round.`}
+                          ? t("mantra.chantsLeft", { count: ROUND - round.chants })
+                          : t("mantra.completeRound", { count: ROUND })}
                       </Text>
                       <View style={st.heroReward}>
                         <Icon name="gift-outline" size={13} color={C.GOLD} />
-                        <Text style={st.heroRewardText}>
-                          ₹{current.reward} on {current.chantCount || ROUND} chants
+                        <Text style={st.heroRewardText} numberOfLines={1}>
+                          {t("mantra.rewardOn", { reward: current.reward, count: current.chantCount || ROUND })}
                         </Text>
                       </View>
                     </View>
@@ -237,7 +266,7 @@ export default function MantraScreen() {
 
                   <TouchableOpacity activeOpacity={0.88} onPress={() => openMantra(current)} style={st.heroBtn}>
                     <Icon name="play" size={16} color={C.PLUM} />
-                    <Text style={st.heroBtnText}>{started ? "Continue chanting" : "Start chanting"}</Text>
+                    <Text style={st.heroBtnText}>{started ? t("mantra.continueChanting") : t("mantra.startChanting")}</Text>
                   </TouchableOpacity>
                 </View>
               </Reanimated.View>
@@ -249,14 +278,14 @@ export default function MantraScreen() {
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search mantras, deities or benefits"
+                placeholder={t("mantra.searchPlaceholder")}
                 placeholderTextColor={C.MUTED}
                 style={st.searchInput}
                 returnKeyType="search"
-                accessibilityLabel="Search mantras"
+                accessibilityLabel={t("mantra.searchA11y")}
               />
               {search.length > 0 && (
-                <TouchableOpacity onPress={() => setSearch("")} hitSlop={8} accessibilityLabel="Clear search">
+                <TouchableOpacity onPress={() => setSearch("")} hitSlop={8} accessibilityLabel={t("mantra.clearSearch")}>
                   <Icon name="close-circle" size={18} color={C.MUTED} />
                 </TouchableOpacity>
               )}
@@ -281,7 +310,7 @@ export default function MantraScreen() {
                       onPress={() => setSelectedCategory(category)}
                       style={[st.chip, active && st.chipActive]}
                     >
-                      <Text style={[st.chipText, active && st.chipTextActive]}>{category}</Text>
+                      <Text style={[st.chipText, active && st.chipTextActive]}>{categoryLabel(t, category)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -290,20 +319,29 @@ export default function MantraScreen() {
 
             <Reanimated.View entering={enter(3)}>
               <SectionHeader
-                overline={`${filteredMantras.length} MANTRA${filteredMantras.length === 1 ? "" : "S"}`}
-                title={selectedCategory === "All" ? "All mantras" : `${selectedCategory} mantras`}
+                overline={
+                  filteredMantras.length === 1
+                    ? t("mantra.countOne")
+                    : t("mantra.countMany", { count: filteredMantras.length })
+                }
+                title={
+                  selectedCategory === "All"
+                    ? t("mantra.allMantras")
+                    : t("mantra.categoryMantras", { category: categoryLabel(t, selectedCategory) })
+                }
               />
 
               <View style={{ gap: 12 }}>
                 {filteredMantras.map((mantra) => {
                   const isFavorite = favorites.includes(mantra.id);
                   const hasImage = mantra.imageUrl.trim().length > 0;
+                  const text = mantraText(t, mantra);
 
                   return (
                     <TouchableOpacity
                       key={mantra.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Open ${mantra.name}`}
+                      accessibilityLabel={t("mantra.openA11y", { name: text.name })}
                       activeOpacity={0.92}
                       onPress={() => {
                         track("mantra_clicked", {
@@ -327,18 +365,18 @@ export default function MantraScreen() {
 
                       <View style={st.body}>
                         <Text numberOfLines={1} style={st.name}>
-                          {mantra.name}
+                          {text.name}
                         </Text>
                         <Text numberOfLines={1} style={st.deity}>
-                          {mantra.deity}
+                          {text.deity}
                         </Text>
                         <Text numberOfLines={2} style={st.description}>
-                          {mantra.description}
+                          {text.description}
                         </Text>
                         <View style={st.reward}>
                           <Icon name="gift-outline" size={12} color="#8A6A2E" />
-                          <Text style={st.rewardText}>
-                            ₹{mantra.reward} on {mantra.chantCount} chants
+                          <Text style={st.rewardText} numberOfLines={1}>
+                            {t("mantra.rewardOn", { reward: mantra.reward, count: mantra.chantCount })}
                           </Text>
                         </View>
                       </View>
@@ -349,7 +387,9 @@ export default function MantraScreen() {
                           hitSlop={8}
                           accessibilityRole="button"
                           accessibilityLabel={
-                            isFavorite ? `Remove ${mantra.name} from favourites` : `Add ${mantra.name} to favourites`
+                            isFavorite
+                              ? t("mantra.removeFavA11y", { name: text.name })
+                              : t("mantra.addFavA11y", { name: text.name })
                           }
                           style={st.heart}
                         >
@@ -366,8 +406,8 @@ export default function MantraScreen() {
                 {filteredMantras.length === 0 && (
                   <View style={st.empty}>
                     <Icon name="text-search" size={32} color={C.PLUM} />
-                    <Text style={st.emptyTitle}>No mantras found</Text>
-                    <Text style={st.emptyText}>Try another search or category.</Text>
+                    <Text style={st.emptyTitle}>{t("mantra.emptyTitle")}</Text>
+                    <Text style={st.emptyText}>{t("mantra.emptyText")}</Text>
                     <TouchableOpacity
                       onPress={() => {
                         setSearch("");
@@ -375,7 +415,7 @@ export default function MantraScreen() {
                       }}
                       style={st.resetBtn}
                     >
-                      <Text style={st.resetText}>Show all mantras</Text>
+                      <Text style={st.resetText}>{t("mantra.showAll")}</Text>
                     </TouchableOpacity>
                   </View>
                 )}

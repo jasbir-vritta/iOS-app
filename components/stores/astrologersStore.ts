@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { API_URL, authHeaders } from "../../lib/auth";
+import { onLanguageChange } from "../../lib/i18n";
 
 export type Astrologer = {
   id: string;
@@ -34,15 +35,17 @@ interface AstrologersStore {
 }
 
 export const useAstrologersStore =
-  create<AstrologersStore>((set) => ({
+  create<AstrologersStore>((set, get) => ({
     astrologers: [],
     loading: false,
     error: null,
 
     fetchAstrologers: async () => {
+      // A refresh keeps the current list on screen (no spinner).
+      const hasList = get().astrologers.length > 0;
       try {
         set({
-          loading: true,
+          loading: !hasList,
           error: null,
         });
 
@@ -81,7 +84,8 @@ export const useAstrologersStore =
         );
 
         set({
-          astrologers: [],
+          // A failed refresh keeps the list already shown.
+          astrologers: hasList ? get().astrologers : [],
           loading: false,
           error:
             error instanceof Error
@@ -99,3 +103,8 @@ export const useAstrologersStore =
       });
     },
   }));
+
+// New language: bios and topics come back in it.
+onLanguageChange(() => {
+  void useAstrologersStore.getState().fetchAstrologers();
+});

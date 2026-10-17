@@ -2,6 +2,7 @@ import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useT } from "../../lib/i18n";
 import CosmicLoader from "../CosmicLoader";
 
 // App palette.
@@ -31,6 +32,7 @@ type Props = {
  */
 export default function WritingReportSheet({ visible, onClose, readyTitle, onOpen }: Props) {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const ready = Boolean(readyTitle);
 
   return (
@@ -41,7 +43,7 @@ export default function WritingReportSheet({ visible, onClose, readyTitle, onOpe
         <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 20 }]}>
           <View style={s.handle} />
 
-          <Pressable onPress={onClose} hitSlop={8} style={s.closeButton} accessibilityLabel="Close">
+          <Pressable onPress={onClose} hitSlop={8} style={s.closeButton} accessibilityLabel={t("common.close")}>
             <Icon name="close" size={22} color={C.ink} />
           </Pressable>
 
@@ -53,17 +55,17 @@ export default function WritingReportSheet({ visible, onClose, readyTitle, onOpe
 
               <View style={s.kickerRow}>
                 <Icon name="star-four-points" size={12} color={C.gold} />
-                <Text style={s.kicker}>ADDED TO MY REPORTS</Text>
+                <Text style={s.kicker}>{t("reports.writing.addedKicker")}</Text>
               </View>
-              <Text style={s.title}>Your report is ready</Text>
-              <Text style={s.subtitle}>{readyTitle} is ready to read.</Text>
+              <Text style={s.title}>{t("reports.writing.readyTitle")}</Text>
+              <Text style={s.subtitle}>{t("reports.writing.readyText", { title: readyTitle || "" })}</Text>
 
               <TouchableOpacity activeOpacity={0.85} onPress={onOpen} style={s.openButton}>
                 <Icon name="book-open-page-variant-outline" size={18} color={C.sheet} />
-                <Text style={s.openText}>Open report</Text>
+                <Text style={s.openText}>{t("reports.openReport")}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} hitSlop={8} style={s.laterButton}>
-                <Text style={s.laterText}>Later</Text>
+                <Text style={s.laterText}>{t("reports.writing.later")}</Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -74,15 +76,15 @@ export default function WritingReportSheet({ visible, onClose, readyTitle, onOpe
 
               <View style={s.kickerRow}>
                 <Icon name="star-four-points" size={12} color={C.gold} />
-                <Text style={s.kicker}>READING YOUR CHART</Text>
+                <Text style={s.kicker}>{t("reports.writing.kicker")}</Text>
               </View>
-              <Text style={s.title}>Writing your report…</Text>
-              <Text style={s.subtitle}>It takes about 2 - 5 minutes to generate your report.</Text>
+              <Text style={s.title}>{t("reports.writing.title")}</Text>
+              <Text style={s.subtitle}>{t("reports.writing.subtitle")}</Text>
 
               <View style={s.note}>
                 <Icon name="bell-ring-outline" size={18} color={C.muted} />
                 <Text style={s.noteText}>
-                  {"You can explore the app in the meantime; your report will appear on this report page when it's done."}
+                  {t("reports.writing.note")}
                 </Text>
               </View>
             </>

@@ -3,7 +3,9 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { useT } from "../../lib/i18n";
 import type { PartnerDetails } from "../stores/reportsStore";
+import { monthShort } from "./reportText";
 
 const C = {
   ink: "#1C1820",
@@ -14,7 +16,6 @@ const C = {
   soft: "#EFE8F7",
 };
 
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const pad = (n: number) => String(n).padStart(2, "0");
 
 type Place = {
@@ -61,6 +62,7 @@ export default function PartnerForm({
   onChange: (next: PartnerDraft) => void;
   who?: "partner" | "child";
 }) {
+  const t = useT();
   const child = who === "child";
   const [picker, setPicker] = useState<"date" | "time" | null>(null);
   const [query, setQuery] = useState(value.place ? value.place.name : "");
@@ -105,23 +107,23 @@ export default function PartnerForm({
   };
 
   const dateLabel = value.date
-    ? `${value.date.getDate()} ${MONTHS[value.date.getMonth()]} ${value.date.getFullYear()}`
-    : "Birth date";
+    ? `${value.date.getDate()} ${monthShort(t, value.date.getMonth()).toUpperCase()} ${value.date.getFullYear()}`
+    : t("reports.partner.birthDate");
   const timeLabel = value.time
     ? value.time.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
-    : "Birth time";
+    : t("reports.partner.birthTime");
 
   return (
     <View style={s.wrap}>
       <View style={s.labelRow}>
         <Icon name={child ? "baby-face-outline" : "heart-outline"} size={16} color={C.muted} />
-        <Text style={s.label}>{child ? "Child's details" : "Partner's details"}</Text>
+        <Text style={s.label}>{child ? t("reports.partner.childDetails") : t("reports.partner.partnerDetails")}</Text>
       </View>
 
       <TextInput
         value={value.name}
         onChangeText={(name) => set({ name })}
-        placeholder={child ? "Child's name" : "Partner's full name"}
+        placeholder={child ? t("reports.partner.childName") : t("reports.partner.partnerName")}
         placeholderTextColor={C.muted}
         style={s.input}
         autoCapitalize="words"
@@ -135,7 +137,13 @@ export default function PartnerForm({
             style={[s.chip, value.gender === g && s.chipOn]}
           >
             <Text style={[s.chipText, value.gender === g && s.chipTextOn]}>
-              {g === "male" ? (child ? "Boy" : "Male") : child ? "Girl" : "Female"}
+              {g === "male"
+                ? child
+                  ? t("reports.partner.boy")
+                  : t("common.male")
+                : child
+                  ? t("reports.partner.girl")
+                  : t("common.female")}
             </Text>
           </Pressable>
         ))}
@@ -144,11 +152,15 @@ export default function PartnerForm({
       <View style={s.row}>
         <Pressable onPress={() => setPicker(picker === "date" ? null : "date")} style={[s.input, s.half]}>
           <Icon name="calendar-month-outline" size={17} color={C.muted} />
-          <Text style={[s.pickText, !value.date && s.placeholder]}>{dateLabel}</Text>
+          <Text style={[s.pickText, !value.date && s.placeholder]} numberOfLines={1}>
+            {dateLabel}
+          </Text>
         </Pressable>
         <Pressable onPress={() => setPicker(picker === "time" ? null : "time")} style={[s.input, s.half]}>
           <Icon name="clock-outline" size={17} color={C.muted} />
-          <Text style={[s.pickText, !value.time && s.placeholder]}>{timeLabel}</Text>
+          <Text style={[s.pickText, !value.time && s.placeholder]} numberOfLines={1}>
+            {timeLabel}
+          </Text>
         </Pressable>
       </View>
 
@@ -163,7 +175,7 @@ export default function PartnerForm({
       )}
       {picker && Platform.OS === "ios" && (
         <Pressable onPress={() => setPicker(null)} style={s.doneButton}>
-          <Text style={s.doneText}>Done</Text>
+          <Text style={s.doneText}>{t("common.done")}</Text>
         </Pressable>
       )}
 
@@ -175,7 +187,7 @@ export default function PartnerForm({
             setQuery(text);
             if (value.place) set({ place: null });
           }}
-          placeholder="Birth place (pick from the list)"
+          placeholder={t("reports.partner.birthPlace")}
           placeholderTextColor={C.muted}
           style={s.placeText}
         />

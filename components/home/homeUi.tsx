@@ -2,6 +2,7 @@ import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, G, Line } from "react-native-svg";
 
+import { useT } from "../../lib/i18n";
 import { F } from "../auth/theme";
 
 /* Home's look: the same palette, fonts and card style as My Life. */
@@ -31,11 +32,11 @@ export const SECTION_GAP = 32;
 export const LIST_BOTTOM = 14;
 export const LIST_TOP = 2;
 
-// Functional status colours (same as My Life).
+// Functional status colours (same as My Life). Show t(labelKey) on screen.
 export const STATUS = {
-  Favourable: { label: "Favourable", color: "#2E7D4F", bg: "#E6F2EA" },
-  Neutral: { label: "Neutral", color: "#9A6A12", bg: "#F8EFD9" },
-  Challenging: { label: "Watchful", color: "#B3392F", bg: "#F8E4E1" },
+  Favourable: { label: "Favourable", labelKey: "home.status.favourable", color: "#2E7D4F", bg: "#E6F2EA" },
+  Neutral: { label: "Neutral", labelKey: "home.status.neutral", color: "#9A6A12", bg: "#F8EFD9" },
+  Challenging: { label: "Watchful", labelKey: "home.status.watchful", color: "#B3392F", bg: "#F8E4E1" },
 } as const;
 
 export type StatusKey = keyof typeof STATUS;
@@ -60,13 +61,15 @@ export function SectionHeader({
   overline,
   title,
   onViewAll,
-  viewAllLabel = "View all",
+  viewAllLabel: viewAllProp,
 }: {
   overline?: string;
   title: string;
   onViewAll?: () => void;
   viewAllLabel?: string;
 }) {
+  const t = useT();
+  const viewAllLabel = viewAllProp ?? t("home.viewAll");
   return (
     <View style={ui.sectionWrap}>
       {!!overline && <Text style={ui.overline}>{overline}</Text>}
@@ -78,12 +81,14 @@ export function SectionHeader({
         {!!onViewAll && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${viewAllLabel}: ${title}`}
+            accessibilityLabel={t("home.viewAllA11y", { label: viewAllLabel, title })}
             onPress={onViewAll}
             hitSlop={10}
             style={ui.viewAll}
           >
-            <Text style={ui.viewAllText}>{viewAllLabel}</Text>
+            <Text style={ui.viewAllText} numberOfLines={1}>
+              {viewAllLabel}
+            </Text>
             <Icon name="arrow-right" size={14} color={C.PLUM} />
           </Pressable>
         )}

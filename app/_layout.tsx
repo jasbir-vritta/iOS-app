@@ -10,6 +10,7 @@ import { useEffect } from "react";
 
 import { AUTH_FONTS } from "../components/auth/theme";
 import { initAnalytics, useScreenTracking } from "../lib/analytics";
+import { loadSavedLanguage, useLanguageStore } from "../lib/i18n";
 
 // Keep the native splash until the first screen has drawn, so there is no
 // blank frame before the animated splash (app/index.tsx) appears.
@@ -18,13 +19,18 @@ SplashScreen.preventAutoHideAsync();
 // Mixpanel: start as early as possible so first-screen events are kept.
 initAnalytics();
 
+// App language saved on this phone (screens re-render once it's read).
+void loadSavedLanguage();
+
 export default function RootLayout() {
   useScreenTracking();
 
   // The brand font loads behind the native splash, so no text ever shows in
   // another font. It ships with the app, so this takes a moment at most.
   const [fontsLoaded, fontError] = useFonts(AUTH_FONTS);
-  const ready = fontsLoaded || Boolean(fontError);
+  // The saved language's text is in place too, so nothing flashes in English.
+  const languageReady = useLanguageStore((state) => state.ready);
+  const ready = (fontsLoaded || Boolean(fontError)) && languageReady;
 
   // Runs after the first screen is on screen (index shows the animated
   // splash on the same plum background; deep links show their screen).

@@ -23,6 +23,7 @@ import {
 import useProfilesStore from "../../../components/stores/profilesStore";
 import BottomSheet from "../../../components/ui/BottomSheet";
 import { useUserStore } from "../../../components/stores/userStore";
+import { translate, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -38,8 +39,24 @@ const C = {
   DANGER: "#B3392F",
 };
 
+// Shown label for a saved relation value ("Parent" -> "माता-पिता").
+const relationLabel = (t: (key: string) => string, value: string) => {
+  const key = `profiles.relation.${value}`;
+  const label = t(key);
+  return label === key ? value : label;
+};
+
+// Shown label for a saved gender value ("male" -> "Male").
+const genderLabel = (t: (key: string) => string, value?: string) => {
+  if (!value) return "";
+  const key = `common.${value.toLowerCase()}`;
+  const label = t(key);
+  return label === key ? value.charAt(0).toUpperCase() + value.slice(1) : label;
+};
+
 export default function ManageProfiles() {
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   const user = useUserStore(
     (state) => state.user
@@ -149,8 +166,8 @@ export default function ManageProfiles() {
         );
 
         Alert.alert(
-          "Error",
-          "Unable to load your profiles."
+          translate("profiles.errorTitle"),
+          translate("profiles.loadFailed")
         );
       } finally {
         setLoading(false);
@@ -179,7 +196,7 @@ export default function ManageProfiles() {
 
   const priceText =
     pricing.oldPrice > pricing.price
-      ? `₹${pricing.price} (instead of ₹${pricing.oldPrice}, ${offPercent}% off)`
+      ? t("profiles.priceInstead", { price: pricing.price, oldPrice: pricing.oldPrice, percent: offPercent })
       : `₹${pricing.price}`;
 
   const canAddProfile =
@@ -210,8 +227,8 @@ export default function ManageProfiles() {
   ) => {
     if (profiles.length <= 1) {
       Alert.alert(
-        "Cannot delete",
-        "You need to keep at least one profile."
+        translate("profiles.cannotDelete"),
+        translate("profiles.keepOne")
       );
 
       return;
@@ -219,8 +236,8 @@ export default function ManageProfiles() {
 
     if (profileId === activeProfileId) {
       Alert.alert(
-        "Active profile",
-        "You cannot delete your active profile yet."
+        translate("profiles.activeTitle"),
+        translate("profiles.activeBody")
       );
 
       return;
@@ -267,8 +284,8 @@ export default function ManageProfiles() {
 
       setDeleteTarget(null);
       Alert.alert(
-        "Error",
-        `Unable to delete ${profileName}'s profile. Please try again.`
+        translate("profiles.errorTitle"),
+        translate("profiles.deleteFailed", { name: profileName })
       );
     } finally {
       setDeletingId(null);
@@ -319,11 +336,7 @@ export default function ManageProfiles() {
   ) => {
     const date = profile?.dateOfBirth || "";
 
-    const gender =
-      profile?.gender
-        ?.charAt(0)
-        ?.toUpperCase() +
-      profile?.gender?.slice(1);
+    const gender = genderLabel(t, profile?.gender);
 
     return [date, gender]
       .filter(Boolean)
@@ -334,16 +347,16 @@ export default function ManageProfiles() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Manage profiles</Text>
-          <Text style={styles.subtitle}>Switch, edit or add family and friends</Text>
+          <Text style={styles.title}>{t("profiles.manageTitle")}</Text>
+          <Text style={styles.subtitle}>{t("profiles.manageSubtitle")}</Text>
         </View>
         <Pressable onPress={() => handleEdit()} style={styles.editButton}>
           <Icon name="pencil-outline" size={15} color={C.PLUM} />
-          <Text style={styles.editText}>Edit</Text>
+          <Text style={styles.editText}>{t("common.edit")}</Text>
         </Pressable>
       </View>
 
@@ -354,12 +367,12 @@ export default function ManageProfiles() {
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator size="small" color={C.PLUM} />
-            <Text style={styles.loadingText}>Loading profiles…</Text>
+            <Text style={styles.loadingText}>{t("profiles.loading")}</Text>
           </View>
         ) : (
           <>
             <Text style={styles.overline}>
-              {`${profiles.length} PROFILE${profiles.length === 1 ? "" : "S"}`}
+              {profiles.length === 1 ? t("profiles.countOne") : t("profiles.count", { count: profiles.length })}
             </Text>
 
             {/* Profiles */}
@@ -389,18 +402,18 @@ export default function ManageProfiles() {
                       <View style={styles.profileInfo}>
                         <View style={styles.nameRow}>
                           <Text style={styles.profileName} numberOfLines={1}>
-                            {profile.name || "Unnamed profile"}
+                            {profile.name || t("profiles.unnamed")}
                           </Text>
                           {isActive && (
                             <View style={styles.activePill}>
-                              <Text style={styles.activePillText}>Active</Text>
+                              <Text style={styles.activePillText} numberOfLines={1}>{t("profiles.active")}</Text>
                             </View>
                           )}
                         </View>
 
                         {!!profile.relation && (
                           <Text style={styles.relationText} numberOfLines={1}>
-                            {profile.relation}
+                            {relationLabel(t, profile.relation)}
                           </Text>
                         )}
 
@@ -418,10 +431,10 @@ export default function ManageProfiles() {
                         </View>
                       ) : (
                         <Pressable
-                          onPress={() => handleDelete(profile.profile_id, profile.name || "this profile")}
+                          onPress={() => handleDelete(profile.profile_id, profile.name || t("profiles.thisProfile"))}
                           hitSlop={6}
                           style={[styles.actionButton, styles.deleteButton]}
-                          accessibilityLabel={`Delete ${profile.name || "profile"}`}
+                          accessibilityLabel={t("profiles.deleteA11y", { name: profile.name || t("profiles.profile") })}
                         >
                           <Icon name="trash-can-outline" size={19} color={C.DANGER} />
                         </Pressable>
@@ -437,7 +450,7 @@ export default function ManageProfiles() {
               <View style={styles.limitNote}>
                 <Icon name="information-outline" size={18} color={C.PLUM} />
                 <Text style={styles.limitNoteText}>
-                  You have reached the profile limit. Delete a profile to add someone else.
+                  {t("profiles.limitNote")}
                 </Text>
               </View>
             )}
@@ -451,8 +464,8 @@ export default function ManageProfiles() {
                   </View>
 
                   <View style={styles.addProfileTextContainer}>
-                    <Text style={styles.addProfileTitle}>Add a loved one</Text>
-                    <Text style={styles.addProfileSubtitle}>For family and friends</Text>
+                    <Text style={styles.addProfileTitle}>{t("profiles.addTitle")}</Text>
+                    <Text style={styles.addProfileSubtitle}>{t("profiles.addSub")}</Text>
                   </View>
 
                   <View style={styles.addPricePill}>
@@ -464,12 +477,14 @@ export default function ManageProfiles() {
                         <Text style={styles.priceNow}>{`₹${pricing.price}`}</Text>
                         {offPercent > 0 && (
                           <View style={styles.offBadge}>
-                            <Text style={styles.offText}>{`${offPercent}% OFF`}</Text>
+                            <Text style={styles.offText} numberOfLines={1}>{t("profiles.off", { percent: offPercent })}</Text>
                           </View>
                         )}
                       </>
                     ) : (
-                      <Text style={styles.priceNow}>{freeLeft > 1 ? `Free · ${freeLeft} left` : "Free"}</Text>
+                      <Text style={styles.priceNow} numberOfLines={1}>
+                        {freeLeft > 1 ? t("profiles.freeLeft", { count: freeLeft }) : t("common.free")}
+                      </Text>
                     )}
                   </View>
                 </Pressable>
@@ -484,13 +499,13 @@ export default function ManageProfiles() {
                   <Icon name="wallet-outline" size={22} color={C.CARD} />
                 </View>
 
-                <Text style={styles.fundsTitle}>Add a loved one for ₹{pricing.price}</Text>
+                <Text style={styles.fundsTitle}>{t("profiles.fundsTitle", { price: pricing.price })}</Text>
                 <Text style={styles.fundsText}>
-                  {`Your first profile for a loved one is free; each one after that costs ${priceText}. Your wallet has ₹${(pricing.credits ?? 0).toFixed(2)}.`}
+                  {t("profiles.fundsText", { price: priceText, balance: (pricing.credits ?? 0).toFixed(2) })}
                 </Text>
 
                 <Pressable onPress={() => router.push("/wallet")} style={styles.addFundsButton}>
-                  <Text style={styles.addFundsText}>Add money</Text>
+                  <Text style={styles.addFundsText}>{t("wallet.title")}</Text>
                   <Icon name="arrow-right" size={18} color={C.PLUM} />
                 </Pressable>
               </Reanimated.View>
@@ -498,7 +513,7 @@ export default function ManageProfiles() {
 
             <View style={styles.footNote}>
               <Icon name="shield-check-outline" size={14} color={C.MUTED} />
-              <Text style={styles.footNoteText}>Tap a profile to edit it. Switch profiles from the top bar.</Text>
+              <Text style={styles.footNoteText}>{t("profiles.footNote")}</Text>
             </View>
           </>
         )}
@@ -509,11 +524,11 @@ export default function ManageProfiles() {
         <View style={styles.sheetIcon}>
           <Icon name={canAddProfile ? "account-heart-outline" : "wallet-outline"} size={26} color={C.PLUM} />
         </View>
-        <Text style={styles.sheetTitle}>{canAddProfile ? "Add a loved one" : "Add money to continue"}</Text>
+        <Text style={styles.sheetTitle}>{canAddProfile ? t("profiles.addTitle") : t("profiles.addMoneyToContinue")}</Text>
         <Text style={styles.sheetText}>
           {canAddProfile
-            ? "Your free profile is used. This one is a one-time charge from your wallet."
-            : `A new profile costs ₹${pricing.price}. Add money to your wallet to create it.`}
+            ? t("profiles.paySheetText")
+            : t("profiles.paySheetNeedMoney", { price: pricing.price })}
         </Text>
 
         <View style={styles.sheetPriceRow}>
@@ -521,7 +536,7 @@ export default function ManageProfiles() {
           <Text style={styles.sheetPrice}>₹{pricing.price}</Text>
           {offPercent > 0 && (
             <View style={styles.offBadge}>
-              <Text style={styles.offText}>{offPercent}% OFF</Text>
+              <Text style={styles.offText}>{t("profiles.off", { percent: offPercent })}</Text>
             </View>
           )}
         </View>
@@ -529,7 +544,7 @@ export default function ManageProfiles() {
         {pricing.credits !== null && (
           <View style={styles.sheetBalance}>
             <Icon name="wallet-outline" size={16} color={C.MUTED} />
-            <Text style={styles.sheetBalanceText}>Wallet balance</Text>
+            <Text style={styles.sheetBalanceText}>{t("profiles.walletBalance")}</Text>
             <Text style={[styles.sheetBalanceValue, !canAddProfile && { color: C.DANGER }]}>
               ₹{pricing.credits.toFixed(2)}
             </Text>
@@ -543,12 +558,12 @@ export default function ManageProfiles() {
           style={styles.sheetPrimary}
         >
           <Text style={styles.sheetPrimaryText}>
-            {canAddProfile ? `Continue · ₹${pricing.price}` : "Add money"}
+            {canAddProfile ? t("profiles.continuePrice", { price: pricing.price }) : t("wallet.title")}
           </Text>
           <Icon name="arrow-right" size={18} color={C.CARD} />
         </Pressable>
         <Pressable onPress={() => setPaySheet(false)} style={styles.sheetSecondary}>
-          <Text style={styles.sheetSecondaryText}>Not now</Text>
+          <Text style={styles.sheetSecondaryText}>{t("common.notNow")}</Text>
         </Pressable>
       </BottomSheet>
 
@@ -561,9 +576,9 @@ export default function ManageProfiles() {
             <Text style={styles.profileAvatarText}>{getInitial(deleteTarget?.name)}</Text>
           )}
         </View>
-        <Text style={styles.sheetTitle}>Delete {deleteTarget?.name}&apos;s profile?</Text>
+        <Text style={styles.sheetTitle}>{t("profiles.deleteTitle", { name: deleteTarget?.name ?? "" })}</Text>
         <Text style={styles.sheetText}>
-          Their birth details, horoscope and reports on this profile will be removed. This can&apos;t be undone.
+          {t("profiles.deleteText")}
         </Text>
 
         <Pressable
@@ -576,12 +591,12 @@ export default function ManageProfiles() {
           ) : (
             <>
               <Icon name="trash-can-outline" size={18} color={C.CARD} />
-              <Text style={styles.sheetPrimaryText}>Delete profile</Text>
+              <Text style={styles.sheetPrimaryText}>{t("profiles.deleteButton")}</Text>
             </>
           )}
         </Pressable>
         <Pressable disabled={!!deletingId} onPress={() => setDeleteTarget(null)} style={styles.sheetSecondary}>
-          <Text style={styles.sheetSecondaryText}>Keep profile</Text>
+          <Text style={styles.sheetSecondaryText}>{t("profiles.keepButton")}</Text>
         </Pressable>
       </BottomSheet>
     </View>

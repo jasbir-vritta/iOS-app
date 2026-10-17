@@ -3,6 +3,8 @@ import { Slot, router, usePathname } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useT } from "../../../lib/i18n";
+
 
 const BACKGROUND = "#F7F1E8";
 
@@ -17,31 +19,31 @@ const COLORS = {
 
 const tabs = [
   {
-    label: "My Vritta",
+    labelKey: "nav.myVritta",
     route: "/(root)/(tabs)/my_life",
     match: "my_life",
     icon: "flower-outline",
   },
   {
-    label: "Chat",
+    labelKey: "nav.chat",
     route: "/(root)/(tabs)/chat",
     match: "chat",
     icon: "chat-outline",
   },
   {
-    label: "Home",
+    labelKey: "nav.home",
     route: "/(root)/(tabs)",
     match: "index",
     icon: "home-outline",
   },
   {
-    label: "Reports",
+    labelKey: "nav.reports",
     route: "/(root)/(tabs)/reports",
     match: "reports",
     icon: "file-chart-outline",
   },
   {
-    label: "Mantra",
+    labelKey: "nav.mantra",
     route: "/(root)/(tabs)/mantra",
     match: "mantra",
     icon: "meditation",
@@ -53,6 +55,7 @@ function CustomTabBar() {
   // Android draws edge-to-edge (and iPhones have a home indicator): keep the
   // tabs above the system navigation bar.
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   return (
     <View
@@ -81,7 +84,9 @@ function CustomTabBar() {
 
           return (
             <Pressable
-              key={tab.label}
+              key={tab.match}
+              accessibilityRole="button"
+              accessibilityLabel={t(tab.labelKey)}
               onPress={() =>
                 router.replace(tab.route as any)
               }
@@ -110,6 +115,9 @@ function CustomTabBar() {
 
               {/* Label */}
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
                 style={{
                   fontSize: 12,
                   lineHeight: 15,
@@ -121,7 +129,7 @@ function CustomTabBar() {
                     : "500",
                 }}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </Text>
             </Pressable>
           );

@@ -34,6 +34,7 @@ import {
     API_URL,
     authHeaders,
 } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 const NUMEROLOGY_CHAT_BACKGROUND = require(
   "../../../assets/backgrounds/numerology_chat_background.png"
@@ -194,6 +195,7 @@ const splitAssistantText = (text: string): string[] =>
     .filter(Boolean);
 
 export default function NumerologyChat() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   // Keeps the input above the keyboard on Android (edge-to-edge).
   const keyboard = useKeyboardInset();
@@ -485,7 +487,7 @@ export default function NumerologyChat() {
             setLoading(false);
             addAssistantText(
               payload.message ||
-                "Your credits have been exhausted. Please add credits to continue."
+                translate("chat.creditsExhausted")
             );
             return;
           }
@@ -501,7 +503,7 @@ export default function NumerologyChat() {
           if (payload?.success === false) {
             setLoading(false);
             addAssistantText(
-              "Sorry, I couldn't connect to the astrology service. Please try again."
+              translate("chat.serviceError")
             );
             return;
           }
@@ -575,7 +577,7 @@ export default function NumerologyChat() {
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       addAssistantText(
-        "The consultation is not connected. Please reopen the chat."
+        t("chat.reopenChat")
       );
       return;
     }
@@ -665,7 +667,7 @@ export default function NumerologyChat() {
                 className="text-[16px] font-semibold text-[#1C1820]"
                 numberOfLines={1}
               >
-                {astrologerName || "Astrologer"}
+                {astrologerName || t("chat.astrologer")}
               </Text>
 
               <View className="mt-1 flex-row items-center">
@@ -690,7 +692,7 @@ export default function NumerologyChat() {
                     fontWeight: "500",
                   }}
                 >
-                  {astrologer?.online ? "Online" : "Offline"}
+                  {astrologer?.online ? t("chat.online") : t("chat.offline")}
                 </Text>
               </View>
 
@@ -707,7 +709,7 @@ export default function NumerologyChat() {
     color="#FFFFFF"
   />
   <Text className="ml-2 text-[15px] font-semibold text-white">
-    Remaining time: {formatCountdown(timeLeft)}
+    {t("chat.remainingTime", { time: formatCountdown(timeLeft) })}
   </Text>
 </View>
         {/* CHAT AREA */}
@@ -728,7 +730,7 @@ export default function NumerologyChat() {
               />
 
               <Text className="mt-3 text-[14px] text-[#756B7D]">
-                Loading your conversation...
+                {t("chat.loadingConversation")}
               </Text>
             </View>
           ) : (
@@ -792,7 +794,7 @@ export default function NumerologyChat() {
                       />
 
                       <Text className="ml-3 text-[14px] text-[#756B7D]">
-                        Typing...
+                        {t("chat.typingShort")}
                       </Text>
                     </View>
                   </View>
@@ -812,10 +814,10 @@ export default function NumerologyChat() {
               onChangeText={setMessage}
               placeholder={
                 creditsExhausted
-                  ? "Add credits to continue"
+                  ? t("chat.addCreditsToContinue")
                   : connected
-                    ? "Ask your question..."
-                    : "Connecting..."
+                    ? t("chat.askPlaceholder")
+                    : t("chat.connecting")
               }
               placeholderTextColor="#756B7D"
               multiline
@@ -853,7 +855,7 @@ export default function NumerologyChat() {
           </View>
 
           <Text className="mt-2 text-center text-[11px] text-[#756B7D]">
-            Astrology guidance is for informational purposes.
+            {t("chat.disclaimer")}
           </Text>
         </View>
       </View>

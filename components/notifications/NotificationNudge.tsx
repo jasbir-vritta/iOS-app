@@ -8,6 +8,7 @@ import {
   setNotificationsEnabled,
 } from "../../lib/notifications";
 import { track } from "../../lib/analytics";
+import { useT } from "../../lib/i18n";
 import BottomSheet from "../ui/BottomSheet";
 import { Text } from "../ui/BrandText";
 
@@ -26,6 +27,7 @@ const C = {
  * later days. Only time with the app open counts.
  */
 export default function NotificationNudge() {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   // Analytics: why it opened (the daily reminder).
   const source = useRef<"daily">("daily");
@@ -115,16 +117,16 @@ export default function NotificationNudge() {
         </View>
       </View>
 
-      <Text style={s.overline}>STAY IN TOUCH</Text>
-      <Text style={s.title}>Your Daily Cosmic Guidance</Text>
-      <Text style={s.text}>Get your daily horoscope and personalized mantras to guide your day.</Text>
+      <Text style={s.overline}>{t("home.nudge.overline")}</Text>
+      <Text style={s.title}>{t("home.nudge.title")}</Text>
+      <Text style={s.text}>{t("home.nudge.text")}</Text>
 
       <Pressable onPress={allow} style={s.primary}>
         <Icon name="bell-outline" size={18} color={C.CARD} />
-        <Text style={s.primaryText}>Allow notifications</Text>
+        <Text style={s.primaryText}>{t("home.nudge.allow")}</Text>
       </Pressable>
       <Pressable onPress={cancel} style={s.secondary}>
-        <Text style={s.secondaryText}>Not now</Text>
+        <Text style={s.secondaryText}>{t("common.notNow")}</Text>
       </Pressable>
     </BottomSheet>
   );

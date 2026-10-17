@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
 import { API_URL, authHeaders } from "../../lib/auth";
+import { getAppLanguage } from "../../lib/appLanguage";
+import { onLanguageChange, translate } from "../../lib/i18n";
 import { APP_NAME } from "../constants/app";
 
 // today/past/future: old endpoints. daily..yearly: My Life horoscope
@@ -108,7 +110,8 @@ export const useMyLifeStore = create<MyLifeStoreState>((set, get) => ({
 
 // v2: requests now send profile_id. v1 could hold another profile's data
 // (the backend used the server-side active profile), so it is discarded.
-const CACHE_VERSION = "v2";
+// v3: tips and lucky colours now come translated; older copies mix in English.
+const CACHE_VERSION = "v3";
 
 // Old endpoints: kept for a fixed time.
 const CACHE_MAX_AGE: Partial<Record<MyLifeCacheType, number>> = {
@@ -157,8 +160,9 @@ function isFresh(type: MyLifeCacheType, cachedAt: number | null): boolean {
   return Date.now() - cachedAt < (CACHE_MAX_AGE[type] ?? 0);
 }
 
+// Per language: readings are written in the app's language.
 const getCacheKey = (type: MyLifeCacheType, profileId: string): string =>
-  `mylife_${CACHE_VERSION}_${type}_${profileId}`;
+  `mylife_${CACHE_VERSION}_${getAppLanguage()}_${type}_${profileId}`;
 
 const isCacheValid = <T,>(
   cache: MyLifeCache<T>,
@@ -305,7 +309,7 @@ export function loadMyLifeHoroscope(
   period: MyLifePeriod,
   profileId: string
 ): Promise<any> {
-  const key = `${profileId}:${period}`;
+  const key = `${getAppLanguage()}:${profileId}:${period}`;
   const pending = pendingHoroscopes.get(key);
   if (pending) return pending;
 
@@ -330,7 +334,8 @@ export function loadMyLifeHoroscope(
 
     if (!res.ok || !json?.horoscope) {
       throw new Error(
-        json?.detail || `My ${APP_NAME} failed to load (status ${res.status})`
+        json?.detail ||
+          translate("mylife.error.loadStatus", { app: APP_NAME, status: res.status })
       );
     }
 
@@ -393,3 +398,10 @@ export async function getMyLifeCacheAge(
     return null;
   }
 }
+
+// New language: drop readings held in memory; screens load the new
+// language's reading (from the phone if seen before, else the server).
+onLanguageChange(() => {
+  pendingHoroscopes.clear();
+  useMyLifeStore.setState({ profiles: {}, cacheTimestamps: {} });
+});

@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { Alert } from "react-native";
 
 import { API_URL, authHeaders } from "../../lib/auth";
+import { translate } from "../../lib/i18n";
 import { ensureChatCredits } from "../constants/chat";
 import { useAstrologersStore } from "../stores/astrologersStore";
 
@@ -89,7 +90,7 @@ const reopenHumanChat = async (chat: ChatHistoryItem, user: ChatUser) => {
 
     if (!response.ok || !data?.session_id) {
       throw new Error(
-        typeof data?.detail === "string" ? data.detail : "Couldn't open this chat."
+        typeof data?.detail === "string" ? data.detail : translate("chat.open.failed")
       );
     }
 
@@ -111,8 +112,8 @@ const reopenHumanChat = async (chat: ChatHistoryItem, user: ChatUser) => {
   } catch (error) {
     // e.g. "This astrologer is offline right now."
     Alert.alert(
-      "Can't open chat",
-      error instanceof Error ? error.message : "Please try again."
+      translate("chat.open.title"),
+      error instanceof Error ? error.message : translate("chat.pleaseTryAgain")
     );
   }
 };

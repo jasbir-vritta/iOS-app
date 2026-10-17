@@ -1,5 +1,5 @@
 import { cssInterop } from "nativewind";
-import { forwardRef } from "react";
+import { Children, forwardRef, isValidElement, ReactNode } from "react";
 import { StyleSheet, Text as RNTextType, TextProps } from "react-native";
 
 import { F } from "../auth/theme";
@@ -26,8 +26,35 @@ const familyFor = (weight: unknown) => {
 
 const SYSTEM_FONTS = /^(System|sans-serif)$/;
 
-export const Text = forwardRef<RNTextType, TextProps>(function BrandText({ style, ...props }, ref) {
-  const flat = StyleSheet.flatten(style) || {};
+// Indian scripts (Devanagari, Bengali, Tamil, Telugu, Kannada, ...): their
+// vowel marks (matras) sit above and below the letters and get cut off by
+// line heights tuned for English, and negative letter spacing breaks joined
+// letters. Such text gets room (1.45x the font size) and normal spacing.
+const INDIC = new RegExp(`[${String.fromCharCode(0x0900)}-${String.fromCharCode(0x0dff)}]`); // U+0900 to U+0DFF
+const INDIC_LINE = 1.45;
+
+const hasIndic = (children: ReactNode): boolean =>
+  Children.toArray(children).some((child) =>
+    typeof child === "string"
+      ? INDIC.test(child)
+      : isValidElement<{ children?: ReactNode }>(child) && hasIndic(child.props.children)
+  );
+
+const indicFix = (flat: Record<string, any>) => {
+  const fix: Record<string, number> = {};
+  const size = typeof flat.fontSize === "number" ? flat.fontSize : 14;
+  if (typeof flat.lineHeight === "number" && flat.lineHeight < size * INDIC_LINE) {
+    fix.lineHeight = Math.round(size * INDIC_LINE);
+  }
+  if (typeof flat.letterSpacing === "number" && flat.letterSpacing < 0) fix.letterSpacing = 0;
+  return Object.keys(fix).length ? fix : null;
+};
+
+export const Text = forwardRef<RNTextType, TextProps>(function BrandText({ style: baseStyle, ...props }, ref) {
+  const baseFlat = StyleSheet.flatten(baseStyle) || {};
+  const fix = hasIndic(props.children) ? indicFix(baseFlat) : null;
+  const style = fix ? [baseStyle, fix] : baseStyle;
+  const flat = fix ? { ...baseFlat, ...fix } : baseFlat;
   const ownFont = typeof flat.fontFamily === "string" && !SYSTEM_FONTS.test(flat.fontFamily);
   const styled = flat.fontWeight !== undefined || flat.fontSize !== undefined || flat.fontFamily !== undefined;
 

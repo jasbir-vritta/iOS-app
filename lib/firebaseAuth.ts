@@ -18,6 +18,7 @@ import {
 
 import { GOOGLE_WEB_CLIENT_ID } from "../components/constants/app";
 import { API_URL } from "./auth";
+import { translate } from "./i18n";
 
 /**
  * Phone (SMS OTP), Google and Apple sign-in, all through Firebase.
@@ -209,24 +210,24 @@ export function phoneAuthMessage(error: unknown): string {
   const code = String((error as { code?: string })?.code ?? "");
 
   if (code.includes("invalid-verification-code")) {
-    return "That code is incorrect. Please check and try again.";
+    return translate("auth.phoneError.wrongCode");
   }
   if (code.includes("session-expired") || code.includes("code-expired")) {
-    return "This code has expired. Please request a new one.";
+    return translate("auth.phoneError.expired");
   }
   if (code.includes("invalid-phone-number")) {
-    return "Enter a valid mobile number.";
+    return translate("auth.phoneError.invalidNumber");
   }
   if (code.includes("too-many-requests") || code.includes("quota-exceeded")) {
-    return "Too many attempts. Please try again later.";
+    return translate("auth.phoneError.tooMany");
   }
   if (code.includes("operation-not-allowed")) {
     // Sign-in method or SMS region not enabled in Firebase.
-    return "Phone sign-in isn't available for this number yet. Please try Google sign-in.";
+    return translate("auth.phoneError.notAvailable");
   }
   if (code.includes("network-request-failed")) {
-    return "No connection. Check your internet and try again.";
+    return translate("common.noConnection");
   }
 
-  return (error as Error)?.message || "Something went wrong. Please try again.";
+  return (error as Error)?.message || translate("common.error");
 }

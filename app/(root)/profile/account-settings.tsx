@@ -20,6 +20,7 @@ import {
   getNotificationsEnabled,
   setNotificationsEnabled,
 } from "../../../lib/notifications";
+import { useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -39,6 +40,7 @@ type IconName = React.ComponentProps<typeof Icon>["name"];
 
 export default function AccountSettings() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [notificationsOn, setNotificationsOn] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -76,12 +78,12 @@ export default function AccountSettings() {
 
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Account settings</Text>
-          <Text style={s.subtitle}>Notifications and your account</Text>
+          <Text style={s.title}>{t("settings.title")}</Text>
+          <Text style={s.subtitle}>{t("settings.subtitle")}</Text>
         </View>
       </View>
 
@@ -91,15 +93,15 @@ export default function AccountSettings() {
       >
         {/* Notifications */}
         <Reanimated.View entering={FadeInDown.duration(380)}>
-          <Text style={s.overline}>NOTIFICATIONS</Text>
+          <Text style={s.overline}>{t("settings.notificationsSection")}</Text>
           <View style={s.card}>
             <View style={s.row}>
               <View style={[s.icon, { backgroundColor: C.SOFT }]}>
                 <Icon name="bell-outline" size={21} color={C.PLUM} />
               </View>
               <View style={s.rowText}>
-                <Text style={s.rowTitle}>Push notifications</Text>
-                <Text style={s.rowSub}>Daily mantra reminders and important updates</Text>
+                <Text style={s.rowTitle}>{t("settings.push")}</Text>
+                <Text style={s.rowSub}>{t("settings.pushSub")}</Text>
               </View>
               <Switch
                 value={notificationsOn}
@@ -115,26 +117,26 @@ export default function AccountSettings() {
 
         {/* Account */}
         <Reanimated.View entering={FadeInDown.delay(70).duration(380)}>
-          <Text style={s.overline}>ACCOUNT</Text>
+          <Text style={s.overline}>{t("settings.accountSection")}</Text>
           <View style={s.card}>
             <LinkRow
               icon="logout"
-              title="Log out"
-              sub="Sign out on this phone"
+              title={t("settings.logout")}
+              sub={t("settings.logoutSub")}
               onPress={() => router.push("/(root)/profile/logout")}
             />
             <View style={s.divider} />
             <LinkRow
               icon="delete-outline"
-              title="Delete account"
-              sub="Permanently remove your account and data"
+              title={t("settings.delete")}
+              sub={t("settings.deleteSub")}
               danger
               onPress={() => router.push("/(root)/profile/delete-account")}
             />
           </View>
         </Reanimated.View>
 
-        {!!version && <Text style={s.version}>Vritta · version {version}</Text>}
+        {!!version && <Text style={s.version}>{t("settings.version", { version })}</Text>}
       </ScrollView>
     </View>
   );

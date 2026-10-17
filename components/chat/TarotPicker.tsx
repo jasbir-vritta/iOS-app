@@ -10,6 +10,8 @@ import {
   View,
 } from "react-native";
 
+import { useT } from "../../lib/i18n";
+
 // Same card fan, waiting and reveal screens as app/(root)/chat/tarot.tsx,
 // used by the live chat with a real tarot astrologer. The card itself is
 // drawn by the server when the user taps a face-down card.
@@ -34,8 +36,6 @@ export type TarotPickerCard = {
 };
 
 export type TarotPickerPhase = "pick" | "waiting" | "ready";
-
-const ORDINALS = ["1st", "2nd", "3rd"];
 
 export function CardBack({ width, height }: { width: number; height: number }) {
   return (
@@ -100,6 +100,7 @@ export function TarotPicker({
   onClose,
   onDone,
 }: Props) {
+  const t = useT();
   const { width } = useWindowDimensions();
   const fanPad = (width - CARD_W) / 2;
   const mid = Math.floor(FAN_COUNT / 2);
@@ -113,23 +114,27 @@ export function TarotPicker({
     fanRef.current?.scrollTo({ x: next * STEP, animated: true });
   };
 
-  const ordinal = ORDINALS[cardNumber - 1] ?? `${cardNumber}th`;
+  const ordinal =
+    cardNumber >= 1 && cardNumber <= 3
+      ? t(`chat.tarot.ordinal${cardNumber}`)
+      : t("chat.tarot.ordinalN", { n: cardNumber });
   const moreLeft = cardNumber < total;
+  const left = total - cardNumber;
 
   const title =
     phase === "pick"
-      ? `Choose your ${ordinal} card`
+      ? t("chat.tarot.chooseCard", { ordinal })
       : phase === "waiting"
-        ? "Drawing your card"
-        : "Your card is ready";
+        ? t("chat.tarot.drawing")
+        : t("chat.tarot.ready");
 
   const subtitle =
     phase === "pick"
       ? total > 1
-        ? `${astrologerName} asked for ${total} cards`
-        : `${astrologerName} will read this card`
+        ? t("chat.tarot.askedFor", { name: astrologerName, total })
+        : t("chat.tarot.willReadThis", { name: astrologerName })
       : phase === "waiting"
-        ? "One moment…"
+        ? t("chat.tarot.oneMoment")
         : revealCard?.name ?? "";
 
   return (
@@ -158,7 +163,7 @@ export function TarotPicker({
           onPress={phase === "ready" ? onDone : onClose}
           hitSlop={12}
           style={{ position: "absolute", right: 20, top: 64, zIndex: 10 }}
-          accessibilityLabel="Close"
+          accessibilityLabel={t("common.close")}
         >
           <MaterialCommunityIcons name="close" size={26} color={C.card} />
         </Pressable>
@@ -231,7 +236,7 @@ export function TarotPicker({
                       transform: [{ translateY }, { rotate }],
                     }}
                   >
-                    <Pressable onPress={onPick} accessibilityLabel="Pick this card">
+                    <Pressable onPress={onPick} accessibilityLabel={t("chat.tarot.pickThis")}>
                       <CardBack width={CARD_W} height={CARD_H} />
                     </Pressable>
                   </Animated.View>
@@ -243,7 +248,7 @@ export function TarotPicker({
               <Pressable
                 key={dir}
                 onPress={() => nudgeFan(dir)}
-                accessibilityLabel={dir < 0 ? "Previous cards" : "Next cards"}
+                accessibilityLabel={dir < 0 ? t("chat.tarot.prevCards") : t("chat.tarot.nextCards")}
                 style={{
                   position: "absolute",
                   bottom: 10,
@@ -267,7 +272,7 @@ export function TarotPicker({
 
           <View style={{ position: "absolute", bottom: 40, left: 0, right: 0, alignItems: "center" }}>
             <MaterialCommunityIcons name="gesture-swipe-horizontal" size={26} color={C.border} />
-            <Text style={{ marginTop: 8, fontSize: 15, color: C.border }}>Swipe to browse. Tap to pick.</Text>
+            <Text style={{ marginTop: 8, fontSize: 15, color: C.border }}>{t("chat.tarot.swipeHint")}</Text>
           </View>
         </>
       )}
@@ -311,8 +316,12 @@ export function TarotPicker({
             >
               <Text style={{ fontSize: 16, color: C.border }}>
                 {moreLeft
-                  ? `${total - cardNumber} more card${total - cardNumber > 1 ? "s" : ""} to pick`
-                  : `${astrologerName} will now read your card${total > 1 ? "s" : ""}`}
+                  ? left > 1
+                    ? t("chat.tarot.moreLeftMany", { count: left })
+                    : t("chat.tarot.moreLeftOne")
+                  : total > 1
+                    ? t("chat.tarot.willReadMany", { name: astrologerName })
+                    : t("chat.tarot.willReadOne", { name: astrologerName })}
               </Text>
             </View>
 
@@ -328,7 +337,7 @@ export function TarotPicker({
               }}
             >
               <Text style={{ fontSize: 18, fontWeight: "600", color: C.plum }}>
-                {moreLeft ? "Pick next card" : "Back to chat"}
+                {moreLeft ? t("chat.tarot.pickNext") : t("chat.backToChat")}
               </Text>
             </Pressable>
           </View>

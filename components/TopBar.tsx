@@ -12,6 +12,7 @@ import {
 
 import useProfilesStore from "../components/stores/profilesStore";
 import { useUserStore } from "../components/stores/userStore";
+import { useT } from "../lib/i18n";
 
 const COLORS = {
   INK: "#1C1820",
@@ -23,6 +24,7 @@ const COLORS = {
 };
 
 export default function TopBar() {
+  const t = useT();
   // Chat tab shows History; every other screen shows Rewards.
   const pathname = usePathname();
   // "/chat" (or "/(root)/(tabs)/chat"); not the /chat/vedic etc. screens.
@@ -65,7 +67,7 @@ export default function TopBar() {
   const displayName =
     activeProfile?.name?.trim() ||
     user.name?.trim() ||
-    "Guest";
+    t("home.topBar.guest");
 
   const initial =
     displayName.charAt(0).toUpperCase();
@@ -240,8 +242,9 @@ export default function TopBar() {
               fontWeight: "500",
               color: COLORS.INK,
             }}
+            numberOfLines={1}
           >
-            History
+            {t("home.topBar.history")}
           </Text>
           )}
         </Pressable>
@@ -284,8 +287,9 @@ export default function TopBar() {
               fontWeight: "500",
               color: COLORS.INK,
             }}
+            numberOfLines={1}
           >
-            Rewards
+            {t("home.topBar.rewards")}
           </Text>
           )}
         </Pressable>
@@ -317,8 +321,9 @@ export default function TopBar() {
                 fontSize: 10,
                 color: COLORS.MUTED,
               }}
+              numberOfLines={1}
             >
-              Wallet
+              {t("home.topBar.wallet")}
             </Text>
 
             <Text
@@ -422,7 +427,7 @@ export default function TopBar() {
                 paddingBottom: 8,
               }}
             >
-              Select profile
+              {t("home.topBar.selectProfile")}
             </Text>
 
             {/* Profiles */}
@@ -508,7 +513,7 @@ export default function TopBar() {
                           color: COLORS.MUTED,
                         }}
                       >
-                        {` (${profile.relation})`}
+                        {` (${t(`profiles.relation.${profile.relation}`) === `profiles.relation.${profile.relation}` ? profile.relation : t(`profiles.relation.${profile.relation}`)})`}
                       </Text>
                     )}
                   </Text>
@@ -540,7 +545,7 @@ export default function TopBar() {
                   fontSize: 13,
                 }}
               >
-                No profiles found
+                {t("home.topBar.noProfiles")}
               </Text>
             )}
           </Pressable>

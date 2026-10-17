@@ -24,6 +24,7 @@ import { C, CardArt, HOME_PAD, SectionHeader, softShadow } from "../../../compon
 import { useRewardsStore } from "../../../components/stores/rewardsStore";
 import TopBar from "../../../components/TopBar";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
+import { useT } from "../../../lib/i18n";
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
@@ -116,6 +117,7 @@ function TodayRing({ progress, earned, still }: { progress: number; earned: numb
   }, [fill, progress, still]);
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: length * (1 - fill.value) }));
   const shown = useCountUp(earned, still);
+  const t = useT();
 
   // Breathing glow and a coin orbiting the ring.
   const glow = useSharedValue(0);
@@ -176,7 +178,9 @@ function TodayRing({ progress, earned, still }: { progress: number; earned: numb
         />
       </Svg>
       <Text style={st.ringValue}>₹{shown}</Text>
-      <Text style={st.ringLabel}>earned today</Text>
+      <Text style={st.ringLabel} numberOfLines={1} adjustsFontSizeToFit>
+        {t("rewards.earnedToday")}
+      </Text>
     </View>
   );
 }
@@ -212,6 +216,7 @@ export default function Rewards() {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
   const still = useReducedMotion();
+  const t = useT();
 
   const rewards = useRewardsStore((state) => state.rewards);
   const loading = useRewardsStore((state) => state.loading);
@@ -238,22 +243,22 @@ export default function Rewards() {
   }[] = [
     {
       type: "mantra_daily",
-      title: "Complete today’s Mantra Jaap",
-      description: "Keep your daily chanting practice going",
+      title: t("rewards.mantraTitle"),
+      description: t("rewards.mantraText"),
       icon: "om",
       open: () => router.push("/(root)/(tabs)/mantra" as any),
     },
     {
       type: "conversation_daily",
-      title: "Have a conversation",
-      description: "Get guidance from AI or an astrologer",
+      title: t("rewards.conversationTitle"),
+      description: t("rewards.conversationText"),
       icon: "message-outline",
       open: () => router.push("/(root)/(tabs)/chat" as any),
     },
     {
       type: "insight_daily",
-      title: "Read your daily insights",
-      description: "Check your personalised guidance",
+      title: t("rewards.insightTitle"),
+      description: t("rewards.insightText"),
       icon: "file-document-outline",
       open: () => router.push("/(root)/(tabs)/my_life" as any),
     },
@@ -277,8 +282,8 @@ export default function Rewards() {
         ) : (
           <>
             <Reanimated.View entering={enter(0)}>
-              <Text style={st.title}>Rewards</Text>
-              <Text style={st.subtitle}>Stay consistent, complete daily activities and earn</Text>
+              <Text style={st.title}>{t("rewards.title")}</Text>
+              <Text style={st.subtitle}>{t("rewards.subtitle")}</Text>
             </Reanimated.View>
 
             {/* Today's rewards */}
@@ -292,14 +297,16 @@ export default function Rewards() {
 
                 <View style={st.heroRow}>
                   <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={st.heroOverline}>TODAY’S REWARDS</Text>
+                    <Text style={st.heroOverline}>{t("rewards.todayOverline")}</Text>
                     <Text style={st.heroTitle}>
-                      {earnedToday > dailyMaximum ? `₹${earnedToday} earned` : `₹${earnedToday} of ₹${dailyMaximum}`}
+                      {earnedToday > dailyMaximum
+                        ? t("rewards.earned", { earned: earnedToday })
+                        : t("rewards.earnedOf", { earned: earnedToday, max: dailyMaximum })}
                     </Text>
                     <Text style={st.heroText}>
                       {reached
-                        ? `Today’s ₹${dailyMaximum} target reached. Every extra 108 chants earns more.`
-                        : `Complete activities to earn ₹${dailyMaximum} today. Every extra 108 chants earns more.`}
+                        ? t("rewards.targetReached", { max: dailyMaximum })
+                        : t("rewards.targetPending", { max: dailyMaximum })}
                     </Text>
                   </View>
                   <TodayRing progress={progress} earned={earnedToday} still={still} />
@@ -308,7 +315,7 @@ export default function Rewards() {
                 <View style={st.heroFoot}>
                   <MaterialCommunityIcons name="check-circle-outline" size={15} color={C.GOLD} />
                   <Text style={st.heroFootText}>
-                    {doneCount} of {activities.length} activities done today
+                    {t("rewards.doneCount", { done: doneCount, total: activities.length })}
                   </Text>
                 </View>
               </View>
@@ -316,7 +323,7 @@ export default function Rewards() {
 
             {/* Today's activities */}
             <Reanimated.View entering={enter(2)}>
-              <SectionHeader overline="EARN EVERY DAY" title="Today’s activities" />
+              <SectionHeader overline={t("rewards.earnEveryDay")} title={t("rewards.todaysActivities")} />
               <View style={{ gap: 10 }}>
                 {activities.map((activity) => {
                   const data = rewards?.activities?.[activity.type];
@@ -327,7 +334,11 @@ export default function Rewards() {
                     <TouchableOpacity
                       key={activity.type}
                       accessibilityRole="button"
-                      accessibilityLabel={`${activity.title}, ${completed ? "done" : `earn ₹${credits}`}`}
+                      accessibilityLabel={
+                        completed
+                          ? t("rewards.activityDoneA11y", { title: activity.title })
+                          : t("rewards.activityEarnA11y", { title: activity.title, credits })
+                      }
                       activeOpacity={0.9}
                       onPress={activity.open}
                       style={[st.activity, completed && st.activityDone]}
@@ -358,23 +369,28 @@ export default function Rewards() {
 
             {/* Mantra streak */}
             <Reanimated.View entering={enter(3)}>
-              <SectionHeader overline="KEEP IT GOING" title="Mantra streak" />
+              <SectionHeader overline={t("rewards.keepItGoing")} title={t("rewards.mantraStreak")} />
               <View style={st.streak}>
                 <View style={st.streakTop}>
                   <View style={st.streakIcon}>
                     <MaterialCommunityIcons name="fire" size={22} color={C.GOLD} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={st.streakTitle}>{streak.target}-day mantra streak</Text>
+                    <Text style={st.streakTitle} numberOfLines={2}>
+                      {t("rewards.streakTitle", { count: streak.target })}
+                    </Text>
                     <Text style={st.streakText}>
                       {streak.days > 0
-                        ? `${streak.days} day${streak.days > 1 ? "s" : ""} in a row${streak.completedToday ? " · today is done" : ""}`
-                        : "Chant 108 times today to start your streak."}
+                        ? t(
+                            `rewards.streakDays${streak.days > 1 ? "Many" : "One"}${streak.completedToday ? "Done" : ""}`,
+                            { count: streak.days }
+                          )
+                        : t("rewards.streakStart")}
                     </Text>
                   </View>
                   <View style={st.bonus}>
                     <MaterialCommunityIcons name="gift-outline" size={12} color={GOLD_TEXT} />
-                    <Text style={st.bonusText}>₹{streak.bonus} bonus</Text>
+                    <Text style={st.bonusText}>{t("rewards.bonus", { bonus: streak.bonus })}</Text>
                   </View>
                 </View>
 
@@ -387,7 +403,9 @@ export default function Rewards() {
                         <View style={[st.day, done && st.dayDone, today && st.dayToday]}>
                           {done && <MaterialCommunityIcons name="check" size={13} color={C.CARD} />}
                         </View>
-                        <Text style={[st.dayLabel, done && { color: C.PLUM }]}>D{i + 1}</Text>
+                        <Text style={[st.dayLabel, done && { color: C.PLUM }]} numberOfLines={1}>
+                          {t("rewards.dayLabel", { day: i + 1 })}
+                        </Text>
                       </View>
                     );
                   })}
@@ -409,8 +427,10 @@ export default function Rewards() {
                     <MaterialCommunityIcons name="trophy-outline" size={24} color={C.GOLD} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={st.boardTitle}>Mantra leaderboard</Text>
-                    <Text style={st.boardText}>See today’s top chanters. Every chant you do counts.</Text>
+                    <Text style={st.boardTitle} numberOfLines={1}>
+                      {t("leaderboard.title")}
+                    </Text>
+                    <Text style={st.boardText}>{t("rewards.boardText")}</Text>
                   </View>
                   <View style={st.boardArrow}>
                     <MaterialCommunityIcons name="arrow-right" size={16} color={C.INK} />
@@ -424,11 +444,11 @@ export default function Rewards() {
                   <MaterialCommunityIcons name="gift-outline" size={20} color={C.PLUM} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={st.moreTitle}>More ways to earn</Text>
-                  <Text style={st.moreText}>Refer friends and earn rewards.</Text>
+                  <Text style={st.moreTitle}>{t("rewards.moreTitle")}</Text>
+                  <Text style={st.moreText}>{t("rewards.moreText")}</Text>
                 </View>
                 <View style={st.soon}>
-                  <Text style={st.soonText}>Coming soon</Text>
+                  <Text style={st.soonText}>{t("common.comingSoon")}</Text>
                 </View>
               </View>
             </Reanimated.View>

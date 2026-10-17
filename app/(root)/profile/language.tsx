@@ -1,14 +1,12 @@
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StatusBar, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StatusBar, StyleSheet, View } from "react-native";
 import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "../../../components/ui/BrandText";
-
-const LANGUAGE_KEY = "app_language";
+import { useLanguageStore, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -21,41 +19,32 @@ const C = {
   SOFT: "#EFE8F7",
 };
 
-// `value` is what's saved (unchanged), with its English name and a letter
-// in its own script for the tile.
-const languages = [
-  { value: "English", english: "English", glyph: "Aa" },
-  { value: "हिंदी", english: "Hindi", glyph: "अ" },
-  { value: "Hinglish", english: "Hindi in English letters", glyph: "Aअ" },
-  { value: "मराठी", english: "Marathi", glyph: "म" },
-  { value: "বাংলা", english: "Bengali", glyph: "অ" },
-  { value: "తెలుగు", english: "Telugu", glyph: "అ" },
-  { value: "ಕನ್ನಡ", english: "Kannada", glyph: "ಅ" },
-];
-
 export default function Language() {
   const insets = useSafeAreaInsets();
-  const [selectedLanguage, setSelectedLanguage] = useState("English");
-  const [saving, setSaving] = useState(false);
+  const t = useT();
+  const current = useLanguageStore((state) => state.language);
+  const setLanguage = useLanguageStore((state) => state.setLanguage);
+  // From the backend, so new languages show up without an app update.
+  const languages = useLanguageStore((state) => state.languages);
+  const refreshLanguages = useLanguageStore((state) => state.refreshLanguages);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const saved = await AsyncStorage.getItem(LANGUAGE_KEY);
-        if (saved) setSelectedLanguage(saved);
-      } catch (error) {
-        console.error("Failed to load language:", error);
-      }
-    })();
-  }, []);
+    void refreshLanguages();
+  }, [refreshLanguages]);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(current);
+  const [saving, setSaving] = useState(false);
 
+  // Applies to every screen at once and is saved to the account.
   const handleSave = async () => {
     try {
       setSaving(true);
-      await AsyncStorage.setItem(LANGUAGE_KEY, selectedLanguage);
+      // Downloads that language's text the first time (then it's saved).
+      const ok = await setLanguage(selectedLanguage);
+      if (!ok) {
+        Alert.alert(t("language.notReadyTitle"), t("language.notReady"));
+        return;
+      }
       router.back();
-    } catch (error) {
-      console.error("Failed to save language:", error);
     } finally {
       setSaving(false);
     }
@@ -71,8 +60,8 @@ export default function Language() {
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>App language</Text>
-          <Text style={s.subtitle}>Choose the language you&apos;re most comfortable with</Text>
+          <Text style={s.title}>{t("language.title")}</Text>
+          <Text style={s.subtitle}>{t("language.subtitle")}</Text>
         </View>
       </View>
 
@@ -82,22 +71,21 @@ export default function Language() {
           <View style={s.introIcon}>
             <Icon name="translate" size={22} color={C.PLUM} />
           </View>
-          <Text style={s.introText}>
-            You can still chat with astrologers in any language, whatever you choose here.
-          </Text>
+          <Text style={s.introText}>{t("language.intro")}</Text>
         </Reanimated.View>
 
-        <Text style={s.overline}>{`${languages.length} LANGUAGES`}</Text>
+        <Text style={s.overline}>{t("language.count", { count: languages.length })}</Text>
 
         {/* Languages */}
         <View style={{ gap: 10 }}>
           {languages.map((language, index) => {
-            const selected = selectedLanguage === language.value;
+            const selected = selectedLanguage === language.code;
             return (
-              <Reanimated.View key={language.value} entering={FadeInDown.delay(40 * index).duration(380)}>
+              <Reanimated.View key={language.code} entering={FadeInDown.delay(40 * index).duration(380)}>
                 <Pressable
-                  onPress={() => setSelectedLanguage(language.value)}
-                  style={[s.row, selected && s.rowSelected]}
+                  onPress={() => language.available && setSelectedLanguage(language.code)}
+                  disabled={!language.available}
+                  style={[s.row, selected && s.rowSelected, !language.available && s.rowDisabled]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                 >
@@ -106,11 +94,15 @@ export default function Language() {
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    <Text style={s.name}>{language.value}</Text>
-                    {language.english !== language.value && <Text style={s.english}>{language.english}</Text>}
+                    <Text style={s.name}>{language.label}</Text>
+                    {language.english !== language.label && <Text style={s.english}>{language.english}</Text>}
                   </View>
 
-                  {selected ? (
+                  {!language.available ? (
+                    <View style={s.soon}>
+                      <Text style={s.soonText}>{t("common.comingSoon")}</Text>
+                    </View>
+                  ) : selected ? (
                     <View style={s.check}>
                       <Icon name="check" size={15} color={C.CARD} />
                     </View>
@@ -132,7 +124,7 @@ export default function Language() {
           ) : (
             <>
               <Icon name="check" size={19} color={C.CARD} />
-              <Text style={s.saveText}>Save language</Text>
+              <Text style={s.saveText}>{t("language.save")}</Text>
             </>
           )}
         </Pressable>
@@ -201,6 +193,9 @@ const s = StyleSheet.create({
     borderColor: C.LINE,
     ...shadow,
   },
+  rowDisabled: { opacity: 0.55 },
+  soon: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: C.SOFT },
+  soonText: { fontSize: 10.5, fontWeight: "700", color: C.PLUM },
   rowSelected: { borderColor: C.PLUM, borderWidth: 1.5 },
 
   glyph: {

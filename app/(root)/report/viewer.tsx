@@ -8,6 +8,7 @@ import CosmicLoader from "../../../components/CosmicLoader";
 import { C, F, HOME_PAD } from "../../../components/home/homeUi";
 import { hasInAppViewer } from "../../../components/utils/reportViewer";
 import { useScreenTime } from "../../../lib/analytics";
+import { useT } from "../../../lib/i18n";
 
 // Loaded only when the build has it (older builds open reports in the browser).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -16,6 +17,7 @@ const WebView = hasInAppViewer() ? require("react-native-webview").WebView : nul
 /* A bought report inside the app: no address bar, no browser download/share. */
 export default function ReportViewer() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const { url, title, report_id, sample } = useLocalSearchParams<{
     url?: string;
     title?: string;
@@ -37,11 +39,11 @@ export default function ReportViewer() {
   return (
     <View style={[s.screen, { paddingTop: insets.top }]}>
       <View style={s.header}>
-        <TouchableOpacity onPress={goBack} style={s.back} hitSlop={8} accessibilityLabel="Go back">
+        <TouchableOpacity onPress={goBack} style={s.back} hitSlop={8} accessibilityLabel={t("reports.goBack")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </TouchableOpacity>
         <Text style={s.title} numberOfLines={1}>
-          {title || "Your report"}
+          {title || t("reports.yourReport")}
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -64,10 +66,10 @@ export default function ReportViewer() {
         ) : (
           <View style={s.center}>
             <Icon name="file-alert-outline" size={36} color={C.PLUM} />
-            <Text style={s.failTitle}>Couldn’t open the report</Text>
-            <Text style={s.failText}>Please check your connection and try again.</Text>
+            <Text style={s.failTitle}>{t("reports.viewer.failTitle")}</Text>
+            <Text style={s.failText}>{t("reports.viewer.failText")}</Text>
             <TouchableOpacity onPress={goBack} style={s.failBtn}>
-              <Text style={s.failBtnText}>Go back</Text>
+              <Text style={s.failBtnText}>{t("reports.goBack")}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -75,7 +77,7 @@ export default function ReportViewer() {
         {loading && WebView && url && !failed && (
           <View style={[StyleSheet.absoluteFill, s.center, { backgroundColor: C.LAVENDER }]} pointerEvents="none">
             <CosmicLoader size={120} />
-            <Text style={s.loadingText}>Opening your report…</Text>
+            <Text style={s.loadingText}>{t("reports.viewer.opening")}</Text>
           </View>
         )}
       </View>

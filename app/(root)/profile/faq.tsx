@@ -16,6 +16,7 @@ import Reanimated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "../../../components/ui/BrandText";
+import { useT } from "../../../lib/i18n";
 
 const SUPPORT_EMAIL = "support@vritta.app";
 
@@ -33,131 +34,69 @@ const C = {
 type Faq = { q: string; a: string };
 type Category = { id: string; title: string; icon: React.ComponentProps<typeof Icon>["name"]; items: Faq[] };
 
+// Text = translation keys (lib/locales/en.json), translated at render.
 const CATEGORIES: Category[] = [
   {
     id: "start",
-    title: "Getting started",
+    title: "faq.cat.start",
     icon: "star-four-points-outline",
     items: [
-      {
-        q: "What is Vritta?",
-        a: "Vritta is an astrology and spiritual guidance app. You can chat with astrologers about love, marriage, career, money and personal growth, read your daily guidance, chant mantras, and buy detailed reports, all based on your birth details.",
-      },
-      {
-        q: "Which kinds of readings are available?",
-        a: "Vedic astrology, KP (Krishnamurti Paddhati), Lal Kitab, Tarot and Numerology. Each astrologer's card shows what they offer. When an astrologer offers more than one, you choose the reading when you start the chat.",
-      },
-      {
-        q: "Are the astrologers AI or real people?",
-        a: "Both. Most astrologers on Vritta are AI astrologers, each with their own style, available any time. Verified human astrologers are also available when they are online; their cards are marked and they reply to you live.",
-      },
-      {
-        q: "Do I need my exact birth time?",
-        a: "Yes, for Vedic, KP and Lal Kitab readings the exact time matters, because it decides the ascendant (lagna) and houses. If you don't know it, give the closest time you can. Tarot and Numerology need less detail.",
-      },
+      { q: "faq.start.1.q", a: "faq.start.1.a" },
+      { q: "faq.start.2.q", a: "faq.start.2.a" },
+      { q: "faq.start.3.q", a: "faq.start.3.a" },
+      { q: "faq.start.4.q", a: "faq.start.4.a" },
     ],
   },
   {
     id: "chats",
-    title: "Chats",
+    title: "faq.cat.chats",
     icon: "chat-processing-outline",
     items: [
-      {
-        q: "How much does a chat cost?",
-        a: "Each astrologer has a price per minute, shown on their card. The amount is taken from your wallet while you chat, and you can end the chat at any time. Your very first chat minute on Vritta is free.",
-      },
-      {
-        q: "Can I chat in my own language?",
-        a: "Yes. Write in English, Hindi or any language you're comfortable with, and the astrologer replies in the same language.",
-      },
-      {
-        q: "Where can I see my old chats?",
-        a: "Go to Profile → Chat history. Chats are saved per profile, so switch profiles to see chats about a loved one. Tap any chat to continue it.",
-      },
-      {
-        q: "How accurate are the readings?",
-        a: "Readings follow traditional astrology, Tarot and Numerology methods applied to your details. They are meant to help you reflect and consider your options, not to guarantee what will happen. For health, legal or financial decisions, please also consult a qualified professional.",
-      },
+      { q: "faq.chats.1.q", a: "faq.chats.1.a" },
+      { q: "faq.chats.2.q", a: "faq.chats.2.a" },
+      { q: "faq.chats.3.q", a: "faq.chats.3.a" },
+      { q: "faq.chats.4.q", a: "faq.chats.4.a" },
     ],
   },
   {
     id: "reports",
-    title: "Kundli & reports",
+    title: "faq.cat.reports",
     icon: "file-document-outline",
     items: [
-      {
-        q: "What reports can I buy?",
-        a: "The Reports tab has detailed PDF reports: True Love, Marriage, Career, Finance, Health, Future, Past Life, Baby (Bal Jyotish), Foreign Travel & Settlement, and Kundli Matching for couples. Each report page shows its price, what's inside and a sample.",
-      },
-      {
-        q: "Which languages are reports available in?",
-        a: "English, Hindi, Bengali, Marathi, Tamil, Telugu, Malayalam and Kannada. You choose the language before buying.",
-      },
-      {
-        q: "Where do I find a report I bought?",
-        a: "In the Reports tab under My Reports. Reports belong to the profile they were bought for, so switch profiles to see a loved one's reports.",
-      },
-      {
-        q: "What if a report can't be prepared?",
-        a: "If we can't prepare your report, the full amount is returned to your wallet automatically.",
-      },
-      {
-        q: "What is Kundli matching?",
-        a: "A traditional Vedic method of checking compatibility between two birth charts, mostly before marriage. The Ashtakoota system scores eight factors out of 36 gunas, and astrologers also look at doshas such as Mangal Dosha. It's one traditional view and can't decide whether a relationship will succeed.",
-      },
-      {
-        q: "What are Mangal Dosha and Sade Sati?",
-        a: "Mangal (Manglik) Dosha relates to Mars sitting in certain houses of the birth chart. Sade Sati is the roughly seven-and-a-half-year period when Saturn passes through the sign before your Moon sign, your Moon sign and the sign after it. How much either matters depends on the rest of the chart.",
-      },
+      { q: "faq.reports.1.q", a: "faq.reports.1.a" },
+      { q: "faq.reports.2.q", a: "faq.reports.2.a" },
+      { q: "faq.reports.3.q", a: "faq.reports.3.a" },
+      { q: "faq.reports.4.q", a: "faq.reports.4.a" },
+      { q: "faq.reports.5.q", a: "faq.reports.5.a" },
+      { q: "faq.reports.6.q", a: "faq.reports.6.a" },
     ],
   },
   {
     id: "wallet",
-    title: "Wallet & rewards",
+    title: "faq.cat.wallet",
     icon: "wallet-outline",
     items: [
-      {
-        q: "How do I add money?",
-        a: "Go to Profile → Wallet, pick an amount and pay with UPI. Every pack adds extra credit on top, for example ₹50 gives you ₹75 in your wallet.",
-      },
-      {
-        q: "Money was deducted but not added to my wallet",
-        a: "Your balance usually updates within a few minutes. If it still hasn't after some time, write to us with the payment details and we'll sort it out.",
-      },
-      {
-        q: "How do daily rewards work?",
-        a: "You earn wallet credit every day: ₹5 for a chat, ₹2 for reading your daily insight, and ₹3 for every completed mantra session of 108 chants. Rewards are per account and reset each day.",
-      },
+      { q: "faq.wallet.1.q", a: "faq.wallet.1.a" },
+      { q: "faq.wallet.2.q", a: "faq.wallet.2.a" },
+      { q: "faq.wallet.3.q", a: "faq.wallet.3.a" },
     ],
   },
   {
     id: "profiles",
-    title: "Profiles",
+    title: "faq.cat.profiles",
     icon: "account-heart-outline",
     items: [
-      {
-        q: "Can I add family members or friends?",
-        a: "Yes. Go to Profile → Manage profiles → Add a loved one and enter their birth details. Your first loved one's profile is free; each one after that costs a one-time amount shown on the screen.",
-      },
-      {
-        q: "How do I switch profiles?",
-        a: "Tap your name at the top of the Home, Chat or Reports screen and pick a profile. Guidance, chats and reports then show for that person.",
-      },
+      { q: "faq.profiles.1.q", a: "faq.profiles.1.a" },
+      { q: "faq.profiles.2.q", a: "faq.profiles.2.a" },
     ],
   },
   {
     id: "privacy",
-    title: "Privacy & account",
+    title: "faq.cat.privacy",
     icon: "shield-check-outline",
     items: [
-      {
-        q: "Is my information private?",
-        a: "Your birth details and chats are used to give you readings and are linked to your account. Read the Privacy Policy in Profile for how your data is collected, used and protected.",
-      },
-      {
-        q: "How do I delete my account?",
-        a: "Go to Profile → Account settings → Delete account. This removes your account and its profiles.",
-      },
+      { q: "faq.privacy.1.q", a: "faq.privacy.1.a" },
+      { q: "faq.privacy.2.q", a: "faq.privacy.2.a" },
     ],
   },
 ];
@@ -166,6 +105,7 @@ const ALL = "all";
 
 export default function FaqScreen() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(ALL);
   // Open question, as "<category>:<index>".
@@ -176,9 +116,20 @@ export default function FaqScreen() {
     setOpen((current) => (current === key ? null : key));
   };
 
+  // Translated at render so switching language updates the questions.
+  const categories = useMemo(
+    () =>
+      CATEGORIES.map((c) => ({
+        ...c,
+        title: t(c.title),
+        items: c.items.map((item) => ({ q: t(item.q), a: t(item.a) })),
+      })),
+    [t]
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return CATEGORIES.filter((c) => category === ALL || c.id === category)
+    return categories.filter((c) => category === ALL || c.id === category)
       .map((c) => ({
         ...c,
         items: c.items
@@ -186,13 +137,13 @@ export default function FaqScreen() {
           .filter((item) => !q || `${item.q} ${item.a}`.toLowerCase().includes(q)),
       }))
       .filter((c) => c.items.length > 0);
-  }, [query, category]);
+  }, [query, category, categories]);
 
   const total = CATEGORIES.reduce((n, c) => n + c.items.length, 0);
 
   const contact = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Help with Vritta")}`).catch(() =>
-      Alert.alert("Need help?", `Write to us at ${SUPPORT_EMAIL} and we'll get back to you.`)
+      Alert.alert(t("faq.alertTitle"), t("faq.alertBody", { email: SUPPORT_EMAIL }))
     );
   };
 
@@ -202,12 +153,12 @@ export default function FaqScreen() {
 
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Help & FAQ</Text>
-          <Text style={s.subtitle}>{`${total} answers about Vritta`}</Text>
+          <Text style={s.title}>{t("faq.title")}</Text>
+          <Text style={s.subtitle}>{t("faq.subtitle", { count: total })}</Text>
         </View>
       </View>
 
@@ -222,7 +173,7 @@ export default function FaqScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search questions"
+            placeholder={t("faq.search")}
             placeholderTextColor={C.MUTED}
             style={s.searchInput}
             returnKeyType="search"
@@ -241,7 +192,7 @@ export default function FaqScreen() {
           contentContainerStyle={s.chips}
           style={s.chipsScroll}
         >
-          {[{ id: ALL, title: "All", icon: "apps" as const }, ...CATEGORIES].map((c) => {
+          {[{ id: ALL, title: t("faq.all"), icon: "apps" as const }, ...categories].map((c) => {
             const active = category === c.id;
             return (
               <Pressable key={c.id} onPress={() => setCategory(c.id)} style={[s.chip, active && s.chipActive]}>
@@ -285,8 +236,8 @@ export default function FaqScreen() {
             <View style={s.emptyIcon}>
               <Icon name="text-search" size={26} color={C.PLUM} />
             </View>
-            <Text style={s.emptyTitle}>No answers found</Text>
-            <Text style={s.emptyText}>Try another word, or ask us directly below.</Text>
+            <Text style={s.emptyTitle}>{t("faq.emptyTitle")}</Text>
+            <Text style={s.emptyText}>{t("faq.emptyText")}</Text>
           </View>
         )}
 
@@ -296,8 +247,8 @@ export default function FaqScreen() {
           <View style={s.helpIcon}>
             <Icon name="lifebuoy" size={22} color={C.CARD} />
           </View>
-          <Text style={s.helpTitle}>Still need help?</Text>
-          <Text style={s.helpText}>Write to us and we&apos;ll get back to you.</Text>
+          <Text style={s.helpTitle}>{t("faq.helpTitle")}</Text>
+          <Text style={s.helpText}>{t("faq.helpText")}</Text>
           <Pressable onPress={contact} style={s.helpButton}>
             <Icon name="email-outline" size={17} color={C.PLUM} />
             <Text style={s.helpButtonText}>{SUPPORT_EMAIL}</Text>

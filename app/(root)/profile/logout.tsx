@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "../../../components/ui/BrandText";
 import useAuthStore from "../../../components/stores/authStore";
+import { useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -20,6 +21,7 @@ const C = {
 
 export default function Logout() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [busy, setBusy] = useState(false);
 
   const handleLogout = async () => {
@@ -45,7 +47,7 @@ export default function Logout() {
 
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
       </View>
@@ -64,10 +66,8 @@ export default function Logout() {
         </Reanimated.View>
 
         <Reanimated.View entering={FadeInDown.delay(120).duration(420)} style={{ alignItems: "center" }}>
-          <Text style={s.title}>Log out of Vritta?</Text>
-          <Text style={s.body}>
-            Your profiles, chats, reports and wallet stay safe. Log in again any time to pick up where you left off.
-          </Text>
+          <Text style={s.title}>{t("logout.title")}</Text>
+          <Text style={s.body}>{t("logout.body")}</Text>
         </Reanimated.View>
       </View>
 
@@ -79,12 +79,12 @@ export default function Logout() {
           ) : (
             <>
               <Icon name="logout" size={18} color={C.CARD} />
-              <Text style={s.primaryText}>Log out</Text>
+              <Text style={s.primaryText}>{t("logout.confirm")}</Text>
             </>
           )}
         </Pressable>
         <Pressable onPress={() => router.back()} disabled={busy} style={s.secondary}>
-          <Text style={s.secondaryText}>Stay logged in</Text>
+          <Text style={s.secondaryText}>{t("logout.stay")}</Text>
         </Pressable>
       </Reanimated.View>
     </View>

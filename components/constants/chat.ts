@@ -1,6 +1,8 @@
 import { router } from "expo-router";
 import { Alert } from "react-native";
 
+import { translate } from "../../lib/i18n";
+
 // Minimum wallet balance to start a chat, in minutes of the
 // astrologer's per-minute price.
 export const MIN_CHAT_MINUTES = 1;
@@ -30,12 +32,16 @@ export const ensureChatCredits = (
   }
 
   Alert.alert(
-    "Add credits to chat",
-    `You need at least ₹${required} (${MIN_CHAT_MINUTES} minute${MIN_CHAT_MINUTES === 1 ? "" : "s"}) to start this chat. Your balance is ₹${balance}.`,
+    translate("chat.credits.title"),
+    translate(MIN_CHAT_MINUTES === 1 ? "chat.credits.messageOne" : "chat.credits.messageMany", {
+      required,
+      minutes: MIN_CHAT_MINUTES,
+      balance,
+    }),
     [
-      { text: "Cancel", style: "cancel" },
+      { text: translate("common.cancel"), style: "cancel" },
       {
-        text: "Add Credits",
+        text: translate("chat.credits.add"),
         onPress: () => router.push("/profile/wallet"),
       },
     ]

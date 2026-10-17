@@ -33,6 +33,13 @@ import { useUserStore } from "../../../components/stores/userStore";
 import TopBar from "../../../components/TopBar";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 import { track, useScreenTime } from "../../../lib/analytics";
+import { useT } from "../../../lib/i18n";
+import {
+  discountLabel,
+  frequencyLabel,
+  reportDescription,
+  reportTitle,
+} from "../../../components/reports/reportText";
 
 type Report = {
   id: string;
@@ -51,10 +58,11 @@ const reports: Report[] = reportsData as Report[];
 const byId = (id: string) => reports.find((r) => r.id === id);
 const topReports = ["kundli-milan", "career", "marriage", "true-love"].map(byId).filter(Boolean) as Report[];
 
+// Labels are translated when drawn (language can change).
 const tabs = [
-  { id: "all", label: "All" },
-  { id: "Monthly", label: "Monthly" },
-  { id: "One time", label: "One time" },
+  { id: "all", label: "reports.tab.all" },
+  { id: "Monthly", label: "reports.frequency.monthly" },
+  { id: "One time", label: "reports.frequency.oneTime" },
 ] as const;
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -103,12 +111,13 @@ function useReportState() {
 }
 
 function StatusPill({ state }: { state: string }) {
+  const t = useT();
   const look =
     state === "purchased"
-      ? { icon: "check-decagram", text: "Purchased", color: C.PLUM, bg: C.SOFT }
+      ? { icon: "check-decagram", text: t("reports.status.purchased"), color: C.PLUM, bg: C.SOFT }
       : state === "preparing"
-        ? { icon: "progress-clock", text: "Preparing", color: C.PLUM, bg: C.SOFT }
-        : { icon: "clock-outline", text: "Coming soon", color: C.MUTED, bg: C.IVORY };
+        ? { icon: "progress-clock", text: t("reports.status.preparing"), color: C.PLUM, bg: C.SOFT }
+        : { icon: "clock-outline", text: t("common.comingSoon"), color: C.MUTED, bg: C.IVORY };
   return (
     <View style={[s.statusPill, { backgroundColor: look.bg }]}>
       <Icon name={look.icon as any} size={12} color={look.color} />
@@ -120,13 +129,16 @@ function StatusPill({ state }: { state: string }) {
 }
 
 function Price({ report, big = false }: { report: Report; big?: boolean }) {
+  const t = useT();
   return (
     <View style={s.priceRow}>
       <Text style={big ? s.priceBig : s.price}>₹{report.price}</Text>
       {report.oldPrice > report.price && <Text style={s.oldPrice}>₹{report.oldPrice}</Text>}
       {!!report.discount && (
         <View style={s.discount}>
-          <Text style={s.discountText}>{report.discount}</Text>
+          <Text style={s.discountText} numberOfLines={1}>
+            {discountLabel(t, report.discount)}
+          </Text>
         </View>
       )}
     </View>
@@ -135,6 +147,7 @@ function Price({ report, big = false }: { report: Report; big?: boolean }) {
 
 /* Entry to My Reports: only shown once the account has bought a report. */
 function MyReportsCard() {
+  const t = useT();
   const [count, setCount] = useState(0);
   const profileId = useUserStore((state) => state.user?.active_profile_id);
 
@@ -155,9 +168,11 @@ function MyReportsCard() {
           <Icon name="book-open-page-variant-outline" size={20} color={C.CARD} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.myReportsTitle}>My Reports</Text>
-          <Text style={s.myReportsSub}>
-            {count} report{count === 1 ? "" : "s"} ready to read
+          <Text style={s.myReportsTitle} numberOfLines={1}>
+            {t("reports.myReportsCard")}
+          </Text>
+          <Text style={s.myReportsSub} numberOfLines={1}>
+            {count === 1 ? t("reports.readyToReadOne") : t("reports.readyToReadMany", { count })}
           </Text>
         </View>
         <View style={s.myReportsArrow}>
@@ -171,6 +186,7 @@ function MyReportsCard() {
 export default function Reports() {
   // Analytics: visited_reports + reports_time_spent.
   useScreenTime("reports");
+  const t = useT();
 
   const tabSpace = useTabBarSpace();
   const stateOf = useReportState();
@@ -200,8 +216,8 @@ export default function Reports() {
         {fontsLoaded && (
           <>
             <Reanimated.View entering={enter(0)}>
-              <Text style={s.title}>Reports</Text>
-              <Text style={s.subtitle}>In-depth guidance for a more aligned tomorrow</Text>
+              <Text style={s.title}>{t("reports.title")}</Text>
+              <Text style={s.subtitle}>{t("reports.subtitle")}</Text>
               <MyReportsCard />
             </Reanimated.View>
 
@@ -227,20 +243,24 @@ export default function Reports() {
                           <Image source={{ uri: r.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                           <View style={s.featureTag}>
                             <Icon name="star-four-points" size={11} color={C.GOLD} />
-                            <Text style={s.featureTagText}>Recommended for you</Text>
+                            <Text style={s.featureTagText} numberOfLines={1}>
+                              {t("reports.recommended")}
+                            </Text>
                           </View>
                         </View>
                         <View style={s.featureBody}>
                           <Text style={s.featureTitle} numberOfLines={1}>
-                            {r.title}
+                            {reportTitle(t, r)}
                           </Text>
                           <Text style={s.featureDesc} numberOfLines={2}>
-                            {r.description}
+                            {reportDescription(t, r)}
                           </Text>
                           <View style={s.featureFoot}>
                             {state === "buy" ? <Price report={r} big /> : <StatusPill state={state} />}
                             <View style={s.viewBtn}>
-                              <Text style={s.viewBtnText}>View report</Text>
+                              <Text style={s.viewBtnText} numberOfLines={1}>
+                                {t("reports.viewReport")}
+                              </Text>
                               <Icon name="arrow-right" size={14} color={C.CARD} />
                             </View>
                           </View>
@@ -259,20 +279,22 @@ export default function Reports() {
 
             {/* All reports */}
             <Reanimated.View entering={enter(2)}>
-              <SectionHeader title="All reports" />
+              <SectionHeader title={t("reports.allReports")} />
               <View style={s.segment}>
-                {tabs.map((t) => {
-                  const active = t.id === tab;
+                {tabs.map((item) => {
+                  const active = item.id === tab;
                   return (
                     <TouchableOpacity
-                      key={t.id}
+                      key={item.id}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                       activeOpacity={0.85}
-                      onPress={() => setTab(t.id)}
+                      onPress={() => setTab(item.id)}
                       style={[s.segmentItem, active && s.segmentItemActive]}
                     >
-                      <Text style={[s.segmentText, active && { color: C.CARD }]}>{t.label}</Text>
+                      <Text style={[s.segmentText, active && { color: C.CARD }]} numberOfLines={1}>
+                        {t(item.label)}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -286,15 +308,17 @@ export default function Reports() {
                       <Image source={{ uri: r.image }} style={s.thumb} resizeMode="cover" />
                       <View style={s.rowBody}>
                         <Text style={s.rowTitle} numberOfLines={1}>
-                          {r.title}
+                          {reportTitle(t, r)}
                         </Text>
                         <Text style={s.rowDesc} numberOfLines={2}>
-                          {r.description}
+                          {reportDescription(t, r)}
                         </Text>
                         <View style={s.rowFoot}>
                           <View style={s.freq}>
                             <Icon name={(r.icon || "calendar-outline") as any} size={11} color={C.PLUM} />
-                            <Text style={s.freqText}>{r.frequency}</Text>
+                            <Text style={s.freqText} numberOfLines={1}>
+                              {frequencyLabel(t, r.frequency)}
+                            </Text>
                           </View>
                           {state === "buy" ? (
                             <View style={s.rowPrice}>

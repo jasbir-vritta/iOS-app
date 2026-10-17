@@ -44,6 +44,7 @@ import { useUserStore } from "../../../components/stores/userStore";
 import { hasBirthDetails } from "../../../components/utils/birthDetails";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 import { useScreenTime } from "../../../lib/analytics";
+import { useT } from "../../../lib/i18n";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -64,10 +65,11 @@ const C = {
 };
 
 // Functional status colors.
+// `labelKey` is translated at render time.
 const STATUS = {
-  Favourable: { label: "Favourable", color: "#2E7D4F", bg: "#E6F2EA" },
-  Neutral: { label: "Neutral", color: "#9A6A12", bg: "#F8EFD9" },
-  Challenging: { label: "Watchful", color: "#B3392F", bg: "#F8E4E1" },
+  Favourable: { labelKey: "mylife.status.favourable", color: "#2E7D4F", bg: "#E6F2EA" },
+  Neutral: { labelKey: "mylife.status.neutral", color: "#9A6A12", bg: "#F8EFD9" },
+  Challenging: { labelKey: "mylife.status.watchful", color: "#B3392F", bg: "#F8E4E1" },
 };
 
 // Each tab has its own look, built only from the locked palette:
@@ -102,20 +104,37 @@ const THEMES = {
   },
 };
 
-const PERIODS = [
-  { key: "daily", label: "Daily", kicker: "Today for you", areasTitle: "Life areas today", guidanceTitle: "Today’s guidance" },
-  { key: "weekly", label: "Weekly", kicker: "This week for you", areasTitle: "Life areas this week", guidanceTitle: "This week’s guidance" },
-  { key: "monthly", label: "Monthly", kicker: "This month for you", areasTitle: "Life areas this month", guidanceTitle: "This month’s guidance" },
-  { key: "yearly", label: "Yearly", kicker: "This year for you", areasTitle: "Life areas this year", guidanceTitle: "This year’s guidance" },
-];
+const PERIOD_KEYS = ["daily", "weekly", "monthly", "yearly"];
+
+// Built at render time so the labels follow the app language.
+const periodsFor = (tr) =>
+  PERIOD_KEYS.map((key) => ({
+    key,
+    label: tr(`mylife.period.${key}.label`),
+    kicker: tr(`mylife.period.${key}.kicker`),
+    areasTitle: tr(`mylife.period.${key}.areasTitle`),
+    guidanceTitle: tr(`mylife.period.${key}.guidanceTitle`),
+    loading: tr(`mylife.period.${key}.loading`),
+  }));
 
 const AREAS = [
-  { key: "love", label: "Love", icon: "heart-outline" },
-  { key: "career", label: "Career", icon: "briefcase-outline" },
-  { key: "money", label: "Money", icon: "wallet-outline" },
-  { key: "health", label: "Health", icon: "meditation" },
-  { key: "travel", label: "Travel", icon: "airplane" },
+  { key: "love", labelKey: "mylife.area.love", icon: "heart-outline" },
+  { key: "career", labelKey: "mylife.area.career", icon: "briefcase-outline" },
+  { key: "money", labelKey: "mylife.area.money", icon: "wallet-outline" },
+  { key: "health", labelKey: "mylife.area.health", icon: "meditation" },
+  { key: "travel", labelKey: "mylife.area.travel", icon: "airplane" },
 ];
+
+const SIGNS = [
+  "aries", "taurus", "gemini", "cancer", "leo", "virgo",
+  "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces",
+];
+
+// The backend sends English sign names; show them in the app language.
+const signName = (tr, sign) => {
+  const key = String(sign || "").trim().toLowerCase();
+  return SIGNS.includes(key) ? tr(`mylife.sign.${key}`) : sign;
+};
 
 const toText = (value) => {
   if (value === null || value === undefined) return "";
@@ -137,12 +156,13 @@ const normalizeStatus = (value) => {
   return "Neutral";
 };
 
-function areaData(horoscope) {
+function areaData(horoscope, tr) {
   return AREAS.map((area) => {
     const raw = horoscope?.areas?.[area.key] || {};
     const score = Number(raw.score);
     return {
       ...area,
+      label: tr(area.labelKey),
       status: normalizeStatus(raw.status),
       score: Number.isFinite(score) ? score : null,
       title: toText(raw.title),
@@ -151,19 +171,20 @@ function areaData(horoscope) {
   });
 }
 
-// "Good morning" etc. by the IST hour.
-const greeting = () => {
+// "Good morning" etc. by the IST hour, with the first name when known.
+const greeting = (tr, name) => {
   const hour = Math.floor(((Date.now() / 3600000) + 5.5) % 24);
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  const part = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+  return name
+    ? tr(`mylife.greeting.${part}Name`, { name })
+    : tr(`mylife.greeting.${part}`);
 };
 
 // Sections rise in one after another when a tab opens.
 const enter = (index) => FadeInDown.delay(80 * index).duration(420);
 
-const energyLabel = (score) =>
-  score >= 80 ? "High energy" : score >= 70 ? "Balanced energy" : "Go gently";
+const energyLabel = (tr, score) =>
+  tr(score >= 80 ? "mylife.energy.high" : score >= 70 ? "mylife.energy.balanced" : "mylife.energy.gentle");
 
 // Current tab's theme for every part of the screen.
 const ThemeContext = createContext("daily");
@@ -174,6 +195,8 @@ export default function MyLife() {
   const tabSpace = useTabBarSpace();
   const [fontsLoaded] = useFonts(AUTH_FONTS);
   const [activeTab, setActiveTab] = useState("daily");
+  const tr = useT();
+  const periods = periodsFor(tr);
 
   // Analytics, per tab: visited_my_vritta_daily + my_vritta_daily_time_spent
   // (weekly / monthly / yearly the same way).
@@ -220,16 +243,18 @@ export default function MyLife() {
       await loadMyLifeHoroscope(period, profileId);
     } catch (err) {
       console.error("MY LIFE ERROR:", err);
+      // Empty message: the translated fallback is shown at render time.
       setErrors((prev) => ({
         ...prev,
-        [`${profileId}:${period}`]:
-          err?.message || `Unable to load My ${APP_NAME}. Please try again.`,
+        [`${profileId}:${period}`]: err?.message || "",
       }));
     }
   }, []);
 
   const dataKey = `${activeProfileId}:${activeTab}`;
-  const error = errors[dataKey];
+  const error = dataKey in errors
+    ? errors[dataKey] || tr("mylife.error.text", { app: APP_NAME })
+    : null;
 
   useEffect(() => {
     if (!activeProfileId || needsBirthDetails || horoscope || error) {
@@ -247,15 +272,15 @@ export default function MyLife() {
       return next;
     });
 
-  const period = PERIODS.find((p) => p.key === activeTab) || PERIODS[0];
+  const period = periods.find((p) => p.key === activeTab) || periods[0];
 
   const share = async () => {
     try {
       await Share.share({
         message: [
-          `My ${APP_NAME} · ${period.label}`,
-          activeProfile?.name && `Name: ${activeProfile.name}`,
-          horoscope?.sign && `Moon Sign: ${horoscope.sign}`,
+          tr("mylife.share.heading", { app: APP_NAME, period: period.label }),
+          activeProfile?.name && tr("mylife.share.name", { name: activeProfile.name }),
+          horoscope?.sign && tr("mylife.share.moonSign", { sign: signName(tr, toText(horoscope.sign)) }),
           toText(horoscope?.title),
           toText(horoscope?.text),
         ].filter(Boolean).join("\n"),
@@ -278,9 +303,11 @@ export default function MyLife() {
         <View style={styles.stateIcon}>
           <Icon name="account-edit-outline" size={26} color={C.PLUM} />
         </View>
-        <Text style={styles.stateTitle}>Complete birth details</Text>
+        <Text style={styles.stateTitle}>{tr("mylife.birth.title")}</Text>
         <Text style={styles.stateText}>
-          Add the birth date, time and place for {activeProfile?.name || "this profile"} to see My {APP_NAME}.
+          {activeProfile?.name
+            ? tr("mylife.birth.text", { name: activeProfile.name, app: APP_NAME })
+            : tr("mylife.birth.textNoName", { app: APP_NAME })}
         </Text>
         <Pressable
           onPress={() =>
@@ -291,7 +318,7 @@ export default function MyLife() {
           }
           style={styles.primaryButton}
         >
-          <Text style={styles.primaryButtonText}>Complete Profile</Text>
+          <Text style={styles.primaryButtonText}>{tr("mylife.birth.button")}</Text>
         </Pressable>
       </View>
     );
@@ -309,10 +336,11 @@ export default function MyLife() {
               <VrittaLogo size={22} />
             </View>
             <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={styles.title}>My {APP_NAME}</Text>
+              <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>
+                {tr("mylife.title", { app: APP_NAME })}
+              </Text>
               <Text style={styles.subtitle} numberOfLines={1}>
-                {greeting()}
-                {activeProfile?.name ? `, ${String(activeProfile.name).split(" ")[0]}` : ""}
+                {greeting(tr, activeProfile?.name ? String(activeProfile.name).split(" ")[0] : "")}
               </Text>
             </View>
           </View>
@@ -320,13 +348,13 @@ export default function MyLife() {
             style={styles.iconButton}
             onPress={share}
             hitSlop={8}
-            accessibilityLabel="Share reading"
+            accessibilityLabel={tr("mylife.shareA11y")}
           >
             <Icon name="share-variant-outline" size={19} color={C.INK} />
           </Pressable>
         </View>
 
-        <TabBar active={activeTab} onChange={setActiveTab} />
+        <TabBar periods={periods} active={activeTab} onChange={setActiveTab} />
 
         {horoscope ? (
           <ScrollView
@@ -340,18 +368,16 @@ export default function MyLife() {
             <View style={styles.stateIcon}>
               <Icon name="cloud-alert-outline" size={26} color={C.PLUM} />
             </View>
-            <Text style={styles.stateTitle}>Unable to load My {APP_NAME}</Text>
+            <Text style={styles.stateTitle}>{tr("mylife.error.title", { app: APP_NAME })}</Text>
             <Text style={styles.stateText}>{error}</Text>
             <Pressable onPress={retry} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Try Again</Text>
+              <Text style={styles.primaryButtonText}>{tr("mylife.error.retry")}</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={THEMES[activeTab].accent} />
-            <Text style={styles.loadingText}>
-              Reading the stars for your {period.label.toLowerCase()} guidance…
-            </Text>
+            <Text style={styles.loadingText}>{period.loading}</Text>
           </View>
         )}
       </View>
@@ -406,10 +432,10 @@ function PageBackground({ theme }) {
 
 /* ------------------------------ tabs ------------------------------ */
 
-function TabBar({ active, onChange }) {
+function TabBar({ periods, active, onChange }) {
   const t = useTheme();
   const [width, setWidth] = useState(0);
-  const index = PERIODS.findIndex((p) => p.key === active);
+  const index = periods.findIndex((p) => p.key === active);
   // Created once; animated to the selected tab below.
   const [x] = useState(() => new Animated.Value(index));
 
@@ -417,7 +443,7 @@ function TabBar({ active, onChange }) {
     Animated.spring(x, { toValue: index, useNativeDriver: true, speed: 18, bounciness: 4 }).start();
   }, [index, x]);
 
-  const tabWidth = width / PERIODS.length;
+  const tabWidth = width / periods.length;
 
   return (
     <View style={styles.tabs} onLayout={(e) => setWidth(e.nativeEvent.layout.width - 8)}>
@@ -431,7 +457,7 @@ function TabBar({ active, onChange }) {
           <View style={[StyleSheet.absoluteFill, { borderRadius: 999, backgroundColor: t.accent }]} />
         </Animated.View>
       )}
-      {PERIODS.map((p) => {
+      {periods.map((p) => {
         const selected = p.key === active;
         return (
           <Pressable
@@ -441,7 +467,9 @@ function TabBar({ active, onChange }) {
             accessibilityRole="tab"
             accessibilityState={{ selected }}
           >
-            <Text style={[styles.tabText, selected && styles.tabTextActive]}>{p.label}</Text>
+            <Text style={[styles.tabText, selected && styles.tabTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+              {p.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -582,7 +610,8 @@ function ZodiacWheel() {
 /* ------------------------------ screen ------------------------------ */
 
 function HoroscopeScreen({ horoscope, period }) {
-  const areas = areaData(horoscope);
+  const tr = useT();
+  const areas = areaData(horoscope, tr);
   const scored = areas.filter((a) => a.score !== null);
   const overall = scored.length
     ? Math.round(scored.reduce((sum, a) => sum + a.score, 0) / scored.length)
@@ -595,7 +624,7 @@ function HoroscopeScreen({ horoscope, period }) {
       </Reanimated.View>
 
       <Reanimated.View entering={enter(1)}>
-        <SectionTitle overline="INSIGHTS" note="Tap to read">{period.areasTitle}</SectionTitle>
+        <SectionTitle overline={tr("mylife.insights")} note={tr("mylife.tapToRead")}>{period.areasTitle}</SectionTitle>
         <AreaList areas={areas} />
       </Reanimated.View>
 
@@ -627,6 +656,7 @@ function HoroscopeScreen({ horoscope, period }) {
 /* The one rich card: the tab's deep gradient with a slowly turning wheel. */
 function Hero({ horoscope, period, overall, areas }) {
   const t = useTheme();
+  const tr = useT();
   const sign = toText(horoscope.sign);
   const fg = tint(t.fg);
   const still = useReducedMotion();
@@ -655,7 +685,9 @@ function Hero({ horoscope, period, overall, areas }) {
             {!!sign && (
               <View style={[styles.heroChip, { backgroundColor: fg(0.1), borderColor: fg(0.24) }]}>
                 <Icon name="moon-waning-crescent" size={12} color={fg(1)} />
-                <Text style={[styles.heroChipText, { color: fg(1) }]}>Moon in {sign}</Text>
+                <Text style={[styles.heroChipText, { color: fg(1) }]}>
+                  {tr("mylife.moonIn", { sign: signName(tr, sign) })}
+                </Text>
               </View>
             )}
           </View>
@@ -668,8 +700,8 @@ function Hero({ horoscope, period, overall, areas }) {
             <View style={[styles.energyRow, { borderTopColor: fg(0.16) }]}>
               <ScoreRing score={overall} />
               <View style={{ marginLeft: 14, flex: 1 }}>
-                <Text style={[styles.energyLabel, { color: fg(0.72) }]}>Overall energy</Text>
-                <Text style={[styles.energyValue, { color: fg(1) }]}>{energyLabel(overall)}</Text>
+                <Text style={[styles.energyLabel, { color: fg(0.72) }]}>{tr("mylife.overallEnergy")}</Text>
+                <Text style={[styles.energyValue, { color: fg(1) }]}>{energyLabel(tr, overall)}</Text>
               </View>
             </View>
           )}
@@ -682,7 +714,7 @@ function Hero({ horoscope, period, overall, areas }) {
                   <Text style={[styles.glanceScore, { color: fg(1) }]}>
                     {area.score !== null ? area.score : "–"}
                   </Text>
-                  <Text style={[styles.glanceLabel, { color: fg(0.65) }]} numberOfLines={1}>
+                  <Text style={[styles.glanceLabel, { color: fg(0.65) }]} numberOfLines={1} adjustsFontSizeToFit>
                     {area.label}
                   </Text>
                 </View>
@@ -697,6 +729,7 @@ function Hero({ horoscope, period, overall, areas }) {
 
 function AreaList({ areas }) {
   const t = useTheme();
+  const tr = useT();
   const [open, setOpen] = useState(null);
 
   const toggle = (key) => {
@@ -709,6 +742,7 @@ function AreaList({ areas }) {
       {areas.map((area, index) => {
         const isOpen = open === area.key;
         const status = STATUS[area.status];
+        const statusLabel = tr(status.labelKey);
 
         return (
           <View key={area.key} style={index > 0 && styles.divider}>
@@ -717,7 +751,7 @@ function AreaList({ areas }) {
               style={styles.areaRow}
               accessibilityRole="button"
               accessibilityState={{ expanded: isOpen }}
-              accessibilityLabel={`${area.label}: ${status.label}`}
+              accessibilityLabel={tr("mylife.areaA11y", { area: area.label, status: statusLabel })}
             >
               <Medallion icon={area.icon} size={46} active={isOpen} />
 
@@ -726,7 +760,7 @@ function AreaList({ areas }) {
                   <Text style={styles.areaName}>{area.label}</Text>
                   <View style={[styles.statusPill, { backgroundColor: status.bg }]}>
                     <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-                    <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+                    <Text style={[styles.statusText, { color: status.color }]} numberOfLines={1}>{statusLabel}</Text>
                   </View>
                 </View>
                 {!!area.title && (
@@ -766,18 +800,19 @@ function AreaList({ areas }) {
 
 function Guidance({ title, dos, donts }) {
   const t = useTheme();
+  const tr = useT();
   if (!dos.length && !donts.length) return null;
 
   return (
     <>
-      <SectionTitle overline="GUIDANCE">{title}</SectionTitle>
+      <SectionTitle overline={tr("mylife.guidance")}>{title}</SectionTitle>
       <View style={styles.guideRow}>
         {dos.length > 0 && (
           <Card style={{ flex: 1 }} contentStyle={styles.guideCard} art={false}>
             <View style={[styles.guideAccent, { backgroundColor: t.accent }]} />
             <View style={styles.guideHead}>
               <Medallion icon="check" size={28} active />
-              <Text style={styles.guideHeading}>Do</Text>
+              <Text style={styles.guideHeading}>{tr("mylife.do")}</Text>
             </View>
             {dos.map((item, index) => (
               <View key={`do-${index}`} style={styles.guideItem}>
@@ -791,7 +826,7 @@ function Guidance({ title, dos, donts }) {
           <Card style={{ flex: 1 }} contentStyle={styles.guideCard} art={false} tone="ivory">
             <View style={styles.guideHead}>
               <Medallion icon="close" size={28} />
-              <Text style={styles.guideHeading}>Avoid</Text>
+              <Text style={styles.guideHeading}>{tr("mylife.avoid")}</Text>
             </View>
             {donts.map((item, index) => (
               <View key={`dont-${index}`} style={styles.guideItem}>
@@ -839,6 +874,7 @@ function useCurrentSlots(timing, count = 6) {
 
 function BestWindow({ timing }) {
   const t = useTheme();
+  const tr = useT();
   const slots = useCurrentSlots(timing).map((slot) => ({
     time: toText(slot?.time),
     status: toText(slot?.status).toLowerCase(),
@@ -847,7 +883,7 @@ function BestWindow({ timing }) {
 
   return (
     <>
-      <SectionTitle overline="TIMING" note="Planetary hours">Your best window</SectionTitle>
+      <SectionTitle overline={tr("mylife.timing")} note={tr("mylife.planetaryHours")}>{tr("mylife.bestWindow")}</SectionTitle>
       <Card art={false}>
         <View style={styles.windowTrack}>
           {slots.map((slot, index) => {
@@ -856,7 +892,9 @@ function BestWindow({ timing }) {
 
             return (
               <View key={index} style={styles.windowItem}>
-                <Text style={[styles.windowNow, { color: t.accent }, !slot.current && { opacity: 0 }]}>NOW</Text>
+                <Text style={[styles.windowNow, { color: t.accent }, !slot.current && { opacity: 0 }]} numberOfLines={1}>
+                  {tr("mylife.now")}
+                </Text>
                 <View style={[styles.windowBar, slot.current && [styles.windowBarCurrent, { borderColor: t.accent }]]}>
                   {isBest ? (
                     <View style={[StyleSheet.absoluteFill, { borderRadius: 12, backgroundColor: t.accent }]} />
@@ -871,8 +909,12 @@ function BestWindow({ timing }) {
                   {isBest && <Icon name="white-balance-sunny" size={15} color={C.CARD} />}
                 </View>
                 <Text style={[styles.windowTime, isBest && { color: t.accent, fontFamily: F.bold }]}>{slot.time}</Text>
-                <Text style={[styles.windowStatus, isBest && { color: t.accent, fontFamily: F.bold }]}>
-                  {isBest ? "Best" : isAvoid ? "Avoid" : "Neutral"}
+                <Text
+                  style={[styles.windowStatus, isBest && { color: t.accent, fontFamily: F.bold }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {tr(isBest ? "mylife.slot.best" : isAvoid ? "mylife.slot.avoid" : "mylife.slot.neutral")}
                 </Text>
               </View>
             );
@@ -896,6 +938,7 @@ function LuckyTile({ watermark, label, children }) {
 
 function Lucky({ lucky }) {
   const t = useTheme();
+  const tr = useT();
   const colours = Array.isArray(lucky?.colours) ? lucky.colours : [];
   const numbers = toList(lucky?.numbers);
   const letters = toList(lucky?.letters);
@@ -904,10 +947,10 @@ function Lucky({ lucky }) {
 
   return (
     <>
-      <SectionTitle overline="LUCK">Lucky for you</SectionTitle>
+      <SectionTitle overline={tr("mylife.luck")}>{tr("mylife.luckyForYou")}</SectionTitle>
       <View style={styles.luckyRow}>
         {colours.length > 0 && (
-          <LuckyTile watermark="palette-outline" label="Colours">
+          <LuckyTile watermark="palette-outline" label={tr("mylife.colours")}>
             <View style={styles.swatches}>
               {colours.slice(0, 3).map((c, i) => (
                 <View
@@ -923,13 +966,13 @@ function Lucky({ lucky }) {
         )}
 
         {numbers.length > 0 && (
-          <LuckyTile watermark="numeric" label="Numbers">
+          <LuckyTile watermark="numeric" label={tr("mylife.numbers")}>
             <Text style={[styles.luckyBig, { color: t.accent }]}>{numbers.slice(0, 3).join(" · ")}</Text>
           </LuckyTile>
         )}
 
         {letters.length > 0 && (
-          <LuckyTile watermark="alphabetical-variant" label="Letters">
+          <LuckyTile watermark="alphabetical-variant" label={tr("mylife.letters")}>
             <Text style={[styles.luckyBig, { color: t.accent }]}>{letters.slice(0, 3).join(" · ")}</Text>
           </LuckyTile>
         )}
@@ -940,10 +983,11 @@ function Lucky({ lucky }) {
 
 function Tips({ tips }) {
   const t = useTheme();
+  const tr = useT();
   const cosmic = toText(tips?.cosmic);
   const people = [
-    { key: "singles", icon: "account-outline", label: "For singles" },
-    { key: "couples", icon: "account-multiple-outline", label: "For couples" },
+    { key: "singles", icon: "account-outline", label: tr("mylife.forSingles") },
+    { key: "couples", icon: "account-multiple-outline", label: tr("mylife.forCouples") },
   ].filter((row) => toText(tips?.[row.key]));
 
   if (!cosmic && !people.length) return null;
@@ -955,7 +999,7 @@ function Tips({ tips }) {
           <Text style={[styles.quoteMark, { color: t.accent }]}>“</Text>
           <View style={styles.quoteHead}>
             <Icon name="star-four-points" size={12} color={C.GOLD} />
-            <Text style={[styles.quoteLabel, { color: t.accent }]}>Cosmic tip</Text>
+            <Text style={[styles.quoteLabel, { color: t.accent }]}>{tr("mylife.cosmicTip")}</Text>
           </View>
           <Text style={styles.quoteText}>{cosmic}</Text>
         </View>

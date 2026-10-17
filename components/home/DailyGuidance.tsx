@@ -16,6 +16,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 
+import { useLanguage, useT } from "../../lib/i18n";
 import { loadMyLifeHoroscope, useMyLifeStore } from "../stores/myLifeStore";
 import useProfilesStore from "../stores/profilesStore";
 import { useUserStore } from "../stores/userStore";
@@ -26,12 +27,19 @@ const AnimatedPath = Reanimated.createAnimatedComponent(Path);
 
 type AreaKey = "love" | "career" | "money" | "health" | "travel";
 
-const AREAS: { key: AreaKey; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
-  { key: "love", label: "Love", icon: "heart-outline" },
-  { key: "career", label: "Career", icon: "briefcase-outline" },
-  { key: "money", label: "Money", icon: "wallet-outline" },
-  { key: "health", label: "Health", icon: "meditation" },
-  { key: "travel", label: "Travel", icon: "airplane" },
+// labelKey: shown with t() at render time, so it follows the app language.
+const AREAS: { key: AreaKey; labelKey: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
+  { key: "love", labelKey: "home.area.love", icon: "heart-outline" },
+  { key: "career", labelKey: "home.area.career", icon: "briefcase-outline" },
+  { key: "money", labelKey: "home.area.money", icon: "wallet-outline" },
+  { key: "health", labelKey: "home.area.health", icon: "meditation" },
+  { key: "travel", labelKey: "home.area.travel", icon: "airplane" },
+];
+
+// Zodiac signs the backend sends in English, shown in the app language.
+const SIGNS = [
+  "aries", "taurus", "gemini", "cancer", "leo", "virgo",
+  "libra", "scorpio", "sagittarius", "capricorn", "aquarius", "pisces",
 ];
 
 const toText = (value: unknown): string => {
@@ -45,12 +53,16 @@ const toText = (value: unknown): string => {
   return "";
 };
 
-const todayLabel = () =>
-  new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+const todayLabel = (language: string) =>
+  new Intl.DateTimeFormat(language === "hi" ? "hi-IN" : "en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
 
-// Same wording as My Life's "Overall energy".
-const energyLabel = (score: number) =>
-  score >= 80 ? "High energy" : score >= 70 ? "Balanced energy" : "Go gently";
+// Same wording as My Life's "Overall energy" (translation key).
+const energyKey = (score: number) =>
+  score >= 80 ? "home.energy.high" : score >= 70 ? "home.energy.balanced" : "home.energy.gentle";
 
 /* ---------------- sky: background by time of day (palette only) ---------------- */
 
@@ -155,6 +167,7 @@ function Rays({ size }: { size: number }) {
 const SUN = 44; // sun area (halo + rays)
 
 function DayArc({ width, hour, stars }: { width: number; hour: number; stars: boolean }) {
+  const tr = useT();
   const { day, t } = skyPosition(hour);
   const tone = day ? C.GOLD : C.PLUM;
   const still = useReducedMotion();
@@ -232,8 +245,8 @@ function DayArc({ width, hour, stars }: { width: number; hour: number; stars: bo
         )}
       </Reanimated.View>
 
-      <Text style={[styles.arcLabel, { left: EDGE - 10 }]}>{day ? "6 AM" : "6 PM"}</Text>
-      <Text style={[styles.arcLabel, { right: EDGE - 10 }]}>{day ? "6 PM" : "6 AM"}</Text>
+      <Text style={[styles.arcLabel, { left: EDGE - 10 }]}>{day ? tr("home.arc.sixAm") : tr("home.arc.sixPm")}</Text>
+      <Text style={[styles.arcLabel, { right: EDGE - 10 }]}>{day ? tr("home.arc.sixPm") : tr("home.arc.sixAm")}</Text>
     </View>
   );
 }
@@ -260,6 +273,8 @@ function useCountUp(target: number | null, still: boolean) {
 /* ---------------- Home hero ---------------- */
 
 export default function DailyGuidance() {
+  const t = useT();
+  const language = useLanguage();
   const activeProfileId = useUserStore((state) => state.user?.active_profile_id);
   const today = useMyLifeStore((state) =>
     activeProfileId ? state.profiles[activeProfileId]?.daily : null
@@ -294,7 +309,8 @@ export default function DailyGuidance() {
     return () => {
       cancelled = true;
     };
-  }, [activeProfileId, needsBirthDetails]);
+    // language: reload the reading in a newly chosen language.
+  }, [activeProfileId, needsBirthDetails, language]);
 
   // Move the sun along every few minutes.
   useEffect(() => {
@@ -315,13 +331,18 @@ export default function DailyGuidance() {
 
   const sky = skyFor(hour);
   const sign = toText(today?.sign);
+  const signKey = sign.toLowerCase();
+  const signLabel = SIGNS.includes(signKey) ? t(`home.sign.${signKey}`) : sign;
   const title = needsBirthDetails
-    ? "Complete your birth details"
-    : toText(today?.title) || "Your day, guided by the stars";
+    ? t("home.guidance.completeTitle")
+    : toText(today?.title) || t("home.guidance.defaultTitle");
   const text = needsBirthDetails
-    ? `Add the birth date, time and place for ${activeProfile?.name || "this profile"} to see today’s guidance.`
+    ? activeProfile?.name
+      ? t("home.guidance.completeText", { name: activeProfile.name })
+      : t("home.guidance.completeTextNoName")
     : toText(today?.text) ||
-      (loading ? "Reading the stars for your day…" : "Your daily guidance will appear here.");
+      (loading ? t("home.guidance.loading") : t("home.guidance.empty"));
+  const ctaLabel = needsBirthDetails ? t("home.guidance.completeCta") : t("home.guidance.readCta");
 
   const openGuidance = () =>
     needsBirthDetails
@@ -342,7 +363,9 @@ export default function DailyGuidance() {
           {overall !== null ? (
             <>
               <Text style={styles.scoreValue}>{shownScore}</Text>
-              <Text style={styles.scoreLabel}>{energyLabel(overall)}</Text>
+              <Text style={styles.scoreLabel} numberOfLines={1}>
+                {t(energyKey(overall))}
+              </Text>
             </>
           ) : loading ? (
             <ActivityIndicator color={C.PLUM} style={{ marginTop: 6 }} />
@@ -354,12 +377,14 @@ export default function DailyGuidance() {
         <View style={styles.content}>
           <View style={styles.meta}>
             <Text style={styles.date} numberOfLines={1}>
-              {todayLabel()}
+              {todayLabel(language)}
             </Text>
             {!!sign && !needsBirthDetails && (
               <View style={styles.chip}>
                 <MaterialCommunityIcons name="moon-waning-crescent" size={12} color={C.PLUM} />
-                <Text style={styles.chipText}>Moon in {sign}</Text>
+                <Text style={styles.chipText} numberOfLines={1}>
+                  {t("home.guidance.moonIn", { sign: signLabel })}
+                </Text>
               </View>
             )}
           </View>
@@ -375,8 +400,8 @@ export default function DailyGuidance() {
                 <View key={area.key} style={[styles.area, index > 0 && styles.areaLine]}>
                   <MaterialCommunityIcons name={area.icon} size={16} color={C.PLUM} />
                   <Text style={styles.areaScore}>{area.score ?? "–"}</Text>
-                  <Text style={styles.areaLabel} numberOfLines={1}>
-                    {area.label}
+                  <Text style={styles.areaLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                    {t(area.labelKey)}
                   </Text>
                 </View>
               ))}
@@ -385,12 +410,14 @@ export default function DailyGuidance() {
 
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel={needsBirthDetails ? "Complete profile" : "Read today’s guidance"}
+            accessibilityLabel={ctaLabel}
             onPress={openGuidance}
             activeOpacity={0.85}
             style={styles.cta}
           >
-            <Text style={styles.ctaText}>{needsBirthDetails ? "Complete profile" : "Read today’s guidance"}</Text>
+            <Text style={styles.ctaText} numberOfLines={1}>
+              {ctaLabel}
+            </Text>
             <MaterialCommunityIcons name="arrow-right" size={16} color={C.CARD} />
           </TouchableOpacity>
         </View>

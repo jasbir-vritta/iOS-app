@@ -10,6 +10,7 @@ import {
 } from "../../lib/auth";
 
 import { identifyUser, resetAnalytics } from "../../lib/analytics";
+import { syncLanguageWithAccount } from "../../lib/i18n";
 import { unregisterPushNotifications } from "../../lib/notifications";
 import useProfilesStore from "./profilesStore";
 import { useUserStore } from "./userStore";
@@ -184,6 +185,9 @@ const useAuthStore = create<AuthState>((set) => ({
                 .updateUser(data);
 
             // Mixpanel: this launch's events belong to this user.
+            // App language: the account's, unless this phone has its own choice.
+            syncLanguageWithAccount(data.language);
+
             identifyUser(data.user_id, {
                 name: data.name,
                 phone: data.phoneNumber,

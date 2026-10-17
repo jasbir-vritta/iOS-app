@@ -15,6 +15,7 @@ import { Text } from "../ui/BrandText";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { LegalDocument } from "../constants/legal";
+import { useLanguage, useT } from "../../lib/i18n";
 
 // Shared layout for Privacy Policy and Terms & Conditions:
 // header with share, "Last updated" card, numbered expandable sections.
@@ -22,6 +23,8 @@ import type { LegalDocument } from "../constants/legal";
 
 type Props = {
   document: LegalDocument;
+  // Translated document name for the header/share (body text stays English).
+  title?: string;
   // Top card heading; defaults to "Last updated" (card text = document.lastUpdated).
   cardTitle?: string;
   icon: React.ComponentProps<typeof Icon>["name"];
@@ -48,7 +51,11 @@ const shadow = {
   elevation: 2,
 };
 
-export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last updated" }: Props) {
+export function LegalDocumentScreen({ document, title, icon, accent, cardTitle }: Props) {
+  const t = useT();
+  const language = useLanguage();
+  const docTitle = title ?? document.title;
+  const lastUpdatedLabel = cardTitle ?? t("legal.lastUpdated");
   // First section starts open, like the design.
   const [open, setOpen] = useState<number | null>(0);
 
@@ -59,14 +66,14 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
 
   const share = () => {
     const text = [
-      `${document.title} — Vritta`,
-      `${cardTitle} ${document.lastUpdated}`,
+      t("legal.shareHeading", { title: docTitle }),
+      t("legal.shareUpdated", { label: lastUpdatedLabel, date: document.lastUpdated }),
       ...document.sections.map(
         (section, i) => `\n${i + 1}. ${section.title}\n${section.paragraphs.join("\n\n")}`
       ),
     ].join("\n");
 
-    Share.share({ title: document.title, message: text }).catch(() => {});
+    Share.share({ title: docTitle, message: text }).catch(() => {});
   };
 
   return (
@@ -79,7 +86,7 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
           <Pressable
             onPress={() => router.back()}
             hitSlop={10}
-            accessibilityLabel="Back"
+            accessibilityLabel={t("common.back")}
             style={styles.headerButton}
           >
             <Icon name="chevron-left" size={24} color={C.ink} />
@@ -87,17 +94,17 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
 
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {document.title}
+              {docTitle}
             </Text>
             <Text style={styles.headerSub} numberOfLines={1}>
-              {`${document.sections.length} sections · tap one to read`}
+              {t("legal.subtitle", { count: document.sections.length })}
             </Text>
           </View>
 
           <Pressable
             onPress={share}
             hitSlop={10}
-            accessibilityLabel={`Share ${document.title}`}
+            accessibilityLabel={t("legal.share", { title: docTitle })}
             style={styles.headerButton}
           >
             <Icon name="export-variant" size={19} color={C.plum} />
@@ -111,12 +118,15 @@ export function LegalDocumentScreen({ document, icon, accent, cardTitle = "Last 
               <Icon name={icon} size={24} color={accent.color} />
             </View>
             <View style={styles.infoText}>
-              <Text style={styles.infoTitle}>{cardTitle}</Text>
+              <Text style={styles.infoTitle}>{lastUpdatedLabel}</Text>
               <Text style={styles.infoValue}>{document.lastUpdated}</Text>
             </View>
           </View>
 
-          <Text style={styles.overline}>{`${document.sections.length} SECTIONS`}</Text>
+          {/* Legal text is kept in English (not machine-translated). */}
+          {language !== "en" && <Text style={styles.englishNote}>{t("legal.englishOnly")}</Text>}
+
+          <Text style={styles.overline}>{t("legal.sectionCount", { count: document.sections.length })}</Text>
 
           {/* Sections */}
           <View style={styles.list}>
@@ -219,6 +229,7 @@ const styles = StyleSheet.create({
   infoText: { marginLeft: 14, flex: 1 },
   infoTitle: { fontSize: 14.5, fontWeight: "700", color: C.ink },
   infoValue: { marginTop: 2, fontSize: 13, color: C.muted },
+  englishNote: { marginTop: 12, fontSize: 12.5, lineHeight: 18, color: C.muted },
   overline: { marginTop: 20, marginBottom: 8, fontSize: 11, fontWeight: "700", letterSpacing: 1.3, color: C.gold },
   list: {
     borderRadius: 20,

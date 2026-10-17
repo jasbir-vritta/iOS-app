@@ -28,6 +28,7 @@ import {
 import useProfilesStore from "../../../components/stores/profilesStore";
 import { useUserStore } from "../../../components/stores/userStore";
 import { useAvatarUpload } from "../../../components/utils/useAvatarUpload";
+import { translate, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -43,8 +44,22 @@ const C = {
   SUCCESS: "#2E7D4F",
 };
 
-// Same choices as Add profile (the backend accepts only these).
+// Same choices as Add profile (the backend accepts only these; labels are translated).
 const RELATIONS = ["Parent", "Child", "Spouse", "Partner", "Sibling", "In-Law", "Grandparent", "Grandchild", "Relative", "Friend", "Other"];
+
+// Shown label for a saved relation value ("Parent" -> "माता-पिता").
+const relationLabel = (t: (key: string) => string, value: string) => {
+  const key = `profiles.relation.${value}`;
+  const label = t(key);
+  return label === key ? value : label;
+};
+
+// Marital status values stay English (saved); only the label is translated.
+const MARITAL = [
+  { value: "Single", label: "profiles.marital.single" },
+  { value: "Married", label: "profiles.marital.married" },
+  { value: "Other", label: "common.other" },
+];
 
 type PlaceResult = {
   name: string;
@@ -99,6 +114,7 @@ const formatTime = (time: string) => {
 
 export default function EditProfile() {
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   const user = useUserStore(
     (state) => state.user
@@ -334,8 +350,8 @@ export default function EditProfile() {
   const handleUpdate = async () => {
     if (!activeProfileId) {
       Alert.alert(
-        "No profile selected",
-        "Please select a profile and try again."
+        translate("profiles.noneSelected"),
+        translate("profiles.noneSelectedBody")
       );
       return;
     }
@@ -348,8 +364,8 @@ export default function EditProfile() {
       !placeOfBirth.trim()
     ) {
       Alert.alert(
-        "Missing information",
-        "Please fill in name, gender, birth date, birth time and birth place."
+        translate("profiles.missingTitle"),
+        translate("profiles.missingAll")
       );
       return;
     }
@@ -357,8 +373,8 @@ export default function EditProfile() {
     // Coordinates come only from a picked suggestion.
     if (!lat || !lon) {
       Alert.alert(
-        "Missing information",
-        "Please search and select the birth place from the list."
+        translate("profiles.missingTitle"),
+        translate("profiles.missingPlace")
       );
       return;
     }
@@ -397,7 +413,7 @@ export default function EditProfile() {
         throw new Error(
           typeof data?.detail === "string"
             ? data.detail
-            : "Failed to update profile"
+            : translate("profiles.updateFailed")
         );
       }
 
@@ -414,10 +430,10 @@ export default function EditProfile() {
       );
 
       Alert.alert(
-        "Unable to update profile",
+        translate("profiles.updateErrorTitle"),
         error instanceof Error
           ? error.message
-          : "Something went wrong. Please try again."
+          : translate("common.error")
       );
     } finally {
       setSaving(false);
@@ -430,31 +446,31 @@ export default function EditProfile() {
         <View style={styles.emptyIcon}>
           <Icon name="account-question-outline" size={28} color={C.PLUM} />
         </View>
-        <Text style={styles.emptyTitle}>No profile selected</Text>
+        <Text style={styles.emptyTitle}>{t("profiles.noneSelected")}</Text>
         <Pressable onPress={() => router.back()} style={styles.emptyButton}>
-          <Text style={styles.emptyButtonText}>Go back</Text>
+          <Text style={styles.emptyButtonText}>{t("profiles.goBack")}</Text>
         </Pressable>
       </View>
     );
   }
 
   const genders = [
-    { value: "male", label: "Male", icon: "gender-male" },
-    { value: "female", label: "Female", icon: "gender-female" },
-    { value: "other", label: "Other", icon: "gender-non-binary" },
+    { value: "male", label: t("common.male"), icon: "gender-male" },
+    { value: "female", label: t("common.female"), icon: "gender-female" },
+    { value: "other", label: t("common.other"), icon: "gender-non-binary" },
   ] as const;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Edit profile</Text>
+          <Text style={styles.title}>{t("profiles.editTitle")}</Text>
           <Text style={styles.subtitle}>
-            {isOwnProfile ? "Update your details" : "Update their details"}
+            {isOwnProfile ? t("profiles.editSubtitleOwn") : t("profiles.editSubtitleOther")}
           </Text>
         </View>
       </View>
@@ -474,7 +490,7 @@ export default function EditProfile() {
               onPress={pickAndUpload}
               disabled={uploadingPhoto}
               style={styles.avatarRing}
-              accessibilityLabel="Change photo"
+              accessibilityLabel={t("profile.changePhoto")}
             >
               <View style={styles.avatar}>
                 {activeProfile?.avatar_url ? (
@@ -495,11 +511,11 @@ export default function EditProfile() {
           </View>
 
           <Text style={styles.photoName} numberOfLines={1}>
-            {name.trim() || "Profile"}
+            {name.trim() || t("profiles.profile")}
           </Text>
           <Text style={styles.photoSub} numberOfLines={1}>
-            {!isOwnProfile && relation ? `${relation} · ` : ""}
-            {uploadingPhoto ? "Uploading photo…" : "Tap the photo to change it"}
+            {!isOwnProfile && relation ? `${relationLabel(t, relation)} · ` : ""}
+            {uploadingPhoto ? t("profiles.uploadingPhoto") : t("profiles.photoChange")}
           </Text>
         </Reanimated.View>
 
@@ -509,16 +525,16 @@ export default function EditProfile() {
             <View style={styles.cardIcon}>
               <Icon name={isOwnProfile ? "account-outline" : "account-heart-outline"} size={18} color={C.PLUM} />
             </View>
-            <Text style={styles.cardTitle}>{isOwnProfile ? "About you" : "About them"}</Text>
+            <Text style={styles.cardTitle}>{isOwnProfile ? t("profiles.aboutYou") : t("profiles.aboutThem")}</Text>
           </View>
 
-          <Text style={styles.label}>Full name</Text>
+          <Text style={styles.label}>{t("profiles.fullName")}</Text>
           <View style={styles.inputRow}>
             <Icon name="account-outline" size={19} color={C.MUTED} />
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Enter full name"
+              placeholder={t("profiles.fullNamePlaceholder")}
               placeholderTextColor={C.MUTED}
               style={styles.inputText}
             />
@@ -527,7 +543,7 @@ export default function EditProfile() {
           {/* Relation: only for loved ones' profiles */}
           {!isOwnProfile && (
             <>
-              <Text style={styles.label}>Relation</Text>
+              <Text style={styles.label}>{t("profiles.relation")}</Text>
               <Pressable
                 onPress={() => setRelationOpen((open) => !open)}
                 style={[styles.inputRow, relationOpen && styles.inputRowActive]}
@@ -535,7 +551,7 @@ export default function EditProfile() {
                 accessibilityState={{ expanded: relationOpen }}
               >
                 <Icon name="family-tree" size={19} color={C.MUTED} />
-                <Text style={[styles.inputText, !relation && { color: C.MUTED }]}>{relation || "Select"}</Text>
+                <Text style={[styles.inputText, !relation && { color: C.MUTED }]}>{relation ? relationLabel(t, relation) : t("profiles.select")}</Text>
                 <Icon name={relationOpen ? "chevron-up" : "chevron-down"} size={20} color={C.MUTED} />
               </Pressable>
 
@@ -552,7 +568,7 @@ export default function EditProfile() {
                         }}
                         style={[styles.relationChip, selected && styles.chipSelected]}
                       >
-                        <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{option}</Text>
+                        <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{relationLabel(t, option)}</Text>
                       </Pressable>
                     );
                   })}
@@ -561,7 +577,7 @@ export default function EditProfile() {
             </>
           )}
 
-          <Text style={styles.label}>Gender</Text>
+          <Text style={styles.label}>{t("profiles.gender")}</Text>
           <View style={styles.segment}>
             {genders.map((option) => {
               const selected = gender === option.value;
@@ -578,17 +594,19 @@ export default function EditProfile() {
             })}
           </View>
 
-          <Text style={styles.label}>Marital status</Text>
+          <Text style={styles.label}>{t("profiles.maritalStatus")}</Text>
           <View style={styles.segment}>
-            {["Single", "Married", "Other"].map((option) => {
-              const selected = maritalStatus === option;
+            {MARITAL.map((option) => {
+              const selected = maritalStatus === option.value;
               return (
                 <Pressable
-                  key={option}
-                  onPress={() => setMaritalStatus(option)}
+                  key={option.value}
+                  onPress={() => setMaritalStatus(option.value)}
                   style={[styles.segmentItem, selected && styles.segmentItemActive]}
                 >
-                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{option}</Text>
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]} numberOfLines={1}>
+                    {t(option.label)}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -602,14 +620,14 @@ export default function EditProfile() {
               <Icon name="star-four-points-outline" size={17} color={C.PLUM} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Birth details</Text>
-              <Text style={styles.cardSub}>Changing these updates the Kundli and horoscope</Text>
+              <Text style={styles.cardTitle}>{t("profiles.birthDetails")}</Text>
+              <Text style={styles.cardSub}>{t("profiles.birthDetailsEditSub")}</Text>
             </View>
           </View>
 
           <View style={styles.twoCol}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Date</Text>
+              <Text style={styles.label}>{t("profiles.date")}</Text>
               <Pressable
                 onPress={() => {
                   setShowTimePicker(false);
@@ -619,13 +637,13 @@ export default function EditProfile() {
               >
                 <Icon name="calendar-month-outline" size={18} color={C.MUTED} />
                 <Text style={[styles.inputText, !dateOfBirth && { color: C.MUTED }]} numberOfLines={1}>
-                  {dateOfBirth || "Select"}
+                  {dateOfBirth || t("profiles.select")}
                 </Text>
               </Pressable>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Time</Text>
+              <Text style={styles.label}>{t("profiles.time")}</Text>
               <Pressable
                 onPress={() => {
                   setShowDatePicker(false);
@@ -635,7 +653,7 @@ export default function EditProfile() {
               >
                 <Icon name="clock-outline" size={18} color={C.MUTED} />
                 <Text style={[styles.inputText, !timeOfBirth && { color: C.MUTED }]} numberOfLines={1}>
-                  {formatTime(timeOfBirth) || "Select"}
+                  {formatTime(timeOfBirth) || t("profiles.select")}
                 </Text>
               </Pressable>
             </View>
@@ -653,7 +671,7 @@ export default function EditProfile() {
                 onChange={handleDateChange}
               />
               <Pressable onPress={() => setShowDatePicker(false)} style={styles.pickerDone}>
-                <Text style={styles.pickerDoneText}>Done</Text>
+                <Text style={styles.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
@@ -669,12 +687,12 @@ export default function EditProfile() {
                 onChange={handleTimeChange}
               />
               <Pressable onPress={() => setShowTimePicker(false)} style={styles.pickerDone}>
-                <Text style={styles.pickerDoneText}>Done</Text>
+                <Text style={styles.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
 
-          <Text style={styles.label}>Place</Text>
+          <Text style={styles.label}>{t("profiles.place")}</Text>
           <View style={styles.inputRow}>
             <Icon name="map-marker-outline" size={19} color={C.MUTED} />
             <TextInput
@@ -685,7 +703,7 @@ export default function EditProfile() {
                 setLon("");
                 setTzone("");
               }}
-              placeholder="Search city"
+              placeholder={t("profiles.searchCity")}
               placeholderTextColor={C.MUTED}
               style={styles.inputText}
             />
@@ -730,13 +748,13 @@ export default function EditProfile() {
             ) : (
               <>
                 <Icon name="check" size={19} color={C.CARD} />
-                <Text style={styles.updateButtonText}>Save changes</Text>
+                <Text style={styles.updateButtonText}>{t("profiles.saveChanges")}</Text>
               </>
             )}
           </Pressable>
           <View style={styles.footRow}>
             <Icon name="shield-check-outline" size={14} color={C.MUTED} />
-            <Text style={styles.footText}>Birth details stay private to your account</Text>
+            <Text style={styles.footText}>{t("profiles.privateNote")}</Text>
           </View>
         </Reanimated.View>
       </ScrollView>

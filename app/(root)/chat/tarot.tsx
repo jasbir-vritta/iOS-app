@@ -28,6 +28,7 @@ import {
   refreshWalletCredits,
 } from "../../../components/stores/userStore";
 import { API_URL, getAccessToken } from "../../../lib/auth";
+import { useT } from "../../../lib/i18n";
 
 /* ============================================================
  * THEME
@@ -197,8 +198,6 @@ type ChatItem =
 
 type DrawnCard = TarotCard & { position?: string };
 
-const ORDINALS = ["1st", "2nd", "3rd"];
-
 type Phase = "pick" | "waiting" | "ready" | null;
 
 /* ============================================================
@@ -288,6 +287,7 @@ function CardBack({
  * ============================================================ */
 
 export default function TarotChat() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   // Keeps the input above the keyboard on Android (edge-to-edge).
   const keyboard = useKeyboardInset();
@@ -1045,26 +1045,28 @@ export default function TarotChat() {
   const overlayTitle =
     phase === "pick"
       ? plural
-        ? `Choose your ${ORDINALS[Math.min(picked.length, 2)]} card`
-        : "Choose your card"
+        ? t("chat.tarot.chooseCard", {
+            ordinal: t(`chat.tarot.ordinal${Math.min(picked.length, 2) + 1}`),
+          })
+        : t("chat.tarot.chooseYourCard")
       : phase === "waiting"
-        ? `${astrologerName || "Your astrologer"} is reading`
+        ? t("chat.tarot.isReading", { name: astrologerName || t("chat.yourAstrologer") })
         : plural
-          ? "Your cards are ready"
-          : "Your card is ready";
+          ? t("chat.tarot.readyMany")
+          : t("chat.tarot.ready");
 
   const overlaySubtitle =
     phase === "pick"
       ? plural
-        ? `Pick ${needed} cards · ${picked.length} of ${needed} chosen`
-        : "This card will reveal your reading"
+        ? t("chat.tarot.pickProgress", { needed, picked: picked.length })
+        : t("chat.tarot.revealHint")
       : phase === "waiting"
         ? plural
-          ? "your cards"
-          : "your card"
+          ? t("chat.tarot.yourCardsLower")
+          : t("chat.tarot.yourCardLower")
         : plural
-          ? "Your cards"
-          : "Your card";
+          ? t("chat.tarot.yourCards")
+          : t("chat.tarot.yourCard");
 
   /* ============================================================
    * RENDER
@@ -1136,7 +1138,7 @@ export default function TarotChat() {
                 className="text-[16px] font-semibold text-[#1C1820]"
                 numberOfLines={1}
               >
-                {astrologerName || "Astrologer"}
+                {astrologerName || t("chat.astrologer")}
               </Text>
 
               <View className="mt-1 flex-row items-center">
@@ -1161,7 +1163,7 @@ export default function TarotChat() {
                     fontWeight: "500",
                   }}
                 >
-                  {astrologer?.online ? "Online" : "Offline"}
+                  {astrologer?.online ? t("chat.online") : t("chat.offline")}
                 </Text>
               </View>
 
@@ -1177,7 +1179,7 @@ export default function TarotChat() {
     color="#FFFFFF"
   />
   <Text className="ml-2 text-[15px] font-semibold text-white">
-    Remaining time: {formatCountdown(timeLeft)}
+    {t("chat.remainingTime", { time: formatCountdown(timeLeft) })}
   </Text>
 </View>
         {/* CHAT */}
@@ -1283,11 +1285,11 @@ export default function TarotChat() {
                         >
                           {item.used
                             ? item.count > 1
-                              ? "Cards picked"
-                              : "Card picked"
+                              ? t("chat.tarot.cardsPicked")
+                              : t("chat.tarot.cardPicked")
                             : item.count > 1
-                              ? `Pick your ${item.count} cards`
-                              : "Pick your card"}
+                              ? t("chat.tarot.pickYourCards", { count: item.count })
+                              : t("chat.tarot.pickYourCard")}
                         </Text>
                       </Pressable>
                     </View>
@@ -1337,7 +1339,7 @@ export default function TarotChat() {
                 </View>
 
                 <Text className="ml-1 mt-1 text-[11px] text-[#68616A]">
-                  Typing…
+                  {t("chat.typingEllipsis")}
                 </Text>
               </View>
             )}
@@ -1371,6 +1373,7 @@ export default function TarotChat() {
                 }
                 hitSlop={12}
                 className="absolute right-5 top-16 z-10"
+                accessibilityLabel={t("common.close")}
               >
                 <MaterialCommunityIcons
                   name="close"
@@ -1552,7 +1555,7 @@ export default function TarotChat() {
                   />
 
                   <Text className="mt-2 text-[15px] text-[#D9CEC1]">
-                    Swipe to browse. Tap to pick.
+                    {t("chat.tarot.swipeHint")}
                   </Text>
                 </View>
               </>
@@ -1624,7 +1627,7 @@ export default function TarotChat() {
                     }}
                   >
                     <Text className="text-[16px] text-[#D9CEC1]">
-                      Your Tarot reading is done
+                      {t("chat.tarot.readingDone")}
                     </Text>
                   </View>
 
@@ -1633,7 +1636,7 @@ export default function TarotChat() {
                     className="h-[54px] w-full items-center justify-center rounded-full bg-[#FFFDFC]"
                   >
                     <Text className="text-[18px] font-semibold text-[#2B1A3D]">
-                      Back to chat
+                      {t("chat.backToChat")}
                     </Text>
                   </Pressable>
                 </View>
@@ -1657,7 +1660,7 @@ export default function TarotChat() {
             <TextInput
               value={message}
               onChangeText={setMessage}
-              placeholder={connected ? "Type a message" : "Connecting..."}
+              placeholder={connected ? t("chat.typeMessage") : t("chat.connecting")}
               placeholderTextColor="#68616A"
               multiline
               textAlignVertical="center"

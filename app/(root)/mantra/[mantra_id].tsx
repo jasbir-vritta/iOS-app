@@ -8,7 +8,7 @@ import {
 import { File, Paths } from "expo-file-system";
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -46,6 +46,7 @@ import {useMantraStore} from "../../../components/stores/mantraStore";
 import {useUserStore} from "../../../components/stores/userStore";
 import { track, useScreenTime } from "../../../lib/analytics";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { useT } from "../../../lib/i18n";
 
 const TARGET_CHANTS = 108;
 // Chants done on this phone and not yet sent, per profile.
@@ -96,6 +97,13 @@ type MantraDetails = {
 
 const MANTRAS = mantrasData as MantraDetails[];
 
+// A mantra's translated name/deity/description (keyed by id), falling back to the
+// English data. Sanskrit lyrics are never translated.
+const pickText = (t: ReturnType<typeof useT>, key: string, fallback: string) => {
+  const text = t(key);
+  return text === key ? fallback : text;
+};
+
 function ProgressRing({
   count,
   size,
@@ -108,6 +116,7 @@ function ProgressRing({
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(count / TARGET_CHANTS, 1);
   const still = useReducedMotion();
+  const t = useT();
 
   // The ring glides to the new count, and the centre pulses once per chant.
   const fill = useSharedValue(progress);
@@ -168,7 +177,7 @@ function ProgressRing({
           <Text style={styles.countNumber}>{count}</Text>
           <Text style={styles.countTarget}> / {TARGET_CHANTS}</Text>
         </View>
-        <Text style={styles.progressLabel}>Chants this round</Text>
+        <Text style={styles.progressLabel}>{t("mantra.chantsThisRound")}</Text>
       </Reanimated.View>
     </View>
   );
@@ -479,6 +488,7 @@ function FloatingArt({
 export default function MantraDetailScreen() {
   const router = useRouter();
   const { height, width } = useWindowDimensions();
+  const t = useT();
 
   const params = useLocalSearchParams<{
     mantra_id?: string | string[];
@@ -490,6 +500,14 @@ export default function MantraDetailScreen() {
 
   const selectedMantra = MANTRAS.find((item) => item.id === mantraId);
   const mantra = selectedMantra ?? MANTRAS[0];
+  const text = useMemo(
+    () => ({
+      name: pickText(t, `mantra.name.${mantra.id}`, mantra.name),
+      deity: pickText(t, `mantra.deity.${mantra.id}`, mantra.deity),
+      description: pickText(t, `mantra.desc.${mantra.id}`, mantra.description),
+    }),
+    [t, mantra]
+  );
 
   // Analytics, per mantra (e.g. mars_mantra): visited_mars_mantra,
   // mars_mantra_time_spent, and mars_mantra_chanted with the chants of this
@@ -622,12 +640,16 @@ export default function MantraDetailScreen() {
         const bonus = data.streak_bonus_awarded ?? 0;
 
         Alert.alert(
-          bonus > 0 ? `${days}-day streak! 🔥` : "108 chants completed 🙏",
+          bonus > 0 ? t("mantra.streakAlertTitle", { days }) : t("mantra.roundAlertTitle"),
           [
-            `You earned ₹${data.credits_awarded}.`,
-            bonus > 0 ? `Streak bonus: +₹${bonus}.` : "",
-            days > 0 && bonus === 0 ? `Streak: ${days} day${days > 1 ? "s" : ""} in a row.` : "",
-            "Keep chanting — every chant counts on the leaderboard.",
+            t("mantra.youEarned", { amount: data.credits_awarded }),
+            bonus > 0 ? t("mantra.streakBonus", { bonus }) : "",
+            days > 0 && bonus === 0
+              ? days > 1
+                ? t("mantra.streakDaysMany", { days })
+                : t("mantra.streakDaysOne")
+              : "",
+            t("mantra.keepChanting"),
           ]
             .filter(Boolean)
             .join("\n")
@@ -638,7 +660,7 @@ export default function MantraDetailScreen() {
     } finally {
       sendingRef.current = false;
     }
-  }, [activeProfileId, claimMantra, savePending, totalKey]);
+  }, [activeProfileId, claimMantra, savePending, totalKey, t]);
 
   // Latest flush for timers/cleanup without re-running effects.
   const flushRef = useRef(flush);
@@ -755,8 +777,8 @@ export default function MantraDetailScreen() {
 
     if (!activeProfileId) {
       Alert.alert(
-        "Profile unavailable",
-        "Please select a profile before tracking mantra progress."
+        t("mantra.profileUnavailable"),
+        t("mantra.profileUnavailableText")
       );
       return;
     }
@@ -776,18 +798,18 @@ export default function MantraDetailScreen() {
       console.error("Mantra playback failed:", error);
 
       Alert.alert(
-        "Audio unavailable",
-        "Could not play the mantra. Please try again."
+        t("mantra.audioUnavailable"),
+        t("mantra.audioUnavailableText")
       );
     }
-  }, [isLoading, isPlaying, activeProfileId, player, savePending, mantra.id]);
+  }, [isLoading, isPlaying, activeProfileId, player, savePending, mantra.id, t]);
 
   // Only chants that haven't been sent yet can be undone.
   const undoLastChant = useCallback(async () => {
     if (pendingRef.current <= 0) {
       Alert.alert(
-        "Already saved",
-        "Your chants have been saved to the leaderboard and can't be undone."
+        t("mantra.alreadySaved"),
+        t("mantra.alreadySavedText")
       );
       return;
     }
@@ -795,7 +817,7 @@ export default function MantraDetailScreen() {
     stopAudio();
     await savePending(pendingRef.current - 1);
     visitChants.current = Math.max(0, visitChants.current - 1);
-  }, [savePending, stopAudio]);
+  }, [savePending, stopAudio, t]);
 
   // Clears chants not sent yet. Saved chants (leaderboard, reward progress) stay.
   const resetUnsent = useCallback(() => {
@@ -804,12 +826,12 @@ export default function MantraDetailScreen() {
     const count = pendingRef.current;
 
     Alert.alert(
-      "Reset unsent chants?",
-      `${count} chant${count > 1 ? "s" : ""} not saved yet will be removed. Chants already saved to the leaderboard stay.`,
+      t("mantra.resetTitle"),
+      count > 1 ? t("mantra.resetTextMany", { count }) : t("mantra.resetTextOne"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Reset",
+          text: t("mantra.reset"),
           style: "destructive",
           onPress: () => {
             if (flushTimer.current) {
@@ -823,7 +845,7 @@ export default function MantraDetailScreen() {
         },
       ]
     );
-  }, [savePending, stopAudio]);
+  }, [savePending, stopAudio, t]);
 
   // Favourites are kept per profile on the phone (same list as the Mantra tab).
   useEffect(() => {
@@ -861,7 +883,7 @@ export default function MantraDetailScreen() {
 
   const shareText = () => {
     Share.share({
-      message: `Chant the ${mantra.name} (${mantra.deity}) with me on Vritta 🙏\n${mantra.sanskritLyrics || ""}`.trim(),
+      message: `${t("mantra.shareMessage", { name: text.name, deity: text.deity })}\n${mantra.sanskritLyrics || ""}`.trim(),
     }).catch(() => {});
   };
 
@@ -889,7 +911,7 @@ export default function MantraDetailScreen() {
       await Sharing.shareAsync(file.uri, {
         mimeType: ext === "m4a" ? "audio/mp4" : "audio/mpeg",
         UTI: ext === "m4a" ? "public.mpeg-4-audio" : "public.mp3",
-        dialogTitle: `Share ${mantra.name}`,
+        dialogTitle: t("mantra.shareA11y", { name: text.name }),
       });
     } catch (error) {
       console.warn("Mantra audio share failed:", error);
@@ -916,13 +938,13 @@ export default function MantraDetailScreen() {
       await Clipboard.setStringAsync(lyrics);
 
       Alert.alert(
-        "Copied",
-        "Mantra lyrics copied to clipboard."
+        t("mantra.copied"),
+        t("mantra.copiedText")
       );
     } catch {
       Alert.alert(
-        "Mantra lyrics",
-        lyrics || "Lyrics unavailable."
+        t("mantra.lyrics"),
+        lyrics || t("mantra.lyricsUnavailable")
       );
     }
   };
@@ -938,9 +960,9 @@ export default function MantraDetailScreen() {
   if (!mantra) {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
-        <Text>No mantras are configured.</Text>
+        <Text>{t("mantra.noneConfigured")}</Text>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text>Go back</Text>
+          <Text>{t("mantra.goBack")}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -974,7 +996,7 @@ export default function MantraDetailScreen() {
             <TouchableOpacity
               onPress={() => router.back()}
               style={styles.headerCircle}
-              accessibilityLabel="Go back"
+              accessibilityLabel={t("mantra.goBack")}
             >
               <MaterialCommunityIcons
                 name="chevron-left"
@@ -987,7 +1009,7 @@ export default function MantraDetailScreen() {
               <TouchableOpacity
                 onPress={toggleFavorite}
                 style={styles.headerIcon}
-                accessibilityLabel="Toggle favorite"
+                accessibilityLabel={t("mantra.toggleFavA11y")}
               >
                 <MaterialCommunityIcons
                   name={isFavorite ? "heart" : "heart-outline"}
@@ -1000,7 +1022,7 @@ export default function MantraDetailScreen() {
                 onPress={shareMantra}
                 disabled={sharingAudio}
                 style={styles.headerIcon}
-                accessibilityLabel={`Share ${mantra.name}`}
+                accessibilityLabel={t("mantra.shareA11y", { name: text.name })}
               >
                 {sharingAudio ? (
                   <ActivityIndicator size="small" color={C.purple} />
@@ -1017,10 +1039,10 @@ export default function MantraDetailScreen() {
 
           {/* Title */}
           <View style={styles.titleSection}>
-            <Text style={styles.deity}>{mantra.deity}</Text>
-            <Text style={styles.title}>{mantra.name}</Text>
+            <Text style={styles.deity}>{text.deity}</Text>
+            <Text style={styles.title}>{text.name}</Text>
             <Text style={styles.description}>
-              {mantra.description}
+              {text.description}
             </Text>
 
             <View style={styles.rewardBadge}>
@@ -1030,7 +1052,7 @@ export default function MantraDetailScreen() {
                 color={C.orangeText}
               />
               <Text style={styles.rewardText}>
-                Complete {chantTarget} chants · Earn ₹{reward}
+                {t("mantra.rewardBadge", { count: chantTarget, reward })}
               </Text>
             </View>
           </View>
@@ -1075,7 +1097,7 @@ export default function MantraDetailScreen() {
               <View style={styles.lyricsTextContainer}>
                 <Text style={styles.sanskrit}>
                   {mantra.sanskritLyrics ||
-                    "Mantra lyrics not available"}
+                    t("mantra.lyricsNotAvailable")}
                 </Text>
 
                 {mantra.pronunciation ? (
@@ -1088,7 +1110,7 @@ export default function MantraDetailScreen() {
               <TouchableOpacity
                 onPress={copyLyrics}
                 style={styles.copyButton}
-                accessibilityLabel="Copy mantra lyrics"
+                accessibilityLabel={t("mantra.copyA11y")}
               >
                 <MaterialCommunityIcons
                   name="content-copy"
@@ -1136,8 +1158,9 @@ export default function MantraDetailScreen() {
                     size={ringSize}
                   />
                   <Text style={styles.totalText}>
-                    Total chants: {totalChants}
-                    {pending > 0 ? " · saving…" : ""}
+                    {pending > 0
+                      ? t("mantra.totalChantsSaving", { count: totalChants })
+                      : t("mantra.totalChants", { count: totalChants })}
                   </Text>
                 </>
               )}
@@ -1158,14 +1181,14 @@ export default function MantraDetailScreen() {
                 size={24}
                 color={C.white}
               />
-              <Text style={styles.chantButtonText}>
-                {isPlaying ? "Chanting..." : "Tap to Chant"}
+              <Text style={styles.chantButtonText} numberOfLines={1} adjustsFontSizeToFit>
+                {isPlaying ? t("mantra.chanting") : t("mantra.tapToChant")}
               </Text>
             </TouchableOpacity>
 
             {isPlaying && (
               <Text style={styles.playingLabel}>
-                Mantra audio is playing…
+                {t("mantra.audioPlaying")}
               </Text>
             )}
 
@@ -1188,7 +1211,7 @@ export default function MantraDetailScreen() {
                     pending === 0 && styles.disabledText,
                   ]}
                 >
-                  Undo last chant
+                  {t("mantra.undoLast")}
                 </Text>
               </TouchableOpacity>
 
@@ -1211,7 +1234,7 @@ export default function MantraDetailScreen() {
                     pending === 0 && styles.disabledText,
                   ]}
                 >
-                  Reset
+                  {t("mantra.reset")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1225,9 +1248,7 @@ export default function MantraDetailScreen() {
               />
 
               <Text style={styles.infoText}>
-                Every {chantTarget} chants earns ₹{reward}, automatically.
-                {"\n"}
-                Every chant counts on the leaderboard and is saved as you go.
+                {t("mantra.info", { count: chantTarget, reward })}
               </Text>
             </View>
           </View>

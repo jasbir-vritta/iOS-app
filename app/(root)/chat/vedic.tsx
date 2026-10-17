@@ -26,6 +26,7 @@ import {
   refreshWalletCredits,
 } from "../../../components/stores/userStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 type Message = {
   id: string;
@@ -77,6 +78,7 @@ const formatRemainingTime = (totalSeconds: number): string => {
 };
 
 export default function VedicChat() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   // Keeps the input above the keyboard on Android (edge-to-edge).
   const keyboard = useKeyboardInset();
@@ -220,8 +222,8 @@ const initialSeconds = hasValidRemainingTime
 
         if (mounted) {
           Alert.alert(
-            "Unable to load conversation",
-            "Please try reopening this conversation."
+            translate("chat.loadFailed.title"),
+            translate("chat.loadFailed.message")
           );
         }
       } finally {
@@ -301,7 +303,7 @@ const initialSeconds = hasValidRemainingTime
       const token = authorization.replace(/^Bearer\s+/i, "");
 
       if (!token) {
-        throw new Error("Access token unavailable for WebSocket.");
+        throw new Error(t("chat.noToken"));
       }
 
       const socketUrl =
@@ -367,7 +369,7 @@ const initialSeconds = hasValidRemainingTime
 
         if (payload?.success === false || payload?.type === "error") {
           setLoading(false);
-          addAssistantText("I couldn't get a response right now.");
+          addAssistantText(t("chat.noResponse"));
           return;
         }
 
@@ -395,8 +397,8 @@ const initialSeconds = hasValidRemainingTime
         setConnecting(false);
         setLoading(false);
         Alert.alert(
-          "Connection error",
-          "Could not connect to the consultation. Please try again."
+          t("chat.connectionError.title"),
+          t("chat.connectionError.message")
         );
       };
 
@@ -418,8 +420,8 @@ const initialSeconds = hasValidRemainingTime
       setConnecting(false);
 
       Alert.alert(
-        "Unable to continue",
-        error instanceof Error ? error.message : "Please try again."
+        t("chat.unableToContinue"),
+        error instanceof Error ? error.message : t("chat.pleaseTryAgain")
       );
     }
   };
@@ -452,8 +454,8 @@ const initialSeconds = hasValidRemainingTime
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       Alert.alert(
-        "Not connected",
-        "The consultation connection is not active."
+        t("chat.notConnected.title"),
+        t("chat.notConnected.message")
       );
       return;
     }
@@ -543,7 +545,7 @@ const initialSeconds = hasValidRemainingTime
                 className="text-[16px] font-semibold text-[#1C1820]"
                 numberOfLines={1}
               >
-                {astrologerName || "Astrologer"}
+                {astrologerName || t("chat.astrologer")}
               </Text>
 
               <View className="mt-1 flex-row items-center">
@@ -565,7 +567,7 @@ const initialSeconds = hasValidRemainingTime
                     fontWeight: "500",
                   }}
                 >
-                  {astrologer?.online ? "Online" : "Offline"}
+                  {astrologer?.online ? t("chat.online") : t("chat.offline")}
                 </Text>
               </View>
             </View>
@@ -580,7 +582,7 @@ const initialSeconds = hasValidRemainingTime
               color="#FFFFFF"
             />
             <Text className="ml-2 text-[15px] font-semibold text-white">
-              Remaining time: {formatRemainingTime(remainingSeconds)}
+              {t("chat.remainingTime", { time: formatRemainingTime(remainingSeconds) })}
             </Text>
           </View>
         )}
@@ -595,7 +597,7 @@ const initialSeconds = hasValidRemainingTime
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator size="small" color={C.plum} />
               <Text className="mt-3 text-[14px] text-[#68616A]">
-                Loading your conversation...
+                {t("chat.loadingConversation")}
               </Text>
             </View>
           ) : (
@@ -644,7 +646,7 @@ const initialSeconds = hasValidRemainingTime
                     <View className="flex-row items-center">
                       <ActivityIndicator size="small" color={C.plum} />
                       <Text className="ml-3 text-[14px] text-[#68616A]">
-                        Typing...
+                        {t("chat.typingShort")}
                       </Text>
                     </View>
                   </View>
@@ -664,11 +666,11 @@ const initialSeconds = hasValidRemainingTime
               />
 
               <Text className="mt-3 text-center text-[21px] font-bold text-[#1C1820]">
-                Consultation time ended
+                {t("chat.ended.title")}
               </Text>
 
               <Text className="mt-2 text-center text-[14px] leading-5 text-[#68616A]">
-                Your available consultation time has run out. Recharge your wallet to start another consultation.
+                {t("chat.ended.message")}
               </Text>
 
               <Pressable
@@ -678,7 +680,7 @@ const initialSeconds = hasValidRemainingTime
                 className="mt-5 w-full items-center rounded-2xl bg-[#26784B] px-4 py-4"
               >
                 <Text className="text-[16px] font-bold text-white">
-                  Recharge Wallet
+                  {t("chat.rechargeWallet")}
                 </Text>
               </Pressable>
 
@@ -687,7 +689,7 @@ const initialSeconds = hasValidRemainingTime
                 className="mt-3 w-full items-center rounded-2xl border border-[#D9CEC1] px-4 py-3"
               >
                 <Text className="text-[15px] font-semibold text-[#2B1A3D]">
-                  End Consultation
+                  {t("chat.endConsultation")}
                 </Text>
               </Pressable>
             </View>
@@ -700,7 +702,7 @@ const initialSeconds = hasValidRemainingTime
               <TextInput
                 value={message}
                 onChangeText={setMessage}
-                placeholder={chatActive ? "Ask your question..." : "Connecting..."}
+                placeholder={chatActive ? t("chat.askPlaceholder") : t("chat.connecting")}
                 placeholderTextColor="#756B7D"
                 multiline
                 editable={
@@ -751,7 +753,7 @@ const initialSeconds = hasValidRemainingTime
             </View>
 
             <Text className="mt-2 text-center text-[11px] text-[#756B7D]">
-              Astrology guidance is for informational purposes.
+              {t("chat.disclaimer")}
             </Text>
           </View>
         )}

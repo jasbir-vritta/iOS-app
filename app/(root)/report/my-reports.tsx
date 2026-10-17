@@ -22,7 +22,9 @@ import {
   ReportOrder,
 } from "../../../components/stores/reportsStore";
 import { useUserStore } from "../../../components/stores/userStore";
+import { monthShort, reportTitle } from "../../../components/reports/reportText";
 import { Text } from "../../../components/ui/BrandText";
+import { useLanguage, useT } from "../../../lib/i18n";
 
 // App palette.
 const C = {
@@ -38,16 +40,14 @@ const C = {
   greenSoft: "#E6F2EA",
 };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 // "15 Oct 2026, 6:13 PM" in IST.
-const formatWhen = (value?: string) => {
+const formatWhen = (t: ReturnType<typeof useT>, value?: string) => {
   const ms = Date.parse(value?.endsWith("Z") || value?.includes("+") ? value : `${value}Z`);
   if (!Number.isFinite(ms)) return "";
   const ist = new Date(ms + 330 * 60 * 1000);
   const h = ist.getUTCHours();
   const m = String(ist.getUTCMinutes()).padStart(2, "0");
-  return `${ist.getUTCDate()} ${MONTHS[ist.getUTCMonth()]} ${ist.getUTCFullYear()}, ${h % 12 || 12}:${m} ${h < 12 ? "AM" : "PM"}`;
+  return `${ist.getUTCDate()} ${monthShort(t, ist.getUTCMonth())} ${ist.getUTCFullYear()}, ${h % 12 || 12}:${m} ${h < 12 ? "AM" : "PM"}`;
 };
 
 const reportInfo = (id: string) =>
@@ -55,6 +55,10 @@ const reportInfo = (id: string) =>
 
 export default function MyReports() {
   const insets = useSafeAreaInsets();
+  const t = useT();
+  // English: the name saved with the order (it may name the forecast length);
+  // other languages: the translated report title.
+  const language = useLanguage();
   const [reports, setReports] = useState<ReportOrder[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -84,7 +88,7 @@ export default function MyReports() {
     try {
       await openReport(item);
     } catch {
-      Alert.alert("Couldn't open the report", "Please try again.");
+      Alert.alert(t("reports.alert.openFailedTitle"), t("reports.alert.tryAgainText"));
     }
   };
 
@@ -94,13 +98,13 @@ export default function MyReports() {
     <View style={[s.screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.back} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.back} accessibilityLabel={t("reports.goBack")}>
           <Icon name="chevron-left" size={24} color={C.ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>My reports</Text>
+          <Text style={s.title} numberOfLines={1}>{t("reports.myReportsTitle")}</Text>
           <Text style={s.subtitle} numberOfLines={1}>
-            {profileName ? `Reports for ${profileName}` : "Your reports"}
+            {profileName ? t("reports.reportsFor", { name: profileName }) : t("reports.yourReports")}
           </Text>
         </View>
       </View>
@@ -108,7 +112,7 @@ export default function MyReports() {
       {reports === null ? (
         <View style={s.center}>
           <CosmicLoader size={130} />
-          <Text style={s.loadingText}>Gathering your reports…</Text>
+          <Text style={s.loadingText}>{t("reports.gathering")}</Text>
         </View>
       ) : (
         <FlatList
@@ -118,20 +122,24 @@ export default function MyReports() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.accent} />}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           ListHeaderComponent={
-            count > 0 ? <Text style={s.overline}>{`${count} REPORT${count === 1 ? "" : "S"}`}</Text> : null
+            count > 0 ? (
+              <Text style={s.overline}>
+                {count === 1 ? t("reports.countOne") : t("reports.countMany", { count })}
+              </Text>
+            ) : null
           }
           ListEmptyComponent={
             <View style={s.center}>
               <View style={s.emptyIcon}>
                 <Icon name="file-document-outline" size={28} color={C.accent} />
               </View>
-              <Text style={s.emptyTitle}>No reports yet</Text>
+              <Text style={s.emptyTitle}>{t("reports.emptyTitle")}</Text>
               <Text style={s.emptyText}>
-                {profileName ? `Reports you buy for ${profileName} will appear here.` : "Reports you buy will appear here."}
+                {profileName ? t("reports.emptyTextFor", { name: profileName }) : t("reports.emptyText")}
               </Text>
               <Pressable onPress={() => router.back()} style={s.emptyButton}>
                 <Icon name="star-four-points-outline" size={16} color={C.card} />
-                <Text style={s.viewText}>Browse reports</Text>
+                <Text style={s.viewText}>{t("reports.browse")}</Text>
               </Pressable>
             </View>
           }
@@ -139,11 +147,13 @@ export default function MyReports() {
             const info = reportInfo(item.report_id);
             const ready = item.status === "completed" && Boolean(item.html_url || item.pdf_url);
             const forWhom = [
-              item.profile_name || "Profile",
+              item.profile_name || t("reports.profile"),
               item.partner_name ? `& ${item.partner_name}` : "",
             ]
               .filter(Boolean)
               .join(" ");
+            // "For {name}" with the name in bold, wherever the language puts it.
+            const [forBefore = "", forAfter = ""] = t("reports.forName", { name: "\u0000" }).split("\u0000");
 
             return (
               <Reanimated.View entering={FadeInDown.delay(Math.min(index, 6) * 60).duration(380)}>
@@ -165,17 +175,21 @@ export default function MyReports() {
                         color={ready ? C.green : C.accent}
                       />
                       <Text style={[s.statusText, { color: ready ? C.green : C.accent }]}>
-                        {ready ? "Ready" : "Being written"}
+                        {ready ? t("reports.status.ready") : t("reports.status.beingWritten")}
                       </Text>
                     </View>
 
                     <Text style={s.name} numberOfLines={2}>
-                      {item.report_name || info?.title || "Report"}
+                      {(language === "en" && item.report_name) || (info ? reportTitle(t, info) : item.report_name || t("reports.header"))}
                     </Text>
 
                     <Text style={s.meta} numberOfLines={1}>
-                      For <Text style={s.metaStrong}>{forWhom}</Text>
-                      {item.child_name ? <Text style={s.metaStrong}>{` · Child: ${item.child_name}`}</Text> : null}
+                      {forBefore}
+                      <Text style={s.metaStrong}>{forWhom}</Text>
+                      {forAfter}
+                      {item.child_name ? (
+                        <Text style={s.metaStrong}>{` · ${t("reports.childName", { name: item.child_name })}`}</Text>
+                      ) : null}
                     </Text>
 
                     <View style={s.chips}>
@@ -184,19 +198,19 @@ export default function MyReports() {
                         <Text style={s.chipText}>{item.language || "English"}</Text>
                       </View>
                       <Text style={s.date} numberOfLines={1}>
-                        {formatWhen(item.created_at)}
+                        {formatWhen(t, item.created_at)}
                       </Text>
                     </View>
 
                     {ready ? (
                       <Pressable onPress={() => view(item)} style={s.viewButton}>
                         <Icon name="book-open-page-variant-outline" size={15} color={C.card} />
-                        <Text style={s.viewText}>Open report</Text>
+                        <Text style={s.viewText}>{t("reports.openReport")}</Text>
                       </Pressable>
                     ) : (
                       <View style={s.preparing}>
                         <CosmicLoader size={36} />
-                        <Text style={s.preparingText}>Usually ready in 2–5 minutes</Text>
+                        <Text style={s.preparingText}>{t("reports.usuallyReady")}</Text>
                       </View>
                     )}
                   </View>

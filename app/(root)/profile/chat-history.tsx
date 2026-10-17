@@ -22,6 +22,7 @@ import { useUserStore } from "../../../components/stores/userStore";
 import { ChatHistoryItem, openChatSession, withAstrologerPhotos } from "../../../components/utils/openChat";
 import { parseServerDate } from "../../../components/utils/serverDate";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -35,17 +36,25 @@ const C = {
   SOFT: "#EFE8F7",
 };
 
-// Label for each kind of chat.
+// Label (translation key) for each kind of chat.
 const READING_LABEL: Record<string, string> = {
-  vedic: "Vedic",
-  kp: "KP",
-  lalkitab: "Lal Kitab",
-  tarot: "Tarot",
-  numerology: "Numerology",
+  vedic: "history.reading.vedic",
+  kp: "history.reading.kp",
+  lalkitab: "history.reading.lalkitab",
+  tarot: "history.reading.tarot",
+  numerology: "history.reading.numerology",
+};
+
+// Shown label for a saved relation value ("Parent" -> "माता-पिता").
+const relationLabel = (t: (key: string) => string, value: string) => {
+  const key = `profiles.relation.${value}`;
+  const label = t(key);
+  return label === key ? value : label;
 };
 
 export default function ChatHistory() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [query, setQuery] = useState("");
 
   const [sessions, setSessions] = useState<ChatHistoryItem[]>([]);
@@ -98,7 +107,7 @@ export default function ChatHistory() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data?.detail || "Failed to load chat history.");
+          throw new Error(data?.detail || translate("history.loadFailed"));
         }
 
         // Each astrologer's own photo, as on the Chat tab.
@@ -109,7 +118,7 @@ export default function ChatHistory() {
       } catch (err) {
         console.error("CHAT HISTORY ERROR:", err);
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load chat history.");
+        setError(err instanceof Error ? err.message : translate("history.loadFailed"));
         setSessions([]);
       } finally {
         if (!cancelled) setLoadedFor(`${activeProfileId}:${reloadKey}`);
@@ -149,10 +158,11 @@ export default function ChatHistory() {
     return visible.filter((chat) => {
       const name = chat.astrologer_name || "";
       const message = chat.last_message || "";
-      const readingType = READING_LABEL[chat.reading_type || ""] || chat.reading_type || "";
+      const labelKey = READING_LABEL[chat.reading_type || ""];
+      const readingType = labelKey ? t(labelKey) : chat.reading_type || "";
       return `${name} ${message} ${readingType}`.toLowerCase().includes(q);
     });
-  }, [query, sessions, activeProfileId]);
+  }, [query, sessions, activeProfileId, t]);
 
   // =========================================================
   // DATE GROUPING
@@ -164,11 +174,11 @@ export default function ChatHistory() {
     const yesterday = filteredSessions.filter((chat) => isYesterday(when(chat)));
     const older = filteredSessions.filter((chat) => !isToday(when(chat)) && !isYesterday(when(chat)));
     return [
-      { title: "TODAY", chats: today, older: false },
-      { title: "YESTERDAY", chats: yesterday, older: false },
-      { title: "EARLIER", chats: older, older: true },
+      { id: "today", title: t("history.today"), chats: today, older: false },
+      { id: "yesterday", title: t("history.yesterday"), chats: yesterday, older: false },
+      { id: "earlier", title: t("history.earlier"), chats: older, older: true },
     ].filter((group) => group.chats.length > 0);
-  }, [filteredSessions]);
+  }, [filteredSessions, t]);
 
   // Same as Home's "Continue your journey" chat cards.
   const openChat = (chat: ChatHistoryItem) => openChatSession(chat, user);
@@ -181,18 +191,18 @@ export default function ChatHistory() {
 
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Chat history</Text>
+          <Text style={s.title}>{t("history.title")}</Text>
           <Text style={s.subtitle} numberOfLines={1}>
-            {profileName ? `Conversations for ${profileName}` : "Your past conversations"}
+            {profileName ? t("history.subtitleFor", { name: profileName }) : t("history.subtitle")}
           </Text>
         </View>
 
         {/* Switch profile */}
-        <Pressable onPress={() => setProfileSheet(true)} style={s.profileChip} accessibilityLabel="Switch profile">
+        <Pressable onPress={() => setProfileSheet(true)} style={s.profileChip} accessibilityLabel={t("history.switchProfile")}>
           <View style={s.profileChipAvatar}>
             {activeProfile?.avatar_url ? (
               <Image source={{ uri: activeProfile.avatar_url }} style={StyleSheet.absoluteFill} />
@@ -210,7 +220,7 @@ export default function ChatHistory() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search astrologer, message or type"
+          placeholder={t("history.search")}
           placeholderTextColor={C.MUTED}
           style={s.searchInput}
           returnKeyType="search"
@@ -226,18 +236,18 @@ export default function ChatHistory() {
       {showLoading ? (
         <View style={s.center}>
           <ActivityIndicator size="large" color={C.PLUM} />
-          <Text style={s.centerText}>Loading conversations…</Text>
+          <Text style={s.centerText}>{t("history.loading")}</Text>
         </View>
       ) : error ? (
         <View style={s.center}>
           <View style={s.stateIcon}>
             <Icon name="wifi-off" size={26} color={C.PLUM} />
           </View>
-          <Text style={s.stateTitle}>Couldn&apos;t load chat history</Text>
+          <Text style={s.stateTitle}>{t("history.errorTitle")}</Text>
           <Text style={s.centerText}>{error}</Text>
           <Pressable onPress={retry} style={s.stateButton}>
             <Icon name="refresh" size={17} color={C.CARD} />
-            <Text style={s.stateButtonText}>Try again</Text>
+            <Text style={s.stateButtonText}>{t("common.retry")}</Text>
           </Pressable>
         </View>
       ) : (
@@ -247,7 +257,7 @@ export default function ChatHistory() {
           contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 32 }]}
         >
           {groups.map((group, groupIndex) => (
-            <Reanimated.View key={group.title} entering={FadeInDown.delay(70 * groupIndex).duration(400)}>
+            <Reanimated.View key={group.id} entering={FadeInDown.delay(70 * groupIndex).duration(400)}>
               <View style={s.groupHead}>
                 <Text style={s.overline}>{group.title}</Text>
                 <Text style={s.groupCount}>{group.chats.length}</Text>
@@ -273,16 +283,16 @@ export default function ChatHistory() {
               <View style={s.stateIcon}>
                 <Icon name={query.trim() ? "text-search" : "chat-outline"} size={26} color={C.PLUM} />
               </View>
-              <Text style={s.stateTitle}>{query.trim() ? "No conversations found" : "No chats yet"}</Text>
+              <Text style={s.stateTitle}>{query.trim() ? t("history.noResults") : t("history.empty")}</Text>
               <Text style={s.centerText}>
                 {query.trim()
-                  ? "Try a different name or word."
-                  : "Your conversations with astrologers will appear here."}
+                  ? t("history.noResultsText")
+                  : t("history.emptyText")}
               </Text>
               {!query.trim() && (
                 <Pressable onPress={() => router.navigate("/(root)/(tabs)/chat")} style={s.stateButton}>
                   <Icon name="chat-processing-outline" size={17} color={C.CARD} />
-                  <Text style={s.stateButtonText}>Talk to an astrologer</Text>
+                  <Text style={s.stateButtonText}>{t("history.talk")}</Text>
                 </Pressable>
               )}
             </View>
@@ -292,7 +302,7 @@ export default function ChatHistory() {
 
       {/* Switch profile */}
       <BottomSheet visible={profileSheet} onClose={() => setProfileSheet(false)}>
-        <Text style={s.sheetTitle}>Show chats for</Text>
+        <Text style={s.sheetTitle}>{t("history.showFor")}</Text>
         <View style={{ gap: 8, marginTop: 14 }}>
           {profiles.map((profile) => {
             const selected = profile.profile_id === activeProfileId;
@@ -313,7 +323,7 @@ export default function ChatHistory() {
                   <Text style={s.sheetName} numberOfLines={1}>
                     {profile.name}
                   </Text>
-                  {!!profile.relation && <Text style={s.sheetRelation}>{profile.relation}</Text>}
+                  {!!profile.relation && <Text style={s.sheetRelation}>{relationLabel(t, profile.relation)}</Text>}
                 </View>
                 {selected ? (
                   <View style={s.sheetCheck}>
@@ -326,7 +336,7 @@ export default function ChatHistory() {
             );
           })}
 
-          {profiles.length === 0 && <Text style={s.centerText}>No profiles available.</Text>}
+          {profiles.length === 0 && <Text style={s.centerText}>{t("history.noProfiles")}</Text>}
         </View>
       </BottomSheet>
     </View>
@@ -348,11 +358,13 @@ function ChatRow({
   showDate: boolean;
   onPress: () => void;
 }) {
-  const name = chat.astrologer_name?.trim() || "Astrologer";
-  const message = chat.last_message?.trim() || "No messages yet";
+  const t = useT();
+  const name = chat.astrologer_name?.trim() || t("history.astrologer");
+  const message = chat.last_message?.trim() || t("history.noMessages");
   const photo = chat.astrologer_image_url || chat.astrologer_image || undefined;
   const human = chat.participant_type === "human";
-  const reading = READING_LABEL[chat.reading_type || ""];
+  const readingKey = READING_LABEL[chat.reading_type || ""];
+  const reading = readingKey ? t(readingKey) : "";
   const when = chat.last_message_at || chat.created_at;
   const fromUser = chat.last_message_role === "user";
 
@@ -377,7 +389,7 @@ function ChatRow({
         <View style={s.rowTags}>
           {human && (
             <View style={[s.tag, s.tagHuman]}>
-              <Text style={[s.tagText, { color: C.TERRACOTTA }]}>Live astrologer</Text>
+              <Text style={[s.tagText, { color: C.TERRACOTTA }]} numberOfLines={1}>{t("history.live")}</Text>
             </View>
           )}
           {!!reading && (
@@ -388,8 +400,7 @@ function ChatRow({
         </View>
 
         <Text numberOfLines={1} style={s.rowMessage}>
-          {fromUser ? "You: " : ""}
-          {message}
+          {fromUser ? t("history.youPrefix", { message }) : message}
         </Text>
       </View>
 
@@ -434,14 +445,14 @@ function formatTime(value?: string | null) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 // "12 Oct" (this year) or "12 Oct 2025".
 function formatDay(value?: string | null) {
   if (!value) return "";
   const date = parseServerDate(value);
   if (Number.isNaN(date.getTime())) return "";
-  const day = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  // Short month names in the app language.
+  const months = translate("profile.months").split(",");
+  const day = `${date.getDate()} ${months[date.getMonth()]}`;
   return date.getFullYear() === new Date().getFullYear() ? day : `${day} ${date.getFullYear()}`;
 }
 

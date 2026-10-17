@@ -12,6 +12,8 @@ import {
   View,
 } from "react-native";
 
+import { useT } from "../../lib/i18n";
+import { discountLabel, frequencyLabel, reportDescription, reportTitle } from "../reports/reportText";
 import reportsData from "../constants/reports.json";
 import { loadProfileReports, useReportsStore } from "../stores/reportsStore";
 import { useUserStore } from "../stores/userStore";
@@ -41,6 +43,7 @@ const openReport = (id: string) =>
   router.push({ pathname: "/(root)/report/[report_id]", params: { report_id: id } } as any);
 
 export default function RecommendedReports() {
+  const t = useT();
   const [rowWidth, setRowWidth] = useState(Dimensions.get("window").width - HOME_PAD * 2);
   const profileId = useUserStore((state) => state.user?.active_profile_id);
   const purchases = useReportsStore((state) =>
@@ -71,8 +74,8 @@ export default function RecommendedReports() {
   return (
     <View onLayout={onLayout}>
       <SectionHeader
-        overline="IN-DEPTH REPORTS"
-        title="Recommended for you"
+        overline={t("home.reports.overline")}
+        title={t("home.reports.title")}
         onViewAll={() => router.push("/(root)/(tabs)/reports" as any)}
       />
 
@@ -92,7 +95,7 @@ export default function RecommendedReports() {
             <Pressable
               key={report.id}
               accessibilityRole="button"
-              accessibilityLabel={`${report.title}, ₹${report.price}`}
+              accessibilityLabel={`${reportTitle(t, report)}, ₹${report.price}`}
               onPress={() => openReport(report.id)}
               style={[styles.card, { width: cardW }]}
             >
@@ -101,17 +104,17 @@ export default function RecommendedReports() {
                   <Image source={{ uri: report.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                   {!!report.frequency && (
                     <View style={styles.tag}>
-                      <Text style={styles.tagText}>{report.frequency}</Text>
+                      <Text style={styles.tagText}>{frequencyLabel(t, report.frequency)}</Text>
                     </View>
                   )}
                 </View>
 
                 <View style={styles.body}>
                   <Text style={styles.title} numberOfLines={1}>
-                    {report.title}
+                    {reportTitle(t, report)}
                   </Text>
                   <Text style={styles.description} numberOfLines={1}>
-                    {report.description}
+                    {reportDescription(t, report)}
                   </Text>
 
                   <View style={styles.footer}>
@@ -121,7 +124,7 @@ export default function RecommendedReports() {
                         {!!report.oldPrice && <Text style={styles.oldPrice}>₹{report.oldPrice}</Text>}
                         {!!report.discount && (
                           <View style={styles.discount}>
-                            <Text style={styles.discountText}>{report.discount}</Text>
+                            <Text style={styles.discountText}>{discountLabel(t, report.discount)}</Text>
                           </View>
                         )}
                       </View>
@@ -132,7 +135,9 @@ export default function RecommendedReports() {
                           size={13}
                           color={C.PLUM}
                         />
-                        <Text style={styles.ownedText}>{state === "purchased" ? "Purchased" : "Preparing"}</Text>
+                        <Text style={styles.ownedText} numberOfLines={1}>
+                          {state === "purchased" ? t("home.reports.purchased") : t("home.reports.preparing")}
+                        </Text>
                       </View>
                     )}
 

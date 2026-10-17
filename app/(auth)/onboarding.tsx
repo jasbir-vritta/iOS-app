@@ -23,6 +23,7 @@ import { Text } from "../../components/ui/BrandText";
 import { useUserStore } from "../../components/stores/userStore";
 import { track } from "../../lib/analytics";
 import { API_URL, authHeaders } from "../../lib/auth";
+import { translate, useLanguageStore, useT } from "../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -53,6 +54,7 @@ const formatPlaceLabel = (place: PlaceResult) =>
 
 export default function Home() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const user = useUserStore((state) => state.user);
   const updateUser = useUserStore(
     (state) => state.updateUser
@@ -451,8 +453,8 @@ export default function Home() {
         !language
       ) {
         Alert.alert(
-          "Missing information",
-          "Please fill in name, gender, language, birth date, birth time and birth place."
+          translate("onboarding.missingTitle"),
+          translate("onboarding.missingMessage")
         );
         return;
       }
@@ -462,8 +464,8 @@ export default function Home() {
       // mixed up. Typing the place clears the pick (see onChangeText).
       if (!selectedLocation) {
         Alert.alert(
-          "Select your birth place",
-          "Please search and select your birth place from the list."
+          translate("onboarding.placeTitle"),
+          translate("onboarding.placeMessage")
         );
         return;
       }
@@ -577,8 +579,8 @@ export default function Home() {
         error
       );
       Alert.alert(
-        "Couldn't save your details",
-        error instanceof Error ? error.message : "Please try again."
+        translate("onboarding.saveFailedTitle"),
+        error instanceof Error ? error.message : translate("onboarding.saveFailedMessage")
       );
     } finally {
       setSaving(false);
@@ -594,8 +596,8 @@ export default function Home() {
   }
 
   const genders = [
-    { value: "male", label: "Male", icon: "gender-male" },
-    { value: "female", label: "Female", icon: "gender-female" },
+    { value: "male", label: t("common.male"), icon: "gender-male" },
+    { value: "female", label: t("common.female"), icon: "gender-female" },
   ] as const;
 
   const languages = [
@@ -623,10 +625,8 @@ export default function Home() {
           <View style={st.logo}>
             <VrittaLogo size={30} />
           </View>
-          <Text style={st.heroTitle}>Welcome to Vritta</Text>
-          <Text style={st.heroText}>
-            Share your birth details once. We use them for your Kundli, daily guidance and every reading.
-          </Text>
+          <Text style={st.heroTitle}>{t("onboarding.title")}</Text>
+          <Text style={st.heroText}>{t("onboarding.intro")}</Text>
 
           <View style={st.progressRow}>
             <View style={st.progressTrack}>
@@ -642,22 +642,22 @@ export default function Home() {
             <View style={st.cardIcon}>
               <MIcon name="account-outline" size={18} color={C.PLUM} />
             </View>
-            <Text style={st.cardTitle}>About you</Text>
+            <Text style={st.cardTitle}>{t("onboarding.aboutYou")}</Text>
           </View>
 
-          <Text style={st.label}>Your name</Text>
+          <Text style={st.label}>{t("onboarding.name")}</Text>
           <View style={st.inputRow}>
             <MIcon name="account-outline" size={19} color={C.MUTED} />
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Enter your name"
+              placeholder={t("onboarding.namePlaceholder")}
               placeholderTextColor={C.MUTED}
               style={st.inputText}
             />
           </View>
 
-          <Text style={st.label}>Gender</Text>
+          <Text style={st.label}>{t("onboarding.gender")}</Text>
           <View style={st.segment}>
             {genders.map((option) => {
               const selected = gender === option.value;
@@ -668,20 +668,26 @@ export default function Home() {
                   style={[st.segmentItem, selected && st.segmentItemActive]}
                 >
                   <MIcon name={option.icon} size={16} color={selected ? C.CARD : C.MUTED} />
-                  <Text style={[st.segmentText, selected && st.segmentTextActive]}>{option.label}</Text>
+                  <Text style={[st.segmentText, selected && st.segmentTextActive]} numberOfLines={1}>
+                    {option.label}
+                  </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <Text style={st.label}>App language</Text>
+          <Text style={st.label}>{t("onboarding.appLanguage")}</Text>
           <View style={st.langRow}>
             {languages.map((option) => {
               const selected = language === option.value;
               return (
                 <Pressable
                   key={option.value}
-                  onPress={() => setLanguage(option.value)}
+                  onPress={() => {
+                    setLanguage(option.value);
+                    // Switch the app's text live (the form value above is what's saved).
+                    void useLanguageStore.getState().setLanguage(option.value === "hi" ? "hi" : "en");
+                  }}
                   style={[st.langCard, selected && st.langCardActive]}
                 >
                   <View style={[st.glyph, selected && st.glyphActive]}>
@@ -702,13 +708,13 @@ export default function Home() {
               <MIcon name="star-four-points-outline" size={17} color={C.PLUM} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={st.cardTitle}>Birth details</Text>
-              <Text style={st.cardSub}>The exact time and place make your Kundli accurate</Text>
+              <Text style={st.cardTitle}>{t("onboarding.birthDetails")}</Text>
+              <Text style={st.cardSub}>{t("onboarding.birthDetailsSub")}</Text>
             </View>
           </View>
 
           {/* Place of Birth */}
-          <Text style={st.label}>Place of birth</Text>
+          <Text style={st.label}>{t("onboarding.place")}</Text>
           <View style={st.inputRow}>
             <MIcon name="map-marker-outline" size={19} color={C.MUTED} />
             <TextInput
@@ -719,7 +725,7 @@ export default function Home() {
                   setSelectedLocation(null);
                 }
               }}
-              placeholder="Search your birth city"
+              placeholder={t("onboarding.placePlaceholder")}
               placeholderTextColor={C.MUTED}
               autoCorrect={false}
               autoCapitalize="words"
@@ -754,7 +760,7 @@ export default function Home() {
           {/* Date + Time */}
           <View style={st.twoCol}>
             <View style={{ flex: 1 }}>
-              <Text style={st.label}>Date of birth</Text>
+              <Text style={st.label}>{t("onboarding.date")}</Text>
               <Pressable
                 onPress={() => {
                   setShowTimePicker(false);
@@ -764,13 +770,13 @@ export default function Home() {
               >
                 <MIcon name="calendar-month-outline" size={18} color={C.MUTED} />
                 <Text style={[st.inputText, !dateOfBirth && { color: C.MUTED }]} numberOfLines={1}>
-                  {dateOfBirth || "Select"}
+                  {dateOfBirth || t("onboarding.select")}
                 </Text>
               </Pressable>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={st.label}>Time of birth</Text>
+              <Text style={st.label}>{t("onboarding.time")}</Text>
               <Pressable
                 onPress={() => {
                   setShowDatePicker(false);
@@ -780,7 +786,7 @@ export default function Home() {
               >
                 <MIcon name="clock-outline" size={18} color={C.MUTED} />
                 <Text style={[st.inputText, !displayTime && { color: C.MUTED }]} numberOfLines={1}>
-                  {displayTime || "Select"}
+                  {displayTime || t("onboarding.select")}
                 </Text>
               </Pressable>
             </View>
@@ -798,7 +804,7 @@ export default function Home() {
                 onChange={handleDateChange}
               />
               <Pressable onPress={() => setShowDatePicker(false)} style={st.pickerDone}>
-                <Text style={st.pickerDoneText}>Done</Text>
+                <Text style={st.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
@@ -814,14 +820,14 @@ export default function Home() {
                 onChange={handleTimeChange}
               />
               <Pressable onPress={() => setShowTimePicker(false)} style={st.pickerDone}>
-                <Text style={st.pickerDoneText}>Done</Text>
+                <Text style={st.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
 
           <View style={st.tip}>
             <MIcon name="information-outline" size={15} color={C.PLUM} />
-            <Text style={st.tipText}>Not sure of the time? Use the closest time you know.</Text>
+            <Text style={st.tipText}>{t("onboarding.timeTip")}</Text>
           </View>
         </Reanimated.View>
 
@@ -832,14 +838,14 @@ export default function Home() {
               <ActivityIndicator color={C.CARD} />
             ) : (
               <>
-                <Text style={st.saveText}>Continue</Text>
+                <Text style={st.saveText}>{t("common.continue")}</Text>
                 <MIcon name="arrow-right" size={19} color={C.CARD} />
               </>
             )}
           </Pressable>
           <View style={st.footRow}>
             <MIcon name="shield-check-outline" size={14} color={C.MUTED} />
-            <Text style={st.footText}>Your birth details stay private to your account</Text>
+            <Text style={st.footText}>{t("onboarding.private")}</Text>
           </View>
         </Reanimated.View>
       </ScrollView>
@@ -1047,5 +1053,5 @@ const st = StyleSheet.create({
   },
   saveText: { fontSize: 16, fontWeight: "700", color: C.CARD },
   footRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10 },
-  footText: { fontSize: 12, color: C.MUTED },
+  footText: { flexShrink: 1, fontSize: 12, color: C.MUTED },
 });

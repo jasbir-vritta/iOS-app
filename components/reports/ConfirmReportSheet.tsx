@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useT } from "../../lib/i18n";
 import PartnerForm, { PartnerDraft } from "./PartnerForm";
+import { monthShort } from "./reportText";
 
 // App palette: Card White sheet, Lavender panels, Deep Plum action.
 const C = {
@@ -28,12 +30,13 @@ const C = {
   white: "#FFFFFF",
 };
 
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
 // "12/11/1996" -> "12 NOV 1996"
-const formatDob = (value?: string) => {
+const formatDob = (t: ReturnType<typeof useT>, value?: string) => {
   const [d, m, y] = String(value || "").split("/");
-  return d && m && y && MONTHS[Number(m) - 1] ? `${Number(d)} ${MONTHS[Number(m) - 1]} ${y}` : value || "";
+  const month = Number(m);
+  return d && m && y && month >= 1 && month <= 12
+    ? `${Number(d)} ${monthShort(t, month - 1).toUpperCase()} ${y}`
+    : value || "";
 };
 
 type Profile = {
@@ -100,6 +103,7 @@ export default function ConfirmReportSheet({
   personRole = "partner",
 }: Props) {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [picking, setPicking] = useState(false);
 
   const enough = walletBalance >= price;
@@ -125,7 +129,7 @@ export default function ConfirmReportSheet({
 
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
+          style={s.sheet}
         >
           <View style={s.handle} />
 
@@ -133,11 +137,13 @@ export default function ConfirmReportSheet({
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Icon name="star-four-points" size={14} color={C.gold} />
-                <Text style={s.title}>Confirm Details</Text>
+                <Text style={s.title} numberOfLines={1} adjustsFontSizeToFit>
+                  {t("reports.confirm.title")}
+                </Text>
               </View>
-              <Text style={s.subtitle}>Review details and order your report.</Text>
+              <Text style={s.subtitle}>{t("reports.confirm.subtitle")}</Text>
             </View>
-            <Pressable onPress={close} hitSlop={8} style={s.closeButton} accessibilityLabel="Close">
+            <Pressable onPress={close} hitSlop={8} style={s.closeButton} accessibilityLabel={t("common.close")}>
               <Icon name="close" size={22} color={C.ink} />
             </Pressable>
           </View>
@@ -149,19 +155,19 @@ export default function ConfirmReportSheet({
           <View style={s.card}>
             <View style={s.labelRow}>
               <Icon name="account-voice" size={16} color={C.muted} />
-              <Text style={s.label}>Report for</Text>
+              <Text style={s.label}>{t("reports.confirm.reportFor")}</Text>
             </View>
 
             <View style={s.personRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.name} numberOfLines={1}>
-                  {profile?.name || "Profile"}
+                  {profile?.name || t("reports.profile")}
                   {genderLetter ? ` (${genderLetter})` : ""}
                 </Text>
                 <Text style={s.place} numberOfLines={1}>{profile?.placeOfBirth || ""}</Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text style={s.date}>{formatDob(profile?.dateOfBirth)}</Text>
+                <Text style={s.date}>{formatDob(t, profile?.dateOfBirth)}</Text>
                 <Text style={s.time}>{profile?.timeOfBirth || ""}</Text>
               </View>
             </View>
@@ -171,7 +177,9 @@ export default function ConfirmReportSheet({
             <View style={s.languageRow}>
               <View style={s.labelRow}>
                 <Icon name="translate" size={16} color={C.muted} />
-                <Text style={s.label}>Report Language</Text>
+                <Text style={s.label} numberOfLines={1}>
+                  {t("reports.confirm.language")}
+                </Text>
               </View>
               <Pressable onPress={() => setPicking((v) => !v)} style={s.languageButton}>
                 <Text style={s.languageText}>{languages[language] || "English"}</Text>
@@ -204,7 +212,7 @@ export default function ConfirmReportSheet({
                 <View style={s.cardRule} />
                 <View style={s.labelRow}>
                   <Icon name="calendar-range" size={16} color={C.muted} />
-                  <Text style={s.label}>Duration</Text>
+                  <Text style={s.label}>{t("reports.confirm.duration")}</Text>
                 </View>
                 <View style={s.variantRow}>
                   {variants.map((v) => (
@@ -231,7 +239,7 @@ export default function ConfirmReportSheet({
             <View>
               {offPercent > 0 && (
                 <View style={s.offBadge}>
-                  <Text style={s.offText}>{offPercent}% off</Text>
+                  <Text style={s.offText}>{t("reports.percentOffLower", { percent: offPercent })}</Text>
                 </View>
               )}
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
@@ -241,7 +249,7 @@ export default function ConfirmReportSheet({
             </View>
 
             <View style={{ alignItems: "flex-end" }}>
-              <Text style={s.walletLabel}>Wallet</Text>
+              <Text style={s.walletLabel}>{t("reports.confirm.wallet")}</Text>
               <Text style={[s.walletValue, { color: enough ? C.green : C.red }]}>
                 ₹{Number.isInteger(walletBalance) ? walletBalance : walletBalance.toFixed(2)}
               </Text>
@@ -250,8 +258,9 @@ export default function ConfirmReportSheet({
 
           {owned && (
             <Text style={s.ownedNote}>
-              You already have this report in {languages[language] || "this language"}. Pick another
-              language to buy it again.
+              {languages[language]
+                ? t("reports.confirm.ownedIn", { language: languages[language] })
+                : t("reports.confirm.ownedThisLanguage")}
             </Text>
           )}
 
@@ -260,22 +269,29 @@ export default function ConfirmReportSheet({
             disabled={!owned && blocked}
             style={[s.button, !owned && blocked && s.buttonOff]}
           >
-            <Text style={s.buttonText}>
+            <Text style={s.buttonText} numberOfLines={1} adjustsFontSizeToFit>
               {owned
-                ? "Open Report"
+                ? t("reports.openReportCta")
                 : blocked
-                  ? `Add ${personRole}'s details`
+                  ? personRole === "child"
+                    ? t("reports.confirm.addChildDetails")
+                    : t("reports.confirm.addPartnerDetails")
                   : enough
-                    ? `Buy Now · ₹${price}`
-                    : "Add Cash to Buy"}
+                    ? t("reports.confirm.buyNowPrice", { price })
+                    : t("reports.confirm.addCash")}
             </Text>
           </Pressable>
 
           {!owned && !blocked && !enough && (
             <Text style={s.hint}>
-              Add ₹{Math.ceil(price - walletBalance)} or more. Your report will be prepared as soon as you return.
+              {t("reports.confirm.addCashHint", { amount: Math.ceil(price - walletBalance) })}
             </Text>
           )}
+
+          {/* Space for the home indicator / nav bar. A spacer, not paddingBottom:
+              on iOS KeyboardAvoidingView ("padding") sets its own paddingBottom
+              (0 with the keyboard closed), which would drop this space. */}
+          <View style={{ height: Math.max(insets.bottom, 16) + 8 }} />
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -285,7 +301,9 @@ export default function ConfirmReportSheet({
 const s = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(43,26,61,0.45)" },
   sheet: { backgroundColor: C.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 10, maxHeight: "92%" },
-  body: { flexGrow: 0 },
+  // Shrinks (and scrolls) when the sheet hits its max height, so the price
+  // and button below always stay on screen.
+  body: { flexGrow: 0, flexShrink: 1 },
   variantRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   variant: { flex: 1, height: 40, borderRadius: 12, borderWidth: 1, borderColor: C.line, backgroundColor: C.sheet, alignItems: "center", justifyContent: "center" },
   variantOn: { backgroundColor: C.button, borderColor: C.button },

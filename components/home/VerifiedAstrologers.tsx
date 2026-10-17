@@ -21,6 +21,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { API_URL, authHeaders } from "../../lib/auth";
+import { useT } from "../../lib/i18n";
 import { useAstrologersStore } from "../stores/astrologersStore";
 import { minChatCredits, ensureChatCredits } from "../constants/chat";
 import { useUserStore } from "../stores/userStore";
@@ -79,14 +80,9 @@ const getReadingTypes = (astrologer: any): string[] => {
   ];
 };
 
-const readingTitle = (type: string) => {
-  if (type === "vedic") return "Vedic Astrology";
-  if (type === "tarot") return "Tarot";
-  if (type === "numerology") return "Numerology";
-  if (type === "kp") return "KP Astrology";
-  if (type === "lalkitab") return "Lal Kitab";
-  return type;
-};
+// Reading types with their own labels (home.astro.reading.<type> and
+// home.astro.readingStart.<type>).
+const READING_TYPES = ["vedic", "tarot", "numerology", "kp", "lalkitab"];
 
 const getSpecialtyLabel = (astrologer: any): string => {
   const raw = [
@@ -116,12 +112,21 @@ const getSpecialtyLabel = (astrologer: any): string => {
     }
   }
 
-  return kept.slice(0, 2).join(" · ");
+  // Shown in the app language (backend sends specialty_labels).
+  return kept
+    .slice(0, 2)
+    .map((item) => astrologer?.specialty_labels?.[item] ?? item)
+    .join(" · ");
 };
 
 export default function VerifiedAstrologers() {
   const insets = useSafeAreaInsets();
   const { user } = useUserStore() as any;
+  const t = useT();
+  const readingTitle = (type: string) =>
+    READING_TYPES.includes(type) ? t(`home.astro.reading.${type}`) : type;
+  const readingStart = (type: string) =>
+    READING_TYPES.includes(type) ? t(`home.astro.readingStart.${type}`) : type;
 
   const {
     astrologers,
@@ -237,7 +242,7 @@ const startAstrologerChat = async (
 
     if (!response.ok || !data?.session_id) {
       throw new Error(
-        data?.detail || "Failed to start chat session"
+        data?.detail || t("home.astro.startFailed")
       );
     }
 
@@ -327,8 +332,8 @@ const startAstrologerChat = async (
 
     // e.g. "This astrologer is busy right now."
     Alert.alert(
-      "Can't start chat",
-      err instanceof Error ? err.message : "Please try again."
+      t("home.astro.cantStartTitle"),
+      err instanceof Error ? err.message : t("common.retry")
     );
   } finally {
     setStartingAstrologerId(null);
@@ -386,34 +391,34 @@ const startAstrologerChat = async (
   };
 
   const getConsultationLabel = (count: number) => {
-    if (count >= 100000) return `${(count / 100000).toFixed(1)}L chats`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K chats`;
-    return `${count} chats`;
+    if (count >= 100000) return t("home.astro.chatsLakh", { count: (count / 100000).toFixed(1) });
+    if (count >= 1000) return t("home.astro.chatsThousand", { count: (count / 1000).toFixed(1) });
+    return t("home.astro.chats", { count });
   };
 
   return (
     <View style={styles.container} onLayout={onLayout}>
       <SectionHeader
-        overline="TALK TO AN EXPERT"
-        title="Verified astrologers"
+        overline={t("home.astro.overline")}
+        title={t("home.astro.title")}
         onViewAll={() => router.push("/(root)/(tabs)/chat" as any)}
       />
 
       {loading && astrologers.length === 0 ? (
         <View style={styles.loader}>
           <ActivityIndicator size="small" color={C.PLUM} />
-          <Text style={styles.message}>Finding astrologers...</Text>
+          <Text style={styles.message}>{t("home.astro.loading")}</Text>
         </View>
       ) : error && astrologers.length === 0 ? (
         <Pressable onPress={fetchAstrologers} style={styles.loader}>
           <Text style={styles.message}>
-            Couldn’t load astrologers. Tap to retry.
+            {t("home.astro.error")}
           </Text>
         </Pressable>
       ) : astrologers.length === 0 ? (
         <View style={styles.loader}>
           <Text style={styles.message}>
-            No astrologers available right now.
+            {t("home.astro.empty")}
           </Text>
         </View>
       ) : (
@@ -517,7 +522,7 @@ const startAstrologerChat = async (
                     </View>
 
                     <Text numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false} style={styles.specialty}>
-                      {specialtyLabel || "Astrologer"}
+                      {specialtyLabel || t("home.astro.astrologer")}
                     </Text>
 
                     <View style={styles.consultationRow}>
@@ -528,26 +533,38 @@ const startAstrologerChat = async (
                     </View>
 
                     <View style={[styles.priceBadge, !online && styles.priceBadgeOff]}>
-                      <Text allowFontScaling={false} style={[styles.priceText, !online && styles.priceTextOff]}>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        allowFontScaling={false}
+                        style={[styles.priceText, !online && styles.priceTextOff]}
+                      >
                         {!online
-                          ? "Available soon"
+                          ? t("home.astro.availableSoon")
                           : user?.free_chat_minute_available
-                            ? "1 min free"
-                            : `Min ₹${minChatCredits(astrologer.price)} to chat`}
+                            ? t("home.astro.oneMinFree")
+                            : t("home.astro.minToChat", { amount: minChatCredits(astrologer.price) })}
                       </Text>
                     </View>
 
                     <TouchableOpacity
                       accessibilityRole="button"
-                      accessibilityLabel={`Chat with ${astrologer.name}`}
+                      accessibilityLabel={t("home.astro.chatWithA11y", { name: astrologer.name })}
                       activeOpacity={0.8}
                       disabled={isStarting}
                       onPress={() => handleChatNow(astrologer)}
                       style={[styles.chatButton, isStarting && styles.disabled]}
                     >
                       <Icon name="chat-outline" size={15} color={HOME.CARD} />
-                      <Text allowFontScaling={false} style={styles.chatButtonText}>
-                        {isStarting ? "Starting..." : "Chat Now"}
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        allowFontScaling={false}
+                        style={styles.chatButtonText}
+                      >
+                        {isStarting ? t("home.astro.starting") : t("home.astro.chatNow")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -559,7 +576,7 @@ const startAstrologerChat = async (
           {showArrow && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Show more astrologers"
+              accessibilityLabel={t("home.astro.showMore")}
               onPress={scrollNext}
               style={[
                 styles.nextButton,
@@ -601,10 +618,10 @@ const startAstrologerChat = async (
           >
             <View style={styles.modalHandle} />
 
-            <Text style={styles.modalTitle}>Choose your reading</Text>
+            <Text style={styles.modalTitle}>{t("home.astro.chooseReading")}</Text>
 
             <Text style={styles.modalSubtitle}>
-              {selectedAstrologer?.name} offers multiple types of guidance.
+              {t("home.astro.multipleTypes", { name: selectedAstrologer?.name ?? "" })}
             </Text>
 
             <View style={styles.options}>
@@ -649,7 +666,7 @@ const startAstrologerChat = async (
                       {readingTitle(option)}
                     </Text>
                     <Text style={styles.optionSubtitle}>
-                      Start your {readingTitle(option).toLowerCase()} chat
+                      {readingStart(option)}
                     </Text>
                   </View>
 
@@ -667,7 +684,7 @@ const startAstrologerChat = async (
               onPress={() => setChatModalVisible(false)}
               style={styles.cancel}
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -860,6 +877,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chatButtonText: {
+    flexShrink: 1,
     color: HOME.CARD,
     fontSize: 13,
     fontFamily: F.bold,

@@ -19,6 +19,7 @@ import useAuthStore from "../../components/stores/authStore";
 import { useKeyboardInset } from "../../components/utils/useKeyboardInset";
 import { identifyUser, metaEvents, setUserProfile, track } from "../../lib/analytics";
 import { saveSession } from "../../lib/auth";
+import { translate, useT } from "../../lib/i18n";
 import { emailLogin, emailResendCode, emailSignup, emailVerifyCode, isValidEmail } from "../../lib/emailAuth";
 import {
   appleFirebaseToken,
@@ -49,21 +50,27 @@ const COUNTRIES = countryCodes
 
 // Apple, Google and phone (SMS OTP) all sign in through Firebase; the backend
 // (POST /api/auth/firebase) then logs in an existing account or signs up
-// a new one. Sign up and Log in differ only in wording.
+// a new one. Sign up and Log in differ only in wording (lib/locales/en.json).
 const COPY = {
   signup: {
-    title: "Create your account",
-    sub: "It’s free. Your kundli is ready in under a minute.",
-    verb: "Sign up",
-    foot: "Already have an account?",
-    switchTo: "Log In",
+    title: "auth.signup.title",
+    sub: "auth.signup.sub",
+    phone: "auth.withPhone.signup",
+    google: "auth.withGoogle.signup",
+    apple: "auth.withApple.signup",
+    email: "auth.withEmail.signup",
+    foot: "auth.signup.foot",
+    switchTo: "auth.signup.switchTo",
   },
   login: {
-    title: "Welcome back",
-    sub: "Sign in to continue your readings and chats.",
-    verb: "Sign in",
-    foot: "New to Vritta?",
-    switchTo: "Create Account",
+    title: "auth.login.title",
+    sub: "auth.login.sub",
+    phone: "auth.withPhone.login",
+    google: "auth.withGoogle.login",
+    apple: "auth.withApple.login",
+    email: "auth.withEmail.login",
+    foot: "auth.login.foot",
+    switchTo: "auth.login.switchTo",
   },
 };
 
@@ -71,6 +78,7 @@ export default function Login() {
   // Text waits for the fonts: measured with the system font first, words
   // like "Vritta" were cut off on iOS once the real font loaded.
   const [fontsLoaded] = useFonts(AUTH_FONTS);
+  const t = useT();
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardInset();
 
@@ -152,12 +160,12 @@ export default function Login() {
 
     // Load the account before opening the app, so a failure shows here
     // instead of bouncing back to login.
-    setStatusText("Signing you in…");
+    setStatusText(translate("auth.status.signingIn"));
     await useAuthStore.getState().initializeAuth();
 
     const auth = useAuthStore.getState();
     if (!auth.isAuthenticated) {
-      throw new Error(auth.error || "Could not load your account. Please try again.");
+      throw new Error(auth.error || translate("auth.error.loadAccount"));
     }
 
     router.replace(HOME_ROUTE);
@@ -209,7 +217,7 @@ export default function Login() {
 
     busy.current = true;
     setError("");
-    setStatusText("Verifying your code…");
+    setStatusText(translate("auth.status.verifying"));
     setScreen("verifying");
 
     try {
@@ -237,13 +245,13 @@ export default function Login() {
       // Picker closed: stay on the welcome screen.
       if (!firebaseToken) return;
 
-      setStatusText("Signing in with Google…");
+      setStatusText(translate("auth.status.google"));
       setScreen("verifying");
 
       const session = await signInWithBackend(firebaseToken);
       await finishSignIn(session, undefined, "google");
     } catch (e) {
-      setError(e?.message || "Google sign-in failed. Please try again.");
+      setError(e?.message || translate("auth.error.google"));
       setScreen("welcome");
     } finally {
       busy.current = false;
@@ -262,14 +270,14 @@ export default function Login() {
       // Sheet closed: stay on the welcome screen.
       if (!apple) return;
 
-      setStatusText("Signing in with Apple…");
+      setStatusText(translate("auth.status.apple"));
       setScreen("verifying");
 
       // Apple shares the name only on the first sign-in.
       const session = await signInWithBackend(apple.token, undefined, apple.name);
       await finishSignIn(session, undefined, "apple");
     } catch (e) {
-      setError(e?.message || "Apple sign-in failed. Please try again.");
+      setError(e?.message || translate("auth.error.apple"));
       setScreen("welcome");
     } finally {
       busy.current = false;
@@ -305,13 +313,13 @@ export default function Login() {
         setResendIn(sent.resend_in || RESEND_SECONDS);
         go("emailOtp");
       } else {
-        setStatusText("Signing you in…");
+        setStatusText(translate("auth.status.signingIn"));
         setScreen("verifying");
         const session = await emailLogin(emailAddress, password);
         await finishSignIn(session, undefined, "email", emailAddress);
       }
     } catch (e) {
-      setError(e?.message || "Something went wrong. Please try again.");
+      setError(e?.message || translate("common.error"));
       setScreen("email");
     } finally {
       busy.current = false;
@@ -325,14 +333,14 @@ export default function Login() {
 
     busy.current = true;
     setError("");
-    setStatusText("Verifying your code…");
+    setStatusText(translate("auth.status.verifying"));
     setScreen("verifying");
 
     try {
       const session = await emailVerifyCode(emailAddress, value);
       await finishSignIn(session, undefined, "email", emailAddress);
     } catch (e) {
-      setError(e?.message || "Could not verify the code. Please try again.");
+      setError(e?.message || translate("auth.error.verifyCode"));
       setCode("");
       setScreen("emailOtp");
     } finally {
@@ -351,7 +359,7 @@ export default function Login() {
       setCode("");
       setResendIn(sent.resend_in || RESEND_SECONDS);
     } catch (e) {
-      setError(e?.message || "Could not send a new code. Please try again.");
+      setError(e?.message || translate("auth.error.resendCode"));
     } finally {
       busy.current = false;
     }
@@ -386,43 +394,44 @@ export default function Login() {
 
           <View style={styles.headline}>
             <Text style={styles.h1}>
-              Astrology that{"\n"}
-              <Text style={styles.h1Em}>knows you.</Text>
+              {t("auth.welcome.headline")}{"\n"}
+              <Text style={styles.h1Em}>{t("auth.welcome.headlineEm")}</Text>
             </Text>
-            <Text style={styles.lead}>
-              Daily guidance from your birth chart and verified astrologers when you need them.
-            </Text>
+            <Text style={styles.lead}>{t("auth.welcome.lead")}</Text>
           </View>
 
           <View style={styles.sheet}>
-            <Text style={styles.h2}>{copy.title}</Text>
-            <Text style={styles.sub}>{copy.sub}</Text>
+            <Text style={styles.h2}>{t(copy.title)}</Text>
+            <Text style={styles.sub}>{t(copy.sub)}</Text>
 
             {/* Order: Phone, Google, Apple (iPhone), Email. */}
             <View style={styles.stack}>
-              <SolidButton label={`${copy.verb} with Phone`} icon={<PhoneIcon color={AUTH.bg} />} onPress={() => go("phone")} />
-              <GlassButton label={`${copy.verb} with Google`} icon={<GoogleIcon />} onPress={continueWithGoogle} />
+              <SolidButton label={t(copy.phone)} icon={<PhoneIcon color={AUTH.bg} />} onPress={() => go("phone")} />
+              <GlassButton label={t(copy.google)} icon={<GoogleIcon />} onPress={continueWithGoogle} />
               {appleAvailable && (
-                <GlassButton label={`${copy.verb} with Apple`} icon={<AppleIcon color={AUTH.text} />} onPress={continueWithApple} />
+                <GlassButton label={t(copy.apple)} icon={<AppleIcon color={AUTH.text} />} onPress={continueWithApple} />
               )}
-              <GlassButton label={`${copy.verb} with Email`} icon={<MailIcon />} onPress={openEmail} />
+              <GlassButton label={t(copy.email)} icon={<MailIcon />} onPress={openEmail} />
             </View>
 
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <Text style={styles.foot}>
-              {copy.foot}{" "}
+              {t(copy.foot)}{" "}
               <Text style={styles.link} onPress={() => setMode(mode === "signup" ? "login" : "signup")}>
-                {copy.switchTo}
+                {t(copy.switchTo)}
               </Text>
             </Text>
             <Text style={styles.terms}>
-              By continuing, you agree to our{" "}
-              <Text style={styles.termsLink} onPress={() => router.push("/(root)/profile/terms")}>Terms</Text> and{" "}
+              {t("auth.terms.prefix")}{" "}
+              <Text style={styles.termsLink} onPress={() => router.push("/(root)/profile/terms")}>
+                {t("auth.terms.terms")}
+              </Text>{" "}
+              {t("auth.terms.and")}{" "}
               <Text style={styles.termsLink} onPress={() => router.push("/(root)/profile/privacy-policy")}>
-                Privacy Policy
+                {t("auth.terms.privacy")}
               </Text>
-              .
+              {t("auth.terms.suffix")}
             </Text>
           </View>
         </ScrollView>
@@ -433,8 +442,8 @@ export default function Login() {
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <BackButton onPress={() => go("welcome")} />
             <Steps done={1} />
-            <Text style={styles.big}>Enter your phone number</Text>
-            <Text style={styles.sub}>We’ll send a {OTP_LENGTH}-digit code by SMS to verify it.</Text>
+            <Text style={styles.big}>{t("auth.phone.title")}</Text>
+            <Text style={styles.sub}>{t("auth.phone.sub", { count: OTP_LENGTH })}</Text>
 
             <View style={styles.field}>
               <Pressable style={styles.cc} onPress={() => setShowCountryPicker(true)}>
@@ -453,7 +462,7 @@ export default function Login() {
                 keyboardType="phone-pad"
                 autoComplete="tel-national"
                 textContentType="telephoneNumber"
-                placeholder={isIndia ? "98765 43210" : "Phone number"}
+                placeholder={isIndia ? "98765 43210" : t("auth.phone.placeholder")}
                 placeholderTextColor="rgba(244,238,230,0.3)"
                 selectionColor={AUTH.gold}
                 maxLength={maxDigits}
@@ -464,12 +473,12 @@ export default function Login() {
 
             <View style={styles.help}>
               <LockIcon />
-              <Text style={styles.helpText}>Your number stays private. Astrologers never see it.</Text>
+              <Text style={styles.helpText}>{t("auth.phone.private")}</Text>
             </View>
             {!!error && <Text style={styles.error}>{error}</Text>}
           </ScrollView>
 
-          <GoldButton label="Send Code" onPress={continueWithPhone} disabled={!phoneValid} busy={sending} />
+          <GoldButton label={t("auth.phone.sendCode")} onPress={continueWithPhone} disabled={!phoneValid} busy={sending} />
         </View>
       )}
 
@@ -478,11 +487,11 @@ export default function Login() {
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <BackButton onPress={() => go("phone")} />
             <Steps done={2} />
-            <Text style={styles.big}>Enter the code</Text>
+            <Text style={styles.big}>{t("auth.otp.title")}</Text>
             <Text style={styles.sub}>
-              Sent to {phoneLabel} ·{" "}
+              {t("auth.otp.sentTo", { phone: phoneLabel })}{" "}
               <Text style={styles.link} onPress={() => go("phone")}>
-                Edit
+                {t("auth.otp.edit")}
               </Text>
             </Text>
 
@@ -512,19 +521,21 @@ export default function Login() {
             />
 
             <Text style={styles.helpText}>
-              Didn’t get it?{" "}
+              {t("auth.otp.didntGet")}{" "}
               {resendIn > 0 ? (
-                <Text style={styles.helpStrong}>Resend in 0:{String(resendIn).padStart(2, "0")}</Text>
+                <Text style={styles.helpStrong}>
+                  {t("auth.otp.resendIn", { time: `0:${String(resendIn).padStart(2, "0")}` })}
+                </Text>
               ) : (
                 <Text style={styles.link} onPress={resendCode}>
-                  Resend code
+                  {t("auth.otp.resend")}
                 </Text>
               )}
             </Text>
             {!!error && <Text style={styles.error}>{error}</Text>}
           </ScrollView>
 
-          <GoldButton label="Verify & Continue" onPress={() => verifyCode()} disabled={code.length !== OTP_LENGTH} />
+          <GoldButton label={t("auth.otp.verify")} onPress={() => verifyCode()} disabled={code.length !== OTP_LENGTH} />
         </View>
       )}
 
@@ -533,11 +544,11 @@ export default function Login() {
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <BackButton onPress={() => go("welcome")} />
             {mode === "signup" && <Steps done={1} />}
-            <Text style={styles.big}>{mode === "signup" ? "Sign up with email" : "Log in with email"}</Text>
+            <Text style={styles.big}>{mode === "signup" ? t("auth.email.signupTitle") : t("auth.email.loginTitle")}</Text>
             <Text style={styles.sub}>
               {mode === "signup"
-                ? `We’ll email you a ${OTP_LENGTH}-digit code to confirm it’s you.`
-                : "Use the email and password you signed up with."}
+                ? t("auth.email.signupSub", { count: OTP_LENGTH })
+                : t("auth.email.loginSub")}
             </Text>
 
             <View style={[styles.inputField, styles.inputFirst]}>
@@ -569,7 +580,7 @@ export default function Login() {
                   setPassword(v);
                   setError("");
                 }}
-                placeholder={mode === "signup" ? "Create a password" : "Password"}
+                placeholder={mode === "signup" ? t("auth.email.createPassword") : t("auth.email.password")}
                 placeholderTextColor="rgba(244,238,230,0.3)"
                 selectionColor={AUTH.gold}
                 secureTextEntry={!showPassword}
@@ -580,7 +591,7 @@ export default function Login() {
                 onSubmitEditing={mode === "login" ? submitEmail : undefined}
                 style={styles.input}
               />
-              <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityLabel="Show password">
+              <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} accessibilityLabel={t("auth.email.showPassword")}>
                 <EyeIcon open={showPassword} />
               </Pressable>
             </View>
@@ -594,7 +605,7 @@ export default function Login() {
                     setConfirm(v);
                     setError("");
                   }}
-                  placeholder="Confirm password"
+                  placeholder={t("auth.email.confirmPassword")}
                   placeholderTextColor="rgba(244,238,230,0.3)"
                   selectionColor={AUTH.gold}
                   secureTextEntry={!showPassword}
@@ -611,14 +622,14 @@ export default function Login() {
             {mode === "signup" && (
               <Text style={styles.helpText}>
                 {!!confirm && confirm !== password
-                  ? "Passwords don’t match."
-                  : "At least 8 characters."}
+                  ? t("auth.email.mismatch")
+                  : t("auth.email.minLength")}
               </Text>
             )}
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <Text style={styles.foot}>
-              {mode === "signup" ? "Already have an account? " : "New to Vritta? "}
+              {mode === "signup" ? t("auth.signup.foot") : t("auth.login.foot")}{" "}
               <Text
                 style={styles.link}
                 onPress={() => {
@@ -627,13 +638,13 @@ export default function Login() {
                   setError("");
                 }}
               >
-                {mode === "signup" ? "Log In" : "Create Account"}
+                {mode === "signup" ? t("auth.signup.switchTo") : t("auth.login.switchTo")}
               </Text>
             </Text>
           </ScrollView>
 
           <GoldButton
-            label={mode === "signup" ? "Send Code" : "Log In"}
+            label={mode === "signup" ? t("auth.phone.sendCode") : t("auth.email.logIn")}
             onPress={submitEmail}
             disabled={!emailFormValid}
             busy={sending}
@@ -646,11 +657,11 @@ export default function Login() {
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <BackButton onPress={() => go("email")} />
             <Steps done={2} />
-            <Text style={styles.big}>Check your email</Text>
+            <Text style={styles.big}>{t("auth.emailOtp.title")}</Text>
             <Text style={styles.sub}>
-              Code sent to {emailAddress} ·{" "}
+              {t("auth.emailOtp.sentTo", { email: emailAddress })}{" "}
               <Text style={styles.link} onPress={() => go("email")}>
-                Edit
+                {t("auth.otp.edit")}
               </Text>
             </Text>
 
@@ -680,19 +691,21 @@ export default function Login() {
             />
 
             <Text style={styles.helpText}>
-              Didn’t get it? Check spam, or{" "}
+              {t("auth.emailOtp.didntGet")}{" "}
               {resendIn > 0 ? (
-                <Text style={styles.helpStrong}>resend in 0:{String(resendIn).padStart(2, "0")}</Text>
+                <Text style={styles.helpStrong}>
+                  {t("auth.emailOtp.resendIn", { time: `0:${String(resendIn).padStart(2, "0")}` })}
+                </Text>
               ) : (
                 <Text style={styles.link} onPress={resendEmailCode}>
-                  resend code
+                  {t("auth.emailOtp.resend")}
                 </Text>
               )}
             </Text>
             {!!error && <Text style={styles.error}>{error}</Text>}
           </ScrollView>
 
-          <GoldButton label="Verify & Continue" onPress={() => verifyEmailCode()} disabled={code.length !== OTP_LENGTH} />
+          <GoldButton label={t("auth.otp.verify")} onPress={() => verifyEmailCode()} disabled={code.length !== OTP_LENGTH} />
         </View>
       )}
 
@@ -709,7 +722,7 @@ export default function Login() {
           <Pressable style={styles.modalBackdrop} onPress={() => setShowCountryPicker(false)} />
           <View style={[styles.countrySheet, { paddingBottom: insets.bottom + 12 }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.countryTitle}>Select country</Text>
+            <Text style={styles.countryTitle}>{t("auth.country.title")}</Text>
             <FlatList
               data={COUNTRIES}
               keyExtractor={(item) => `${item.code}-${item.dialCode}`}

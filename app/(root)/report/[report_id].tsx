@@ -26,6 +26,16 @@ import {
     PartnerDraft,
     partnerDetails,
 } from "../../../components/reports/PartnerForm";
+import {
+    discountLabel,
+    featureLabel,
+    frequencyLabel,
+    reportDescription,
+    reportDiscovery,
+    reportQuestion,
+    reportTitle,
+    testimonialText,
+} from "../../../components/reports/reportText";
 import WritingReportSheet from "../../../components/reports/WritingReportSheet";
 import useProfilesStore from "../../../components/stores/profilesStore";
 import {
@@ -41,6 +51,7 @@ import {
 } from "../../../components/stores/reportsStore";
 import { refreshWalletCredits, useUserStore } from "../../../components/stores/userStore";
 import { metaEvents, track, useScreenTime } from "../../../lib/analytics";
+import { translate, useLanguage, useT } from "../../../lib/i18n";
 import {
     addIncompleteReport,
     removeIncompleteReport,
@@ -227,10 +238,7 @@ async function runPurchase(
       onReady(result);
     } else if (result.status === "failed") {
       onFinished();
-      Alert.alert(
-        "Couldn't prepare your report",
-        "We couldn't prepare your report right now. The amount has been refunded to your wallet."
-      );
+      Alert.alert(translate("reports.alert.prepareFailedTitle"), translate("reports.alert.prepareFailedText"));
     }
   } catch (error) {
     onFinished();
@@ -245,7 +253,10 @@ async function runPurchase(
         reason: (error as Error)?.message || "unknown",
         platform: Platform.OS,
       });
-      Alert.alert("Couldn't buy the report", (error as Error)?.message || "Please try again.");
+      Alert.alert(
+        translate("reports.alert.buyFailedTitle"),
+        (error as Error)?.message || translate("reports.alert.tryAgainText")
+      );
     }
   } finally {
     setLoading(false);
@@ -254,6 +265,9 @@ async function runPurchase(
 
 export default function ReportDetailScreen() {
   const insets = useSafeAreaInsets();
+  const t = useT();
+  // App language (not the report language below).
+  const appLanguage = useLanguage();
   const { report_id } = useLocalSearchParams<{ report_id: string }>();
 
   // Current active profile.
@@ -442,29 +456,33 @@ export default function ReportDetailScreen() {
           color={C.secondary}
         />
 
-        <Text style={s.notFoundTitle}>Report not found</Text>
+        <Text style={s.notFoundTitle}>{t("reports.notFoundTitle")}</Text>
 
         <Text style={s.notFoundText}>
-          We couldn&apos;t find this report.
+          {t("reports.notFoundText")}
         </Text>
 
         <Pressable
           onPress={() => router.back()}
           style={s.primaryButton}
         >
-          <Text style={s.primaryButtonText}>Go Back</Text>
+          <Text style={s.primaryButtonText}>{t("reports.goBackButton")}</Text>
         </Pressable>
       </View>
     );
   }
 
   const features = report.features ?? [];
-  const questions = report.questions ?? [];
-  const discoveries = report.discoveries ?? [];
+  // In the app's language (English text from reports.json when missing).
+  const questions = (report.questions ?? []).map((q, i) => reportQuestion(t, report.id, i, q));
+  const discoveries = (report.discoveries ?? []).map((d, i) => ({
+    ...d,
+    text: reportDiscovery(t, report.id, i, d.text),
+  }));
 
-  const testimonials =
-    report.testimonials ??
-    (report.testimonial ? [report.testimonial] : []);
+  const testimonials = (report.testimonials ?? (report.testimonial ? [report.testimonial] : [])).map(
+    (item, i) => ({ ...item, text: testimonialText(t, report.id, i, item.text) })
+  );
 
   const onTestimonialScroll = (
     e: NativeSyntheticEvent<NativeScrollEvent>
@@ -479,7 +497,7 @@ export default function ReportDetailScreen() {
     try {
       await openReportPage(order);
     } catch {
-      Alert.alert("Couldn't open the report", "Please try again.");
+      Alert.alert(t("reports.alert.openFailedTitle"), t("reports.alert.tryAgainText"));
     }
   };
 
@@ -489,7 +507,7 @@ export default function ReportDetailScreen() {
     track("report_shared", { report_id: report.id, platform: Platform.OS });
     try {
       await Share.share({
-        message: `My ${report.title}: ${link}`,
+        message: t("reports.shareMessage", { title: reportTitle(t, report), link }),
         url: link,
       });
     } catch (error) {
@@ -524,7 +542,7 @@ export default function ReportDetailScreen() {
         html_url: sampleUrl,
       });
     } catch {
-      Alert.alert("Couldn't open the sample", "Please try again.");
+      Alert.alert(t("reports.alert.sampleFailedTitle"), t("reports.alert.tryAgainText"));
     }
   };
 
@@ -590,22 +608,22 @@ export default function ReportDetailScreen() {
           onPress={() => router.back()}
           hitSlop={10}
           style={s.backButton}
-          accessibilityLabel="Go back"
+          accessibilityLabel={t("reports.goBack")}
         >
           <Icon name="chevron-left" size={24} color={C.ink} />
         </Pressable>
 
         <View style={s.headerText}>
-          <Text style={s.headerTitle} numberOfLines={1}>Report</Text>
-          <Text style={s.headerSubtitle}>
-            Based on your kundli
+          <Text style={s.headerTitle} numberOfLines={1}>{t("reports.header")}</Text>
+          <Text style={s.headerSubtitle} numberOfLines={1}>
+            {t("reports.basedOnKundli")}
           </Text>
         </View>
 
         {sampleUrl ? (
           <Pressable onPress={() => void previewSample()} style={s.previewButton}>
             <Icon name="eye-outline" size={15} color={C.plum} />
-            <Text style={s.previewText}>Sample</Text>
+            <Text style={s.previewText} numberOfLines={1}>{t("reports.sample")}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -624,17 +642,17 @@ export default function ReportDetailScreen() {
             />
           </View>
 
-          <Text style={s.reportTitle}>{report.title}</Text>
+          <Text style={s.reportTitle}>{reportTitle(t, report)}</Text>
 
           <Text style={s.reportDescription}>
-            {report.description}
+            {reportDescription(t, report)}
           </Text>
         </View>
 
         {/* Future Report: how many years */}
         {options.variants.length > 0 && (
           <View style={s.variantBlock}>
-            <Text style={s.variantTitle}>Choose your forecast</Text>
+            <Text style={s.variantTitle}>{t("reports.chooseForecast")}</Text>
             <View style={s.variantRow}>
               {options.variants.map((v) => {
                 const on = v.id === variant;
@@ -668,7 +686,7 @@ export default function ReportDetailScreen() {
                 <CircleIcon name={feature.icon} />
 
                 <Text style={s.featureLabel}>
-                  {feature.label}
+                  {featureLabel(t, report.id, index, feature.label)}
                 </Text>
               </View>
             ))}
@@ -679,7 +697,7 @@ export default function ReportDetailScreen() {
         {questions.length > 0 && (
           <View style={s.sectionCard}>
             <SectionTitle
-              title="What will this report answer?"
+              title={t("reports.questionsTitle")}
               icon="book-open-outline"
             />
 
@@ -711,7 +729,7 @@ export default function ReportDetailScreen() {
         {discoveries.length > 0 && (
           <View style={s.section}>
             <SectionTitle
-              title="What you'll discover"
+              title={t("reports.discoverTitle")}
               icon="text-box-check-outline"
             />
 
@@ -781,7 +799,7 @@ export default function ReportDetailScreen() {
         {relatedReports.length > 0 && (
           <View style={s.relatedSection}>
             <Text style={s.relatedTitle}>
-              YOU MAY ALSO LIKE
+              {t("reports.youMayAlsoLike")}
             </Text>
 
             <ScrollView
@@ -811,7 +829,7 @@ export default function ReportDetailScreen() {
                       style={s.relatedCardTitle}
                       numberOfLines={1}
                     >
-                      {item.title}
+                      {reportTitle(t, item)}
                     </Text>
 
                     <Icon
@@ -830,7 +848,7 @@ export default function ReportDetailScreen() {
       <WritingReportSheet
         visible={writingOpen}
         onClose={closeWriting}
-        readyTitle={readyOrder ? readyOrder.report_name || report.title : null}
+        readyTitle={readyOrder ? (appLanguage === "en" && readyOrder.report_name) || reportTitle(t, report) : null}
         onOpen={openReady}
       />
 
@@ -874,22 +892,29 @@ export default function ReportDetailScreen() {
             <View style={s.priceColumn}>
               <View style={s.purchasedBadge}>
                 <Icon name="check-decagram" size={14} color={C.plum} />
-                <Text style={s.purchasedText}>Purchased</Text>
+                <Text style={s.purchasedText} numberOfLines={1}>{t("reports.status.purchased")}</Text>
               </View>
-              <Text style={s.frequency}>
-                {activeProfileName ? `For ${activeProfileName}` : "Ready to read"}
+              <Text style={s.frequency} numberOfLines={1}>
+                {activeProfileName ? t("reports.forName", { name: activeProfileName }) : t("reports.readyToRead")}
               </Text>
               <Pressable onPress={handleBuyNow} hitSlop={8}>
-                <Text style={s.buyAgain}>Buy again ›</Text>
+                <Text style={s.buyAgain}>{t("reports.buyAgain")}</Text>
               </Pressable>
             </View>
 
-            <Pressable onPress={shareReport} hitSlop={8} style={s.shareButton}>
+            <Pressable
+              onPress={shareReport}
+              hitSlop={8}
+              style={s.shareButton}
+              accessibilityLabel={t("reports.share")}
+            >
               <Icon name="share-variant-outline" size={20} color={C.plum} />
             </Pressable>
 
             <Pressable onPress={openReport} style={s.buyButton}>
-              <Text style={s.buyButtonText}>Open Report</Text>
+              <Text style={s.buyButtonText} numberOfLines={1} adjustsFontSizeToFit>
+                {t("reports.openReportCta")}
+              </Text>
               <Icon name="file-pdf-box" size={20} color={C.white} />
             </Pressable>
           </>
@@ -897,24 +922,24 @@ export default function ReportDetailScreen() {
           <View style={s.preparingRow}>
             <CosmicLoader size={52} />
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={s.preparingTitle}>Preparing your report…</Text>
-              <Text style={s.frequency}>Usually ready in 2 - 5 minutes. You can leave this page.</Text>
+              <Text style={s.preparingTitle}>{t("reports.preparingTitle")}</Text>
+              <Text style={s.frequency}>{t("reports.preparingText")}</Text>
             </View>
           </View>
         ) : !available ? (
           <View style={s.preparingRow}>
             <Icon name="clock-outline" size={22} color={C.secondary} />
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={s.preparingTitle}>Coming soon</Text>
-              <Text style={s.frequency}>This report will be available shortly.</Text>
+              <Text style={s.preparingTitle}>{t("common.comingSoon")}</Text>
+              <Text style={s.frequency}>{t("reports.availableShortly")}</Text>
             </View>
           </View>
         ) : (
           <>
             <View style={s.priceColumn}>
               <View style={s.discountBadge}>
-                <Text style={s.discountText}>
-                  {report.discount}
+                <Text style={s.discountText} numberOfLines={1}>
+                  {discountLabel(t, report.discount)}
                 </Text>
               </View>
 
@@ -929,13 +954,13 @@ export default function ReportDetailScreen() {
               </View>
 
               <Text style={s.frequency}>
-                {status === "failed" ? "Last attempt failed · refunded" : report.frequency}
+                {status === "failed" ? t("reports.lastAttemptFailed") : frequencyLabel(t, report.frequency)}
               </Text>
             </View>
 
             <Pressable onPress={handleBuyNow} style={s.buyButton}>
-              <Text style={s.buyButtonText}>
-                {status === "failed" ? "Try Again" : "Buy Now"}
+              <Text style={s.buyButtonText} numberOfLines={1} adjustsFontSizeToFit>
+                {status === "failed" ? t("reports.tryAgain") : t("reports.buyNow")}
               </Text>
               <Icon name="arrow-right" size={20} color={C.white} />
             </Pressable>

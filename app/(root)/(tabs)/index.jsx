@@ -14,14 +14,15 @@ import useProfilesStore from "../../../components/stores/profilesStore";
 import { useUserStore } from "../../../components/stores/userStore";
 import TopBar from "../../../components/TopBar";
 import { useScreenTime } from "../../../lib/analytics";
+import { useT } from "../../../lib/i18n";
 import { useTabBarSpace } from "../../../components/utils/tabBar";
 
-// "Good morning" etc. by the IST hour (same as My Life).
-const greeting = () => {
+// "Good morning" etc. by the IST hour (same as My Life): the key's part.
+const greetingPart = () => {
   const hour = Math.floor((Date.now() / 3600000 + 5.5) % 24);
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
 };
 
 // Sections rise in one after another.
@@ -30,6 +31,7 @@ const enter = (index) => FadeInDown.delay(70 * index).duration(420);
 export default function Home() {
   // Analytics: visited_home + home_time_spent.
   useScreenTime("home");
+  const t = useT();
 
   const tabSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
@@ -58,10 +60,11 @@ export default function Home() {
           <>
             <Reanimated.View entering={enter(0)}>
               <Text style={styles.greeting} numberOfLines={1}>
-                {greeting()}
-                {firstName ? `, ${firstName}` : ""}
+                {firstName
+                  ? t(`home.greeting.${greetingPart()}Name`, { name: firstName })
+                  : t(`home.greeting.${greetingPart()}`)}
               </Text>
-              <Text style={styles.greetingSub}>Here’s what the stars hold for you today</Text>
+              <Text style={styles.greetingSub}>{t("home.greetingSub")}</Text>
             </Reanimated.View>
 
             <Reanimated.View entering={enter(1)}>

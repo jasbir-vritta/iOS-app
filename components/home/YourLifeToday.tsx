@@ -20,6 +20,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import { useT } from "../../lib/i18n";
 import { useMyLifeStore } from "../stores/myLifeStore";
 import { useUserStore } from "../stores/userStore";
 import {
@@ -71,34 +72,40 @@ type Look = {
 const LIGHT = "255,253,252";
 const DARK = "28,24,32";
 
-const AREAS: { key: AreaKey; title: string; icon: IconName; look: Look }[] = [
+// titleKey / shortKey: shown with t() at render time.
+const AREAS: { key: AreaKey; titleKey: string; shortKey: string; icon: IconName; look: Look }[] = [
   {
     key: "love",
-    title: "Love & Relationships",
+    titleKey: "home.life.love",
+    shortKey: "home.area.love",
     icon: "heart-outline",
     look: { bg: "#EFE8F7", border: "#DCCFEA", fg: DARK, accent: C.PLUM, art: "heart" },
   },
   {
     key: "career",
-    title: "Career & Growth",
+    titleKey: "home.life.career",
+    shortKey: "home.area.career",
     icon: "briefcase-outline",
     look: { bg: C.INK, border: C.INK, fg: LIGHT, accent: C.IVORY, art: "steps" },
   },
   {
     key: "money",
-    title: "Money & Finance",
+    titleKey: "home.life.money",
+    shortKey: "home.area.money",
     icon: "wallet-outline",
     look: { bg: C.IVORY, border: "#E6D9C4", fg: DARK, accent: "#8A6A2E", art: "coin" },
   },
   {
     key: "health",
-    title: "Health & Wellness",
+    titleKey: "home.life.health",
+    shortKey: "home.area.health",
     icon: "meditation",
     look: { bg: C.CARD, border: C.LINE, fg: DARK, accent: C.PLUM, art: "lotus" },
   },
   {
     key: "travel",
-    title: "Travel & Journeys",
+    titleKey: "home.life.travel",
+    shortKey: "home.area.travel",
     icon: "airplane",
     look: { bg: C.PLUM, border: C.PLUM, fg: LIGHT, accent: C.GOLD, art: "flight" },
   },
@@ -171,17 +178,20 @@ type AreaData = { score?: unknown; status?: unknown; title?: unknown; descriptio
 
 /* One life area: tap to flip over and read today's full description. */
 function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: AreaData; width: number }) {
+  const t = useT();
   const look = area.look;
+  const title = t(area.titleKey);
   const fg = (alpha: number) => `rgba(${look.fg},${alpha})`;
   const dark = look.fg === LIGHT;
 
   const score = Number(data?.score);
   const hasScore = Number.isFinite(score);
   const status = STATUS[normalizeStatus(data?.status)];
+  const statusLabel = t(status.labelKey);
   const summary =
-    toText(data?.title) || toText(data?.description || data?.text) || "Tap to see today’s guidance.";
+    toText(data?.title) || toText(data?.description || data?.text) || t("home.life.tapToSee");
   const full =
-    toText(data?.description || data?.text) || toText(data?.title) || "Today’s reading for this area will appear here.";
+    toText(data?.description || data?.text) || toText(data?.title) || t("home.life.empty");
 
   // 0 = front, 1 = back.
   const still = useReducedMotion();
@@ -211,7 +221,11 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
       <Reanimated.View style={[StyleSheet.absoluteFill, frontStyle]} pointerEvents={flipped ? "none" : "auto"}>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel={`${area.title}: ${data ? status.label : "no reading yet"}. Tap to read more.`}
+          accessibilityLabel={
+            data
+              ? t("home.life.a11yFront", { title, status: statusLabel })
+              : t("home.life.a11yFrontEmpty", { title })
+          }
           activeOpacity={0.92}
           onPress={flip}
           style={face}
@@ -232,7 +246,9 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
             {!!data && (
               <View style={[styles.pill, { backgroundColor: status.bg }]}>
                 <View style={[styles.dot, { backgroundColor: status.color }]} />
-                <Text style={[styles.pillText, { color: status.color }]}>{status.label}</Text>
+                <Text style={[styles.pillText, { color: status.color }]} numberOfLines={1}>
+                  {statusLabel}
+                </Text>
               </View>
             )}
           </View>
@@ -240,7 +256,7 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
           <View style={{ flex: 1 }} />
 
           <Text style={[styles.title, { color: fg(1) }]} numberOfLines={2}>
-            {area.title}
+            {title}
           </Text>
           <Text style={[styles.description, { color: fg(dark ? 0.72 : 0.62) }]} numberOfLines={2}>
             {summary}
@@ -266,7 +282,7 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
       <Reanimated.View style={[StyleSheet.absoluteFill, backStyle]} pointerEvents={flipped ? "auto" : "none"}>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel={`${area.title}: ${full}. Tap to flip back.`}
+          accessibilityLabel={t("home.life.a11yBack", { title, text: full })}
           activeOpacity={0.92}
           onPress={flip}
           style={face}
@@ -274,7 +290,7 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
           <View style={styles.backHead}>
             <MaterialCommunityIcons name={area.icon} size={16} color={dark ? fg(1) : look.accent} />
             <Text style={[styles.backTitle, { color: fg(1) }]} numberOfLines={1}>
-              {area.title.split(" & ")[0]}
+              {t(area.shortKey)}
             </Text>
             {hasScore && (
               <Text style={[styles.backScore, { color: dark ? fg(1) : look.accent }]}>{Math.round(score)}</Text>
@@ -284,7 +300,9 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
           {!!data && (
             <View style={[styles.pill, styles.backPill, { backgroundColor: status.bg }]}>
               <View style={[styles.dot, { backgroundColor: status.color }]} />
-              <Text style={[styles.pillText, { color: status.color }]}>{status.label}</Text>
+              <Text style={[styles.pillText, { color: status.color }]} numberOfLines={1}>
+                  {statusLabel}
+                </Text>
             </View>
           )}
 
@@ -303,6 +321,7 @@ function AreaCard({ area, data, width }: { area: (typeof AREAS)[number]; data: A
 }
 
 export default function YourLifeToday() {
+  const t = useT();
   const [rowWidth, setRowWidth] = useState(Dimensions.get("window").width - HOME_PAD * 2);
 
   const activeProfileId = useUserStore((state) => state.user?.active_profile_id);
@@ -316,7 +335,7 @@ export default function YourLifeToday() {
 
   return (
     <View onLayout={onLayout}>
-      <SectionHeader overline="INSIGHTS" title="Your life today" onViewAll={openMyLife} />
+      <SectionHeader overline={t("home.life.overline")} title={t("home.life.title")} onViewAll={openMyLife} />
 
       <ScrollView
         horizontal

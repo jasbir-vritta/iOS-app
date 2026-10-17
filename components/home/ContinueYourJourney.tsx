@@ -21,6 +21,8 @@ import { ChatHistoryItem, openChatSession, withAstrologerPhotos } from "../../co
 import { getIncompleteReportIds } from "../../components/utils/reportJourneyStorage";
 import { parseServerDate } from "../../components/utils/serverDate";
 import { API_URL, authHeaders } from "../../lib/auth";
+import { useLanguage, useT } from "../../lib/i18n";
+import { reportTitle as translatedReportTitle } from "../reports/reportText";
 import { C as HOME, F, HOME_PAD, LIST_BOTTOM, LIST_TOP, SectionHeader, softShadow } from "./homeUi";
 
 // Home palette (plum for the app, terracotta only for human astrologers).
@@ -151,25 +153,30 @@ const chatTime = (chat: ChatHistoryItem) => {
   return Number.isFinite(time) ? time : 0;
 };
 
+type Translate = ReturnType<typeof useT>;
+
 // "Just now", "3h ago", "Yesterday", "12 Oct".
-function chatWhen(chat: ChatHistoryItem): string {
+function chatWhen(chat: ChatHistoryItem, t: Translate, language: string): string {
   const time = chatTime(chat);
   if (!time) return "";
   const mins = Math.floor((Date.now() - time) / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 24 * 60) return `${Math.floor(mins / 60)}h ago`;
-  if (mins < 48 * 60) return "Yesterday";
-  return new Date(time).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  if (mins < 1) return t("home.journey.justNow");
+  if (mins < 60) return t("home.journey.minsAgo", { count: mins });
+  if (mins < 24 * 60) return t("home.journey.hoursAgo", { count: Math.floor(mins / 60) });
+  if (mins < 48 * 60) return t("common.yesterday");
+  return new Date(time).toLocaleDateString(language === "hi" ? "hi-IN" : "en-IN", { day: "numeric", month: "short" });
 }
 
+// Translation keys for the chat kind (by reading type).
 const READING_LABEL: Record<string, string> = {
-  vedic: "Vedic chat",
-  tarot: "Tarot chat",
-  numerology: "Numerology chat",
+  vedic: "home.journey.vedicChat",
+  tarot: "home.journey.tarotChat",
+  numerology: "home.journey.numerologyChat",
 };
 
 export default function ContinueYourJourney() {
+  const t = useT();
+  const language = useLanguage();
   const activeProfileId = useUserStore(
     (state) => state.user?.active_profile_id
   );
@@ -212,8 +219,9 @@ export default function ContinueYourJourney() {
           setMantras([
             {
               id: idOf(item),
-              title: item.title ?? item.name ?? item.mantra_name ?? "Mantra",
-              subtitle: item.subtitle ?? item.description ?? "Continue chanting",
+              // Empty: the translated fallback is shown at render time.
+              title: item.title ?? item.name ?? item.mantra_name ?? "",
+              subtitle: item.subtitle ?? item.description ?? "",
               chants: chantsInCycle,
               image: getMantraImage(item),
             },
@@ -336,7 +344,7 @@ export default function ContinueYourJourney() {
 
   return (
     <View style={styles.container} onLayout={onLayout}>
-      <SectionHeader overline="PICK UP WHERE YOU LEFT OFF" title="Continue your journey" />
+      <SectionHeader overline={t("home.journey.overline")} title={t("home.journey.title")} />
       <View style={styles.header}>
 
         {/* <TouchableOpacity
@@ -345,7 +353,7 @@ export default function ContinueYourJourney() {
           style={styles.viewAll}
           activeOpacity={0.8}
         >
-          <Text style={styles.viewAllText}>View all</Text>
+          <Text style={styles.viewAllText}>{t("home.viewAll")}</Text>
           <Icon name="arrow-right" size={px(18)} color={C.PLUM} />
         </TouchableOpacity> */}
       </View>
@@ -365,11 +373,20 @@ export default function ContinueYourJourney() {
             (mantra.chants / CHANTS_PER_MILESTONE) * 100
           );
 
+          // Translated name (same keys as the mantra screen), else the data name.
+          const nameKey = `mantra.name.${mantra.id}`;
+          const mantraTitle =
+            (t(nameKey) !== nameKey ? t(nameKey) : mantra.title) || t("home.journey.mantraFallback");
+
           return (
             <TouchableOpacity
               key={mantra.id}
               accessibilityRole="button"
-              accessibilityLabel={`${mantra.title}, ${mantra.chants} of 108 chants`}
+              accessibilityLabel={t("home.journey.mantraA11y", {
+                title: mantraTitle,
+                count: mantra.chants,
+                total: CHANTS_PER_MILESTONE,
+              })}
               activeOpacity={0.85}
               onPress={() => openMantra(mantra.id)}
               style={{ ...cardStyle, width: mantraW }}
@@ -399,7 +416,7 @@ export default function ContinueYourJourney() {
                     { fontSize: textSize, lineHeight: textLH },
                   ]}
                 >
-                  Sadhana
+                  {t("home.journey.sadhana")}
                 </Text>
 
                 <Text
@@ -410,7 +427,7 @@ export default function ContinueYourJourney() {
                     { fontSize: textSize, lineHeight: textLH },
                   ]}
                 >
-                  {mantra.title}
+                  {mantraTitle}
                 </Text>
 
                 <View
@@ -445,7 +462,7 @@ export default function ContinueYourJourney() {
                     },
                   ]}
                 >
-                  Chants {mantra.chants}/{CHANTS_PER_MILESTONE}
+                  {t("home.journey.chants", { count: mantra.chants, total: CHANTS_PER_MILESTONE })}
                 </Text>
               </View>
 
@@ -477,19 +494,19 @@ export default function ContinueYourJourney() {
         })}
 
         {chats.map((chat) => {
-          const name = chat.astrologer_name?.trim() || "Astrologer";
+          const name = chat.astrologer_name?.trim() || t("home.journey.astrologerFallback");
           const photo = chat.astrologer_image_url || chat.astrologer_image || undefined;
           const kind =
             chat.participant_type === "human"
-              ? "Astrologer chat"
-              : READING_LABEL[chat.reading_type || ""] || "Chat";
-          const when = chatWhen(chat);
+              ? t("home.journey.astrologerChat")
+              : t(READING_LABEL[chat.reading_type || ""] || "home.journey.chat");
+          const when = chatWhen(chat, t, language);
 
           return (
             <TouchableOpacity
               key={chat.session_id}
               accessibilityRole="button"
-              accessibilityLabel={`Continue chat with ${name}`}
+              accessibilityLabel={t("home.journey.chatA11y", { name })}
               activeOpacity={0.85}
               onPress={() => openChatSession(chat, user)}
               style={{ ...cardStyle, width: mantraW }}
@@ -575,14 +592,18 @@ export default function ContinueYourJourney() {
 
         {incompleteReports.map((report) => {
           const reportImage = report.image ?? report.image_url;
+          const rawTitle = report.title ?? report.name;
+          const reportTitle = rawTitle ? translatedReportTitle(t, { id: report.id, title: rawTitle }) : undefined;
 
           return (
             <TouchableOpacity
               key={report.id}
               accessibilityRole="button"
-              accessibilityLabel={`Continue ${
-                report.title ?? report.name ?? "report"
-              }`}
+              accessibilityLabel={
+                reportTitle
+                  ? t("home.journey.reportA11y", { title: reportTitle })
+                  : t("home.journey.reportA11yNoTitle")
+              }
               activeOpacity={0.85}
               onPress={() => openReport(report.id)}
               style={{ ...cardStyle, width: reportW }}
@@ -620,7 +641,7 @@ export default function ContinueYourJourney() {
                     { fontSize: textSize, lineHeight: textLH },
                   ]}
                 >
-                  {report.title ?? report.name ?? "Report"}
+                  {reportTitle ?? t("home.journey.reportFallback")}
                 </Text>
 
                 <Text
@@ -635,7 +656,7 @@ export default function ContinueYourJourney() {
                     },
                   ]}
                 >
-                  Continue your report
+                  {t("home.journey.continueReport")}
                 </Text>
 
                 <View

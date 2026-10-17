@@ -5,6 +5,7 @@ import { create } from "zustand";
 
 import { track } from "../../lib/analytics";
 import { API_URL, authHeaders } from "../../lib/auth";
+import { translate } from "../../lib/i18n";
 import { hasInAppViewer } from "../utils/reportViewer";
 import { useUserStore } from "./userStore";
 
@@ -197,7 +198,7 @@ export async function purchaseReport(
 
     if (!res.ok || !json?.order) {
       throw new ReportPurchaseError(
-        json?.detail || "Could not buy this report. Please try again.",
+        json?.detail || translate("reports.alert.buyFailedText"),
         res.status
       );
     }
@@ -230,7 +231,7 @@ export async function openReport(order?: ReportOrder | null): Promise<void> {
       pathname: "/(root)/report/viewer",
       params: {
         url,
-        title: order?.report_name || (isSample ? "Sample report" : "Your report"),
+        title: order?.report_name || (isSample ? translate("reports.sampleReport") : translate("reports.yourReport")),
         // For analytics in the viewer.
         report_id: order?.report_id || "",
         sample: isSample ? "1" : "0",

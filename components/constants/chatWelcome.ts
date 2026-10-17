@@ -1,3 +1,4 @@
+import { translate } from "../../lib/i18n";
 import { APP_NAME } from "./app";
 
 export type ChatWelcomeType = "vedic" | "numerology" | "tarot";
@@ -7,42 +8,40 @@ interface ChatWelcomeContent {
   note: string;
 }
 
-const LANGUAGE_MESSAGE =
-  "You can ask your question in English, Hindi, or any language you're comfortable with.";
-
 // Shown at the top of every chat, before the conversation.
-// `name` is the astrologer's name.
+// `name` is the astrologer's name. Built on each call so the text follows
+// the app language.
 export const CHAT_WELCOME: Record<
   ChatWelcomeType,
   (name: string) => ChatWelcomeContent
 > = {
   vedic: (name) => ({
     messages: [
-      `Welcome to ${APP_NAME}.`,
-      `${name} is looking at your details.`,
-      LANGUAGE_MESSAGE,
-      "For a better answer, please share a few details with your question, like what's happening and since when.",
+      translate("chat.welcome.title", { app: APP_NAME }),
+      translate("chat.welcome.looking", { name }),
+      translate("chat.welcome.language"),
+      translate("chat.welcome.vedicTip"),
     ],
-    note: `Welcome! Your chat has started. ${name} is checking your details. You can ask your question now.`,
+    note: translate("chat.welcome.vedicNote", { name }),
   }),
 
   numerology: (name) => ({
     messages: [
-      `Welcome to ${APP_NAME}.`,
-      `${name} is looking at your details.`,
-      LANGUAGE_MESSAGE,
-      "For a better answer, please share a few details with your question. You can ask about your career, relationships, a lucky date, or a name change.",
+      translate("chat.welcome.title", { app: APP_NAME }),
+      translate("chat.welcome.looking", { name }),
+      translate("chat.welcome.language"),
+      translate("chat.welcome.numerologyTip"),
     ],
-    note: `Welcome! Your chat has started. ${name} is checking your numbers. You can ask your question now.`,
+    note: translate("chat.welcome.numerologyNote", { name }),
   }),
 
   tarot: (name) => ({
     messages: [
-      `Welcome to ${APP_NAME}.`,
-      `${name} is looking at your details.`,
-      LANGUAGE_MESSAGE,
-      "Focus on one clear question. When asked, pick a card and your reading will begin.",
+      translate("chat.welcome.title", { app: APP_NAME }),
+      translate("chat.welcome.looking", { name }),
+      translate("chat.welcome.language"),
+      translate("chat.welcome.tarotTip"),
     ],
-    note: `Welcome! Your chat has started. ${name} is preparing your reading. You can ask your question now.`,
+    note: translate("chat.welcome.tarotNote", { name }),
   }),
 };

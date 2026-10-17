@@ -30,6 +30,7 @@ import {
     uploadAvatar,
     type PickedPhoto,
 } from "../../../components/utils/useAvatarUpload";
+import { translate, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -45,8 +46,22 @@ const C = {
   SUCCESS: "#2E7D4F",
 };
 
-// "Relation" choices (the backend accepts only these).
+// "Relation" choices (the backend accepts only these; labels are translated).
 const RELATIONS = ["Parent", "Child", "Spouse", "Partner", "Sibling", "In-Law", "Grandparent", "Grandchild", "Relative", "Friend", "Other"];
+
+// Shown label for a saved relation value ("Parent" -> "माता-पिता").
+const relationLabel = (t: (key: string) => string, value: string) => {
+  const key = `profiles.relation.${value}`;
+  const label = t(key);
+  return label === key ? value : label;
+};
+
+// Marital status values stay English (saved); only the label is translated.
+const MARITAL = [
+  { value: "Single", label: "profiles.marital.single" },
+  { value: "Married", label: "profiles.marital.married" },
+  { value: "Other", label: "common.other" },
+];
 
 type PlaceResult = {
   name: string;
@@ -128,6 +143,7 @@ const formatDisplayTime = (
 
 export default function AddProfile() {
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   const [name, setName] = useState("");
 
@@ -156,9 +172,9 @@ export default function AddProfile() {
         // Already has the one extra profile: say so before the form is filled in.
         if (max && count >= max) {
           Alert.alert(
-            "Profile limit reached",
-            "You can add only one profile besides your own. Delete it in Manage profiles to add someone else.",
-            [{ text: "OK", onPress: () => router.back() }]
+            translate("profiles.limitTitle"),
+            translate("profiles.limitBody"),
+            [{ text: translate("common.ok"), onPress: () => router.back() }]
           );
           return;
         }
@@ -322,40 +338,40 @@ export default function AddProfile() {
     async () => {
       if (!name.trim()) {
         Alert.alert(
-          "Missing information",
-          "Please enter the full name."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingName")
         );
         return;
       }
 
       if (!relation) {
         Alert.alert(
-          "Missing information",
-          "Please select the relation."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingRelation")
         );
         return;
       }
 
       if (!gender) {
         Alert.alert(
-          "Missing information",
-          "Please select gender."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingGender")
         );
         return;
       }
 
       if (!dateOfBirth) {
         Alert.alert(
-          "Missing information",
-          "Please select the birth date."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingDate")
         );
         return;
       }
 
       if (!timeOfBirth) {
         Alert.alert(
-          "Missing information",
-          "Please select the birth time."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingTime")
         );
         return;
       }
@@ -364,8 +380,8 @@ export default function AddProfile() {
       // with the same name can't be mixed up.
       if (!placeOfBirth.trim() || !lat || !lon) {
         Alert.alert(
-          "Missing information",
-          "Please search and select the birth place from the list."
+          translate("profiles.missingTitle"),
+          translate("profiles.missingPlace")
         );
         return;
       }
@@ -410,11 +426,11 @@ export default function AddProfile() {
         // Only one profile besides the user's own.
         if (response.status === 403) {
           Alert.alert(
-            "Profile limit reached",
+            translate("profiles.limitTitle"),
             typeof data?.detail === "string"
               ? data.detail
-              : "You can add only one profile besides your own.",
-            [{ text: "OK", onPress: () => router.back() }]
+              : translate("profiles.limitShort"),
+            [{ text: translate("common.ok"), onPress: () => router.back() }]
           );
           return;
         }
@@ -422,14 +438,14 @@ export default function AddProfile() {
         // A new profile costs credits.
         if (response.status === 402) {
           Alert.alert(
-            "Add funds",
+            translate("profiles.addFundsTitle"),
             typeof data?.detail === "string"
               ? data.detail
-              : "Please add funds to your wallet to create another profile.",
+              : translate("profiles.addFundsBody"),
             [
-              { text: "Cancel", style: "cancel" },
+              { text: translate("common.cancel"), style: "cancel" },
               {
-                text: "Add Funds",
+                text: translate("profiles.addFundsButton"),
                 onPress: () => router.push("/wallet"),
               },
             ]
@@ -441,7 +457,7 @@ export default function AddProfile() {
           throw new Error(
             data?.detail ||
               data?.message ||
-              "Failed to create profile"
+              translate("profiles.createFailed")
           );
         }
 
@@ -472,8 +488,8 @@ export default function AddProfile() {
             );
 
             Alert.alert(
-              "Profile created",
-              "We couldn't upload the photo. You can add it later from Edit Profile."
+              translate("profiles.createdTitle"),
+              translate("profiles.photoUploadFailed")
             );
           }
         }
@@ -497,10 +513,10 @@ export default function AddProfile() {
         );
 
         Alert.alert(
-          "Unable to create profile",
+          translate("profiles.createErrorTitle"),
           error instanceof Error
             ? error.message
-            : "Something went wrong. Please try again."
+            : translate("common.error")
         );
       } finally {
         setSaving(false);
@@ -508,9 +524,9 @@ export default function AddProfile() {
     };
 
   const genders = [
-    { value: "male", label: "Male", icon: "gender-male" },
-    { value: "female", label: "Female", icon: "gender-female" },
-    { value: "other", label: "Other", icon: "gender-non-binary" },
+    { value: "male", label: t("common.male"), icon: "gender-male" },
+    { value: "female", label: t("common.female"), icon: "gender-female" },
+    { value: "other", label: t("common.other"), icon: "gender-non-binary" },
   ] as const;
 
   const charged = Boolean(pricing?.charged && pricing.price > 0);
@@ -525,12 +541,12 @@ export default function AddProfile() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Add a loved one</Text>
-          <Text style={styles.subtitle}>Their Kundli, horoscope and reports in one place</Text>
+          <Text style={styles.title}>{t("profiles.addTitle")}</Text>
+          <Text style={styles.subtitle}>{t("profiles.addSubtitle")}</Text>
         </View>
       </View>
 
@@ -552,7 +568,7 @@ export default function AddProfile() {
               }}
               disabled={saving}
               style={styles.avatarRing}
-              accessibilityLabel="Add a photo"
+              accessibilityLabel={t("profiles.addPhotoA11y")}
             >
               <View style={styles.avatar}>
                 {photo ? (
@@ -570,11 +586,11 @@ export default function AddProfile() {
           </View>
 
           <Text style={styles.photoName} numberOfLines={1}>
-            {name.trim() || "New profile"}
+            {name.trim() || t("profiles.newProfile")}
           </Text>
           <Text style={styles.photoSub} numberOfLines={1}>
-            {relation ? `${relation} · ` : ""}
-            {photo ? "Tap the photo to change it" : "Add a photo (optional)"}
+            {relation ? `${relationLabel(t, relation)} · ` : ""}
+            {photo ? t("profiles.photoChange") : t("profiles.photoOptional")}
           </Text>
 
           {pricing && (
@@ -582,15 +598,15 @@ export default function AddProfile() {
               {charged ? (
                 <>
                   {pricing.oldPrice > pricing.price && <Text style={styles.pillOld}>₹{pricing.oldPrice}</Text>}
-                  <Text style={styles.pillText}>₹{pricing.price} one-time</Text>
+                  <Text style={styles.pillText}>{t("profiles.oneTime", { price: pricing.price })}</Text>
                   {offPercent > 0 && (
                     <View style={styles.offBadge}>
-                      <Text style={styles.offText}>{offPercent}% OFF</Text>
+                      <Text style={styles.offText}>{t("profiles.off", { percent: offPercent })}</Text>
                     </View>
                   )}
                 </>
               ) : (
-                <Text style={styles.pillText}>Free profile</Text>
+                <Text style={styles.pillText}>{t("profiles.freeProfile")}</Text>
               )}
             </View>
           )}
@@ -602,17 +618,17 @@ export default function AddProfile() {
             <View style={styles.cardIcon}>
               <Icon name="account-heart-outline" size={18} color={C.PLUM} />
             </View>
-            <Text style={styles.cardTitle}>About them</Text>
+            <Text style={styles.cardTitle}>{t("profiles.aboutThem")}</Text>
           </View>
 
           {/* Full Name */}
-          <Text style={styles.label}>Full name</Text>
+          <Text style={styles.label}>{t("profiles.fullName")}</Text>
           <View style={styles.inputRow}>
             <Icon name="account-outline" size={19} color={C.MUTED} />
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Enter full name"
+              placeholder={t("profiles.fullNamePlaceholder")}
               placeholderTextColor={C.MUTED}
               style={styles.inputText}
               returnKeyType="next"
@@ -620,7 +636,7 @@ export default function AddProfile() {
           </View>
 
           {/* Relation */}
-          <Text style={styles.label}>Relation</Text>
+          <Text style={styles.label}>{t("profiles.relation")}</Text>
           <Pressable
             onPress={() => setRelationOpen((open) => !open)}
             style={[styles.inputRow, relationOpen && styles.inputRowActive]}
@@ -628,7 +644,7 @@ export default function AddProfile() {
             accessibilityState={{ expanded: relationOpen }}
           >
             <Icon name="family-tree" size={19} color={C.MUTED} />
-            <Text style={[styles.inputText, !relation && { color: C.MUTED }]}>{relation || "Select"}</Text>
+            <Text style={[styles.inputText, !relation && { color: C.MUTED }]}>{relation ? relationLabel(t, relation) : t("profiles.select")}</Text>
             <Icon name={relationOpen ? "chevron-up" : "chevron-down"} size={20} color={C.MUTED} />
           </Pressable>
 
@@ -645,7 +661,7 @@ export default function AddProfile() {
                     }}
                     style={[styles.relationChip, selected && styles.chipSelected]}
                   >
-                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{option}</Text>
+                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{relationLabel(t, option)}</Text>
                   </Pressable>
                 );
               })}
@@ -653,7 +669,7 @@ export default function AddProfile() {
           )}
 
           {/* Gender */}
-          <Text style={styles.label}>Gender</Text>
+          <Text style={styles.label}>{t("profiles.gender")}</Text>
           <View style={styles.segment}>
             {genders.map((option) => {
               const selected = gender === option.value;
@@ -671,17 +687,19 @@ export default function AddProfile() {
           </View>
 
           {/* Marital Status */}
-          <Text style={styles.label}>Marital status</Text>
+          <Text style={styles.label}>{t("profiles.maritalStatus")}</Text>
           <View style={styles.segment}>
-            {["Single", "Married", "Other"].map((option) => {
-              const selected = maritalStatus === option;
+            {MARITAL.map((option) => {
+              const selected = maritalStatus === option.value;
               return (
                 <Pressable
-                  key={option}
-                  onPress={() => setMaritalStatus(option)}
+                  key={option.value}
+                  onPress={() => setMaritalStatus(option.value)}
                   style={[styles.segmentItem, selected && styles.segmentItemActive]}
                 >
-                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{option}</Text>
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]} numberOfLines={1}>
+                    {t(option.label)}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -695,15 +713,15 @@ export default function AddProfile() {
               <Icon name="star-four-points-outline" size={17} color={C.PLUM} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>Birth details</Text>
-              <Text style={styles.cardSub}>The exact time and place make the Kundli accurate</Text>
+              <Text style={styles.cardTitle}>{t("profiles.birthDetails")}</Text>
+              <Text style={styles.cardSub}>{t("profiles.birthDetailsSub")}</Text>
             </View>
           </View>
 
           {/* Birth Date + Time */}
           <View style={styles.twoCol}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Date</Text>
+              <Text style={styles.label}>{t("profiles.date")}</Text>
               <Pressable
                 onPress={() => {
                   setShowTimePicker(false);
@@ -713,13 +731,13 @@ export default function AddProfile() {
               >
                 <Icon name="calendar-month-outline" size={18} color={C.MUTED} />
                 <Text style={[styles.inputText, !dateOfBirth && { color: C.MUTED }]} numberOfLines={1}>
-                  {dateOfBirth || "Select"}
+                  {dateOfBirth || t("profiles.select")}
                 </Text>
               </Pressable>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Time</Text>
+              <Text style={styles.label}>{t("profiles.time")}</Text>
               <Pressable
                 onPress={() => {
                   setShowDatePicker(false);
@@ -729,7 +747,7 @@ export default function AddProfile() {
               >
                 <Icon name="clock-outline" size={18} color={C.MUTED} />
                 <Text style={[styles.inputText, !timeOfBirth && { color: C.MUTED }]} numberOfLines={1}>
-                  {formatDisplayTime(timeOfBirth) || "Select"}
+                  {formatDisplayTime(timeOfBirth) || t("profiles.select")}
                 </Text>
               </Pressable>
             </View>
@@ -747,7 +765,7 @@ export default function AddProfile() {
                 onChange={handleDateChange}
               />
               <Pressable onPress={() => setShowDatePicker(false)} style={styles.pickerDone}>
-                <Text style={styles.pickerDoneText}>Done</Text>
+                <Text style={styles.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
@@ -763,13 +781,13 @@ export default function AddProfile() {
                 onChange={handleTimeChange}
               />
               <Pressable onPress={() => setShowTimePicker(false)} style={styles.pickerDone}>
-                <Text style={styles.pickerDoneText}>Done</Text>
+                <Text style={styles.pickerDoneText}>{t("common.done")}</Text>
               </Pressable>
             </View>
           )}
 
           {/* Birth Place */}
-          <Text style={styles.label}>Place</Text>
+          <Text style={styles.label}>{t("profiles.place")}</Text>
           <View style={styles.inputRow}>
             <Icon name="map-marker-outline" size={19} color={C.MUTED} />
             <TextInput
@@ -780,7 +798,7 @@ export default function AddProfile() {
                 setLon("");
                 setTzone("");
               }}
-              placeholder="Search city"
+              placeholder={t("profiles.searchCity")}
               placeholderTextColor={C.MUTED}
               style={styles.inputText}
             />
@@ -825,7 +843,7 @@ export default function AddProfile() {
             ) : (
               <>
                 <Text style={styles.createButtonText}>
-                  {charged ? `Create profile · ₹${pricing!.price}` : "Create profile"}
+                  {charged ? t("profiles.createPaid", { price: pricing!.price }) : t("profiles.create")}
                 </Text>
                 <Icon name="arrow-right" size={19} color={C.CARD} />
               </>
@@ -836,14 +854,29 @@ export default function AddProfile() {
             <Icon name="shield-check-outline" size={14} color={C.MUTED} />
             {charged ? (
               <Text style={styles.priceNote}>
-                {pricing!.oldPrice > pricing!.price && <Text style={styles.priceOld}>₹{pricing!.oldPrice}</Text>}
-                {pricing!.oldPrice > pricing!.price ? " " : ""}
-                <Text style={styles.priceNow}>₹{pricing!.price}</Text>
-                {offPercent > 0 ? <Text style={styles.priceOff}>{` (${offPercent}% off)`}</Text> : ""} one-time, from
-                your wallet
+                {/* Whole sentence with the styled price put in place of {price}. */}
+                {t("profiles.oneTimeFromWallet")
+                  .split("{price}")
+                  .map((part, i) => (
+                    <Text key={i}>
+                      {i > 0 && (
+                        <>
+                          {pricing!.oldPrice > pricing!.price && <Text style={styles.priceOld}>₹{pricing!.oldPrice}</Text>}
+                          {pricing!.oldPrice > pricing!.price ? " " : ""}
+                          <Text style={styles.priceNow}>₹{pricing!.price}</Text>
+                          {offPercent > 0 ? (
+                            <Text style={styles.priceOff}>{t("profiles.offParen", { percent: offPercent })}</Text>
+                          ) : (
+                            ""
+                          )}
+                        </>
+                      )}
+                      {part}
+                    </Text>
+                  ))}
               </Text>
             ) : (
-              <Text style={styles.priceNote}>Birth details stay private to your account</Text>
+              <Text style={styles.priceNote}>{t("profiles.privateNote")}</Text>
             )}
           </View>
         </Reanimated.View>

@@ -24,6 +24,7 @@ import {
   API_URL,
   authHeaders,
 } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 // ============================================================
 // TYPES
@@ -42,7 +43,10 @@ type Kind =
 type Tx = {
   id: string;
   kind: Kind;
+  // Backend title; when empty, titleKey (+ titleVars) is translated at render.
   title: string;
+  titleKey?: string;
+  titleVars?: Record<string, string>;
   date: string;
   amount: string;
   // Signed value, for the totals.
@@ -50,8 +54,8 @@ type Tx = {
   group: "orders" | "recharge";
   photo?: string;
   createdAt?: string;
-  // Chats: how long the chat lasted, e.g. "4 min 10 sec".
-  duration?: string;
+  // Chats: how long the chat lasted in seconds (shown as "4 min 10 sec").
+  durationSeconds?: number;
 };
 
 type ApiTransaction = {
@@ -102,10 +106,11 @@ const C = {
   RED: "#B3392F",
 };
 
+// label = translation key.
 const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "orders", label: "Spent" },
-  { id: "recharge", label: "Added" },
+  { id: "all", label: "transactions.filterAll" },
+  { id: "orders", label: "transactions.filterSpent" },
+  { id: "recharge", label: "transactions.filterAdded" },
 ] as const;
 
 // Icon tile per kind of transaction.
@@ -124,6 +129,7 @@ const STYLE: Record<Kind, { tint: string; color: string; icon: string; amount: s
 
 export default function TransactionHistory() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const user = useUserStore((state) => state.user);
 
   // Backend user details uses `credits`.
@@ -155,7 +161,7 @@ export default function TransactionHistory() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data?.detail || "Failed to load transactions.");
+          throw new Error(data?.detail || translate("transactions.loadFailed"));
         }
 
         const apiTransactions: ApiTransaction[] = Array.isArray(data?.transactions) ? data.transactions : [];
@@ -169,7 +175,7 @@ export default function TransactionHistory() {
       } catch (err) {
         console.error("TRANSACTION HISTORY ERROR:", err);
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load transactions.");
+        setError(err instanceof Error ? err.message : translate("transactions.loadFailed"));
         setTransactions([]);
       } finally {
         if (!cancelled) setLoaded(true);
@@ -231,12 +237,12 @@ export default function TransactionHistory() {
 
       {/* Header */}
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel="Go back">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backButton} accessibilityLabel={t("common.back")}>
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>Transactions</Text>
-          <Text style={s.subtitle}>Recharges, chats, reports and rewards</Text>
+          <Text style={s.title}>{t("transactions.title")}</Text>
+          <Text style={s.subtitle}>{t("transactions.subtitle")}</Text>
         </View>
       </View>
 
@@ -251,12 +257,12 @@ export default function TransactionHistory() {
 
           <View style={s.balanceTop}>
             <View style={{ flex: 1 }}>
-              <Text style={s.balanceLabel}>WALLET BALANCE</Text>
+              <Text style={s.balanceLabel}>{t("wallet.balanceLabel")}</Text>
               <Text style={s.balanceValue}>₹{Number(balance).toFixed(2)}</Text>
             </View>
             <Pressable onPress={() => router.push("/profile/wallet")} style={s.addButton}>
               <Icon name="plus" size={16} color={C.PLUM} />
-              <Text style={s.addButtonText}>Add money</Text>
+              <Text style={s.addButtonText}>{t("wallet.title")}</Text>
             </Pressable>
           </View>
 
@@ -264,7 +270,7 @@ export default function TransactionHistory() {
             <View style={s.stat}>
               <Icon name="arrow-bottom-left" size={15} color="#9ED9B4" />
               <View>
-                <Text style={s.statLabel}>Added</Text>
+                <Text style={s.statLabel}>{t("transactions.added")}</Text>
                 <Text style={s.statValue}>₹{totals.added.toFixed(2)}</Text>
               </View>
             </View>
@@ -272,7 +278,7 @@ export default function TransactionHistory() {
             <View style={s.stat}>
               <Icon name="arrow-top-right" size={15} color="#F3DFB4" />
               <View>
-                <Text style={s.statLabel}>Spent</Text>
+                <Text style={s.statLabel}>{t("transactions.spent")}</Text>
                 <Text style={s.statValue}>₹{totals.spent.toFixed(2)}</Text>
               </View>
             </View>
@@ -289,7 +295,7 @@ export default function TransactionHistory() {
                 onPress={() => setFilter(item.id)}
                 style={[s.segmentItem, active && s.segmentItemActive]}
               >
-                <Text style={[s.segmentText, active && s.segmentTextActive]}>{item.label}</Text>
+                <Text style={[s.segmentText, active && s.segmentTextActive]}>{t(item.label)}</Text>
               </Pressable>
             );
           })}
@@ -298,25 +304,25 @@ export default function TransactionHistory() {
         {!loaded ? (
           <View style={s.center}>
             <ActivityIndicator size="large" color={C.PLUM} />
-            <Text style={s.centerText}>Loading transactions…</Text>
+            <Text style={s.centerText}>{t("transactions.loading")}</Text>
           </View>
         ) : error ? (
           <View style={s.center}>
             <View style={s.stateIcon}>
               <Icon name="wifi-off" size={26} color={C.PLUM} />
             </View>
-            <Text style={s.stateTitle}>Couldn&apos;t load transactions</Text>
+            <Text style={s.stateTitle}>{t("transactions.errorTitle")}</Text>
             <Text style={s.centerText}>{error}</Text>
             <Pressable onPress={retry} style={s.stateButton}>
               <Icon name="refresh" size={17} color={C.CARD} />
-              <Text style={s.stateButtonText}>Try again</Text>
+              <Text style={s.stateButtonText}>{t("common.retry")}</Text>
             </Pressable>
           </View>
         ) : (
           <>
             {sections.map((section, sectionIndex) => (
               <Reanimated.View key={section.title} entering={FadeInDown.delay(60 * sectionIndex).duration(380)}>
-                <Text style={s.overline}>{section.title.toUpperCase()}</Text>
+                <Text style={s.overline}>{dateGroupLabel(t, section.title).toUpperCase()}</Text>
                 <View style={s.groupCard}>
                   {section.items.map((tx, index) => (
                     <TxRow key={tx.id} tx={tx} last={index === section.items.length - 1} />
@@ -331,13 +337,13 @@ export default function TransactionHistory() {
                 <View style={s.stateIcon}>
                   <Icon name="receipt-text-outline" size={26} color={C.PLUM} />
                 </View>
-                <Text style={s.stateTitle}>No transactions yet</Text>
+                <Text style={s.stateTitle}>{t("transactions.empty")}</Text>
                 <Text style={s.centerText}>
                   {filter === "all"
-                    ? "Recharges, chats and reports will appear here."
+                    ? t("transactions.emptyAll")
                     : filter === "orders"
-                      ? "Nothing spent yet."
-                      : "No money added yet."}
+                      ? t("transactions.emptySpent")
+                      : t("transactions.emptyAdded")}
                 </Text>
               </View>
             )}
@@ -452,31 +458,37 @@ function normalizeTransaction(
     transaction.message ||
     "";
 
+  // No backend title: a translation key, translated when shown.
+  let titleKey: string | undefined;
+  let titleVars: Record<string, string> | undefined;
+
   if (!title) {
     if (kind === "profile") {
-      title = "New profile created";
+      titleKey = "transactions.newProfile";
     } else if (kind === "report") {
-      title = "Report purchase";
+      titleKey = "transactions.reportPurchase";
     } else if (kind === "chat") {
-      title =
-        transaction.astrologer_name
-          ? `Chat with ${transaction.astrologer_name}`
-          : "Chat session";
+      if (transaction.astrologer_name) {
+        titleKey = "transactions.chatWith";
+        titleVars = { name: transaction.astrologer_name };
+      } else {
+        titleKey = "transactions.chatSession";
+      }
     } else if (
       kind === "cashback"
     ) {
-      title =
+      titleKey =
         transaction.reward_type === "mantra_streak_bonus"
-          ? "Mantra streak bonus"
+          ? "transactions.mantraStreak"
           : transaction.reward_type === "mantra_daily"
-            ? "108 chants reward"
-            : "Cashback Bonus";
+            ? "transactions.mantraDaily"
+            : "transactions.cashback";
     } else if (
       kind === "failed"
     ) {
-      title = "Payment Failed";
+      titleKey = "transactions.paymentFailed";
     } else {
-      title = "Money added to wallet";
+      titleKey = "transactions.moneyAdded";
     }
   }
 
@@ -540,30 +552,44 @@ function normalizeTransaction(
 
   const duration =
     kind === "chat" && Number.isFinite(durationSeconds) && durationSeconds > 0
-      ? formatDuration(durationSeconds)
+      ? durationSeconds
       : undefined;
 
   return {
     id: String(id),
     kind,
     title,
+    titleKey,
+    titleVars,
     date: formatDate(createdAt),
     amount,
     value,
     group,
     photo,
     createdAt,
-    duration,
+    durationSeconds: duration,
   };
 }
 
-function formatDuration(totalSeconds: number) {
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
+function formatDuration(t: Translate, totalSeconds: number) {
   const seconds = Math.round(totalSeconds);
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
 
-  if (minutes === 0) return `${rest} sec`;
-  return rest ? `${minutes} min ${rest} sec` : `${minutes} min`;
+  if (minutes === 0) return t("transactions.durSec", { sec: rest });
+  return rest
+    ? t("transactions.durMinSec", { min: minutes, sec: rest })
+    : t("transactions.durMin", { min: minutes });
+}
+
+// Section heading: "Today" / "Yesterday" / "Older" are translated; dates as they are.
+function dateGroupLabel(t: Translate, group: string) {
+  if (group === "Today") return t("common.today");
+  if (group === "Yesterday") return t("common.yesterday");
+  if (group === "Older") return t("transactions.older");
+  return group;
 }
 
 // =============================================================
@@ -706,7 +732,10 @@ function formatTime(
 // =============================================================
 
 function TxRow({ tx, last }: { tx: Tx; last: boolean }) {
+  const t = useT();
   const style = STYLE[tx.kind];
+  const title = tx.titleKey ? t(tx.titleKey, tx.titleVars) : tx.title;
+  const duration = tx.durationSeconds ? formatDuration(t, tx.durationSeconds) : "";
   const time = formatTime(tx.createdAt);
 
   return (
@@ -719,11 +748,11 @@ function TxRow({ tx, last }: { tx: Tx; last: boolean }) {
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={s.rowTitle}>
-          {tx.title}
+          {title}
         </Text>
         <Text numberOfLines={1} style={s.rowMeta}>
           {time || tx.date}
-          {tx.duration ? ` · ${tx.duration}` : ""}
+          {duration ? ` · ${duration}` : ""}
         </Text>
       </View>
 
@@ -731,7 +760,7 @@ function TxRow({ tx, last }: { tx: Tx; last: boolean }) {
         <Text style={[s.amount, { color: style.amount }]}>{tx.amount}</Text>
         {tx.kind === "failed" && (
           <View style={s.failedTag}>
-            <Text style={s.failedText}>Failed</Text>
+            <Text style={s.failedText}>{t("transactions.failed")}</Text>
           </View>
         )}
       </View>

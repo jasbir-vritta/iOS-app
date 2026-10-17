@@ -17,6 +17,7 @@ import { Text } from "../../../components/ui/BrandText";
 
 import useAuthStore from "../../../components/stores/authStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 const C = {
   INK: "#1C1820",
@@ -30,16 +31,17 @@ const C = {
   DANGER_TINT: "#F8E9E7",
 };
 
-// What deleting removes.
+// What deleting removes (text = translation key).
 const REMOVED: { icon: React.ComponentProps<typeof Icon>["name"]; text: string }[] = [
-  { icon: "account-multiple-outline", text: "All profiles and birth details" },
-  { icon: "chat-outline", text: "Chat history" },
-  { icon: "receipt-text-outline", text: "Transaction history" },
-  { icon: "shield-account-outline", text: "Your personal data" },
+  { icon: "account-multiple-outline", text: "deleteAccount.removedProfiles" },
+  { icon: "chat-outline", text: "deleteAccount.removedChats" },
+  { icon: "receipt-text-outline", text: "deleteAccount.removedTransactions" },
+  { icon: "shield-account-outline", text: "deleteAccount.removedData" },
 ];
 
 export default function DeleteAccount() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const [understood, setUnderstood] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -58,7 +60,7 @@ export default function DeleteAccount() {
 
       if (!response.ok) {
         throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Couldn't delete your account."
+          typeof data?.detail === "string" ? data.detail : translate("deleteAccount.failed")
         );
       }
 
@@ -67,8 +69,8 @@ export default function DeleteAccount() {
       router.replace("/(auth)" as never);
     } catch (error) {
       Alert.alert(
-        "Account not deleted",
-        error instanceof Error ? error.message : "Please try again."
+        translate("deleteAccount.notDeleted"),
+        error instanceof Error ? error.message : translate("deleteAccount.tryAgain")
       );
       setDeleting(false);
     }
@@ -87,13 +89,13 @@ export default function DeleteAccount() {
           hitSlop={10}
           disabled={deleting}
           style={s.backButton}
-          accessibilityLabel="Go back"
+          accessibilityLabel={t("common.back")}
         >
           <Icon name="chevron-left" size={24} color={C.INK} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Delete account</Text>
-          <Text style={s.headerSub}>This can&apos;t be undone</Text>
+          <Text style={s.headerTitle}>{t("deleteAccount.title")}</Text>
+          <Text style={s.headerSub}>{t("deleteAccount.subtitle")}</Text>
         </View>
       </View>
 
@@ -111,8 +113,8 @@ export default function DeleteAccount() {
         </Reanimated.View>
 
         <Reanimated.View entering={FadeInDown.delay(100).duration(400)}>
-          <Text style={s.title}>Delete your account?</Text>
-          <Text style={s.body}>Your account will be closed and everything below will be permanently removed.</Text>
+          <Text style={s.title}>{t("deleteAccount.heading")}</Text>
+          <Text style={s.body}>{t("deleteAccount.body")}</Text>
         </Reanimated.View>
 
         {/* What gets removed */}
@@ -122,7 +124,7 @@ export default function DeleteAccount() {
               <View style={s.itemIcon}>
                 <Icon name={item.icon} size={18} color={C.DANGER} />
               </View>
-              <Text style={s.itemText}>{item.text}</Text>
+              <Text style={s.itemText}>{t(item.text)}</Text>
               <Icon name="close" size={16} color={C.MUTED} />
             </View>
           ))}
@@ -140,7 +142,7 @@ export default function DeleteAccount() {
             <View style={[s.checkbox, understood && s.checkboxOn]}>
               {understood && <Icon name="check-bold" size={16} color={C.CARD} />}
             </View>
-            <Text style={s.confirmText}>I understand this is permanent and can&apos;t be undone.</Text>
+            <Text style={s.confirmText}>{t("deleteAccount.confirm")}</Text>
           </Pressable>
 
           {/* Delete: faded until the box is ticked */}
@@ -155,13 +157,13 @@ export default function DeleteAccount() {
             ) : (
               <>
                 <Icon name="delete-outline" size={19} color={C.CARD} />
-                <Text style={s.deleteText}>Delete my account</Text>
+                <Text style={s.deleteText}>{t("deleteAccount.delete")}</Text>
               </>
             )}
           </Pressable>
 
           <Pressable onPress={() => router.back()} disabled={deleting} style={s.keep}>
-            <Text style={s.keepText}>Keep my account</Text>
+            <Text style={s.keepText}>{t("deleteAccount.keep")}</Text>
           </Pressable>
         </Reanimated.View>
       </ScrollView>

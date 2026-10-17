@@ -35,13 +35,15 @@ import { useMyLifeStore } from "../../../components/stores/myLifeStore";
 import useProfilesStore from "../../../components/stores/profilesStore";
 import { useUserStore } from "../../../components/stores/userStore";
 import { useAvatarUpload } from "../../../components/utils/useAvatarUpload";
+import { translate, useT } from "../../../lib/i18n";
 
 type IconName = React.ComponentProps<typeof Icon>["name"];
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SUPPORT_EMAIL = "support@vritta.app";
 
 const fmtDate = (d?: string) => {
+  // Short month names in the app language ("Jan,Feb,…").
+  const MONTHS = translate("profile.months").split(",");
   const p = String(d || "").split("/");
   return p.length === 3 && MONTHS[+p[1] - 1] ? `${+p[0]} ${MONTHS[+p[1] - 1]} ${p[2]}` : d || "—";
 };
@@ -206,6 +208,7 @@ function NudgeArrow() {
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
+  const t = useT();
   const still = useReducedMotion();
   const { user } = useUserStore() as any;
   const profiles = useProfilesStore((state) => state.profiles);
@@ -217,7 +220,7 @@ export default function Profile() {
   const today = useMyLifeStore((state) => (activeProfileId ? state.profiles[activeProfileId]?.daily : null));
 
   // Show the selected profile (TopBar picker); fall back to the account details.
-  const name = profile?.name || user?.firstName || "Guest";
+  const name = profile?.name || user?.firstName || t("profile.guest");
   const phone = user?.phoneNumber || user?.phone || "";
   const avatarUrl = profiles.find((p) => p.profile_id === activeProfileId)?.avatar_url;
   const { uploading: uploadingPhoto, pickAndUpload } = useAvatarUpload(activeProfileId);
@@ -226,35 +229,35 @@ export default function Profile() {
 
   const openHelp = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Help with Vritta")}`).catch(() =>
-      Alert.alert("Need help?", `Write to us at ${SUPPORT_EMAIL} and we'll get back to you.`)
+      Alert.alert(t("faq.alertTitle"), t("faq.alertBody", { email: SUPPORT_EMAIL }))
     );
   };
 
   const signs: { label: string; value: string; icon: IconName }[] = [
-    { label: "Sun sign", value: today?.sun_sign || "—", icon: "white-balance-sunny" },
-    { label: "Moon sign", value: today?.moon_sign || "—", icon: "moon-waning-crescent" },
-    { label: "Ascendant", value: today?.ascendant || "—", icon: "arrow-up-circle-outline" },
+    { label: t("profile.sunSign"), value: today?.sun_sign || "—", icon: "white-balance-sunny" },
+    { label: t("profile.moonSign"), value: today?.moon_sign || "—", icon: "moon-waning-crescent" },
+    { label: t("profile.ascendant"), value: today?.ascendant || "—", icon: "arrow-up-circle-outline" },
   ];
 
   const quick: { title: string; sub: string; icon: IconName; route: string }[] = [
-    { title: "Manage profiles", sub: "Switch or edit profiles", icon: "account-multiple-outline", route: "/(root)/profile/manage-profiles" },
-    { title: "Language", sub: "हिंदी, English +5", icon: "translate", route: "/(root)/profile/language" },
-    { title: "Chat history", sub: "Past conversations", icon: "chat-processing-outline", route: "/(root)/profile/chat-history" },
-    { title: "Transactions", sub: "Payments and chats", icon: "wallet-outline", route: "/(root)/profile/transaction-history" },
+    { title: t("profile.manageProfiles"), sub: t("profile.manageProfilesSub"), icon: "account-multiple-outline", route: "/(root)/profile/manage-profiles" },
+    { title: t("profile.language"), sub: "हिंदी, English +5", icon: "translate", route: "/(root)/profile/language" },
+    { title: t("profile.chatHistory"), sub: t("profile.chatHistorySub"), icon: "chat-processing-outline", route: "/(root)/profile/chat-history" },
+    { title: t("profile.transactions"), sub: t("profile.transactionsSub"), icon: "wallet-outline", route: "/(root)/profile/transaction-history" },
   ];
 
   const support: { title: string; sub: string; icon: IconName; onPress: () => void; danger?: boolean }[] = [
-    { title: "FAQ", sub: "Questions and answers", icon: "comment-question-outline", onPress: () => router.push("/(root)/profile/faq") },
-    { title: "Need help", sub: `Email ${SUPPORT_EMAIL}`, icon: "help-circle-outline", onPress: openHelp },
+    { title: t("profile.faq"), sub: t("profile.faqSub"), icon: "comment-question-outline", onPress: () => router.push("/(root)/profile/faq") },
+    { title: t("profile.needHelp"), sub: t("profile.needHelpSub", { email: SUPPORT_EMAIL }), icon: "help-circle-outline", onPress: openHelp },
     {
-      title: "Account settings",
-      sub: "Your account and privacy",
+      title: t("profile.settings"),
+      sub: t("profile.settingsSub"),
       icon: "cog-outline",
       onPress: () => router.push("/(root)/profile/account-settings"),
     },
     {
-      title: "Logout",
-      sub: "Sign out of your account",
+      title: t("profile.logout"),
+      sub: t("profile.logoutSub"),
       icon: "logout-variant",
       onPress: () => router.replace("/(root)/profile/logout"),
       danger: true,
@@ -269,12 +272,12 @@ export default function Profile() {
       >
         {/* Header */}
         <View style={s.header}>
-          <TouchableOpacity onPress={goBack} style={s.back} hitSlop={8} accessibilityLabel="Go back">
+          <TouchableOpacity onPress={goBack} style={s.back} hitSlop={8} accessibilityLabel={t("common.back")}>
             <Icon name="chevron-left" size={24} color={C.INK} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={s.title}>My profile</Text>
-            <Text style={s.subtitle}>Your personal space at {APP_NAME}</Text>
+            <Text style={s.title}>{t("profile.title")}</Text>
+            <Text style={s.subtitle} numberOfLines={1}>{t("profile.subtitle", { app: APP_NAME })}</Text>
           </View>
           <TouchableOpacity
             activeOpacity={0.85}
@@ -282,7 +285,7 @@ export default function Profile() {
             style={s.edit}
           >
             <Icon name="pencil-outline" size={15} color={C.CARD} />
-            <Text style={s.editText}>Edit</Text>
+            <Text style={s.editText}>{t("common.edit")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -310,7 +313,7 @@ export default function Profile() {
                   onPress={pickAndUpload}
                   disabled={uploadingPhoto || !activeProfileId}
                   style={s.camera}
-                  accessibilityLabel="Change photo"
+                  accessibilityLabel={t("profile.changePhoto")}
                 >
                   <Icon name="camera-outline" size={15} color={C.PLUM} />
                 </TouchableOpacity>
@@ -328,7 +331,7 @@ export default function Profile() {
                 <View style={s.placeRow}>
                   <Icon name="map-marker-outline" size={14} color={C.GOLD} />
                   <Text style={s.place} numberOfLines={1}>
-                    {profile?.placeOfBirth || "Birth place"}
+                    {profile?.placeOfBirth || t("profile.birthPlace")}
                   </Text>
                 </View>
               </View>
@@ -339,14 +342,14 @@ export default function Profile() {
                 <Icon name="calendar-month-outline" size={16} color={C.GOLD} />
                 <View>
                   <Text style={s.birthValue}>{fmtDate(profile?.dateOfBirth)}</Text>
-                  <Text style={s.birthLabel}>Date of birth</Text>
+                  <Text style={s.birthLabel}>{t("profile.dateOfBirth")}</Text>
                 </View>
               </View>
               <View style={s.birthChip}>
                 <Icon name="clock-outline" size={16} color={C.GOLD} />
                 <View>
                   <Text style={s.birthValue}>{fmtTime(profile?.timeOfBirth)}</Text>
-                  <Text style={s.birthLabel}>Birth time</Text>
+                  <Text style={s.birthLabel}>{t("profile.birthTime")}</Text>
                 </View>
               </View>
             </View>
@@ -355,12 +358,14 @@ export default function Profile() {
 
         {/* Your chart */}
         <Reanimated.View entering={enter(1)}>
-          <SectionHeader overline="YOUR CHART" title="Astrology snapshot" />
+          <SectionHeader overline={t("profile.chartOverline")} title={t("profile.chartTitle")} />
           <View style={s.signRow}>
             {signs.map((sign) => (
               <View key={sign.label} style={s.signTile}>
                 <Medallion icon={sign.icon} size={38} />
-                <Text style={s.signLabel}>{sign.label}</Text>
+                <Text style={s.signLabel} numberOfLines={1} adjustsFontSizeToFit>
+                  {sign.label}
+                </Text>
                 <Text style={s.signValue} numberOfLines={1}>
                   {sign.value}
                 </Text>
@@ -373,10 +378,10 @@ export default function Profile() {
         <Reanimated.View entering={enter(2)} style={s.loved}>
           <LovedHeart />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={s.lovedTitle}>Loved ones</Text>
-            <Text style={s.lovedText}>Add family and friends to see their Kundli insights and timely updates.</Text>
+            <Text style={s.lovedTitle}>{t("profile.lovedTitle")}</Text>
+            <Text style={s.lovedText}>{t("profile.lovedText")}</Text>
             <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/profile/add-profile")} style={s.lovedBtn}>
-              <Text style={s.lovedBtnText}>Add loved ones</Text>
+              <Text style={s.lovedBtnText}>{t("profile.lovedButton")}</Text>
               <NudgeArrow />
             </TouchableOpacity>
           </View>
@@ -384,7 +389,7 @@ export default function Profile() {
 
         {/* Quick access */}
         <Reanimated.View entering={enter(3)}>
-          <SectionHeader overline="QUICK ACCESS" title="Your account" />
+          <SectionHeader overline={t("profile.quickOverline")} title={t("profile.quickTitle")} />
           <View style={s.quickGrid}>
             {quick.map((item) => (
               <TouchableOpacity
@@ -407,7 +412,7 @@ export default function Profile() {
 
         {/* Account and support */}
         <Reanimated.View entering={enter(4)}>
-          <SectionHeader overline="HELP" title="Account and support" />
+          <SectionHeader overline={t("profile.helpOverline")} title={t("profile.helpTitle")} />
           <View style={s.list}>
             {support.map((row, index) => (
               <TouchableOpacity
@@ -420,7 +425,9 @@ export default function Profile() {
                   <Icon name={row.icon} size={19} color={row.danger ? "#B3392F" : C.PLUM} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[s.listTitle, row.danger && { color: "#B3392F" }]}>{row.title}</Text>
+                  <Text style={[s.listTitle, row.danger && { color: "#B3392F" }]} numberOfLines={1}>
+                    {row.title}
+                  </Text>
                   <Text style={s.listSub} numberOfLines={1}>
                     {row.sub}
                   </Text>
@@ -435,15 +442,15 @@ export default function Profile() {
         <View style={s.footer}>
           <View style={s.footerRow}>
             <Icon name="lock-outline" size={14} color={C.MUTED} />
-            <Text style={s.footerText}>Your data is encrypted and protected with us.</Text>
+            <Text style={s.footerText}>{t("profile.footer")}</Text>
           </View>
           <View style={s.footerRow}>
             <Text style={s.footerLink} onPress={() => router.push("/(root)/profile/privacy-policy")}>
-              Privacy policy
+              {t("profile.privacy")}
             </Text>
             <View style={s.footerSep} />
             <Text style={s.footerLink} onPress={() => router.push("/(root)/profile/terms")}>
-              Terms of use
+              {t("profile.terms")}
             </Text>
           </View>
         </View>

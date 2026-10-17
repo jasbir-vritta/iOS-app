@@ -34,6 +34,7 @@ import {
   useUserStore,
 } from "../../../components/stores/userStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 
 // Live chat with a human astrologer (sessions with participant_type
 // "human"). AI astrologers use the vedic / tarot / numerology screens.
@@ -148,31 +149,32 @@ const THEMES: Record<
   },
 };
 
+// Translation keys; `{name}` in the body is the astrologer's name.
 const END_REASONS: Record<string, { title: string; body: string; recharge?: boolean }> = {
   missed: {
-    title: "No response",
-    body: "{name} didn't accept in time. You haven't been charged. Try another astrologer.",
+    title: "chat.live.end.missedTitle",
+    body: "chat.live.end.missedBody",
   },
   declined: {
-    title: "Request declined",
-    body: "{name} couldn't take your chat right now. You haven't been charged.",
+    title: "chat.live.end.declinedTitle",
+    body: "chat.live.end.declinedBody",
   },
   cancelled: {
-    title: "Request cancelled",
-    body: "You cancelled the request. You haven't been charged.",
+    title: "chat.live.end.cancelledTitle",
+    body: "chat.live.end.cancelledBody",
   },
-  user_ended: { title: "Chat ended", body: "You ended the chat." },
-  astrologer_ended: { title: "Chat ended", body: "{name} ended the chat." },
-  user_left: { title: "Chat ended", body: "You were disconnected for too long." },
-  astrologer_left: { title: "Chat ended", body: "{name} lost connection." },
+  user_ended: { title: "chat.live.chatEnded", body: "chat.live.end.userEndedBody" },
+  astrologer_ended: { title: "chat.live.chatEnded", body: "chat.live.end.astrologerEndedBody" },
+  user_left: { title: "chat.live.chatEnded", body: "chat.live.end.userLeftBody" },
+  astrologer_left: { title: "chat.live.chatEnded", body: "chat.live.end.astrologerLeftBody" },
   credits_exhausted: {
-    title: "Out of credits",
-    body: "Your balance ran out. Recharge to continue chatting.",
+    title: "chat.live.end.outOfCreditsTitle",
+    body: "chat.live.end.outOfCreditsBody",
     recharge: true,
   },
   insufficient_credits: {
-    title: "Not enough credits",
-    body: "Add credits to start a chat with {name}.",
+    title: "chat.live.end.notEnoughTitle",
+    body: "chat.live.end.notEnoughBody",
     recharge: true,
   },
 };
@@ -192,6 +194,7 @@ const formatClock = (totalSeconds: number) => {
 };
 
 export default function LiveChat() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   // Keeps the input above the keyboard on Android (edge-to-edge).
   const keyboard = useKeyboardInset();
@@ -216,7 +219,10 @@ export default function LiveChat() {
     remainingTimeSeconds?: string;
   }>();
 
+  // `name` (English fallback) feeds analytics and the socket effect; the
+  // screen shows `displayName`.
   const name = astrologerName || "Astrologer";
+  const displayName = astrologerName || t("chat.astrologer");
 
   // Analytics: chat_started_<astrologer> + chat_<astrologer>_time_spent.
   useChatTracking({ astrologerName: name, astrologerId, readingType, sessionId, chatType: "human" });
@@ -328,7 +334,7 @@ export default function LiveChat() {
               break;
 
             case "peer_disconnected":
-              setNotice(`${name} lost connection. Waiting for them to come back…`);
+              setNotice(translate("chat.live.peerLost", { name }));
               setAstrologerTyping(false);
               break;
 
@@ -358,7 +364,7 @@ export default function LiveChat() {
             case "error":
               if (pickerRef.current) {
                 setPicker(null);
-                Alert.alert("Tarot", data.message || "Please try again.");
+                Alert.alert(translate("chat.live.tarot"), data.message || translate("chat.pleaseTryAgain"));
               }
               break;
 
@@ -393,12 +399,12 @@ export default function LiveChat() {
         };
 
         socket.onerror = () => {
-          if (!cancelled) setNotice("Connection problem. Trying to keep the chat open…");
+          if (!cancelled) setNotice(translate("chat.live.connectionProblem"));
         };
       } catch (error) {
         console.error("Live chat failed to start:", error);
         if (!cancelled) {
-          Alert.alert("Unable to open chat", "Please try again.");
+          Alert.alert(translate("chat.live.unableToOpen"), translate("chat.pleaseTryAgain"));
           finish("user_left");
         }
       }
@@ -493,7 +499,7 @@ export default function LiveChat() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(typeof data?.detail === "string" ? data.detail : "Please try again.");
+        throw new Error(typeof data?.detail === "string" ? data.detail : t("chat.pleaseTryAgain"));
       }
 
       if (Number(data.remaining_time_seconds) > 0) {
@@ -506,7 +512,7 @@ export default function LiveChat() {
       setState("loading");
       setAttempt((n) => n + 1);
     } catch (error) {
-      Alert.alert("Can't start chat", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert(t("chat.live.cantStart"), error instanceof Error ? error.message : t("chat.pleaseTryAgain"));
     } finally {
       setReopening(false);
     }
@@ -519,17 +525,17 @@ export default function LiveChat() {
 
   const confirmEnd = () => {
     if (state === "waiting") {
-      Alert.alert("Cancel request?", `Stop waiting for ${name}? You won't be charged.`, [
-        { text: "Keep waiting", style: "cancel" },
-        { text: "Cancel request", style: "destructive", onPress: () => send({ type: "end" }) },
+      Alert.alert(t("chat.live.cancelRequestTitle"), t("chat.live.cancelRequestBody", { name: displayName }), [
+        { text: t("chat.live.keepWaiting"), style: "cancel" },
+        { text: t("chat.live.cancelRequest"), style: "destructive", onPress: () => send({ type: "end" }) },
       ]);
       return;
     }
 
     if (state === "active") {
-      Alert.alert("End chat?", "You'll be charged only for the time used.", [
-        { text: "Continue chatting", style: "cancel" },
-        { text: "End chat", style: "destructive", onPress: () => send({ type: "end" }) },
+      Alert.alert(t("chat.live.endChatTitle"), t("chat.live.endChatBody"), [
+        { text: t("chat.live.continueChatting"), style: "cancel" },
+        { text: t("chat.live.endChat"), style: "destructive", onPress: () => send({ type: "end" }) },
       ]);
       return;
     }
@@ -576,12 +582,12 @@ export default function LiveChat() {
 
   const statusText =
     state === "loading"
-      ? "Connecting…"
+      ? t("chat.live.connecting")
       : state === "waiting"
-        ? "Waiting to accept…"
+        ? t("chat.live.waitingToAccept")
         : state === "active"
-          ? "Online"
-          : "Chat ended";
+          ? t("chat.online")
+          : t("chat.live.chatEnded");
 
   const statusColor = state === "active" ? C.online : C.muted;
 
@@ -605,7 +611,7 @@ export default function LiveChat() {
       <View style={[styles.flex, { backgroundColor: theme.screenBg }]}>
         {/* Header (as in the AI chat pages) */}
         <View style={[styles.header, { paddingTop: Math.max(insets.top + 8, 52) }]}>
-          <Pressable onPress={leave} hitSlop={8} style={styles.iconButton} accessibilityLabel="Back">
+          <Pressable onPress={leave} hitSlop={8} style={styles.iconButton} accessibilityLabel={t("common.back")}>
             <MaterialCommunityIcons name="arrow-left" size={27} color={C.ink} />
           </Pressable>
 
@@ -618,7 +624,7 @@ export default function LiveChat() {
           </View>
 
           <View style={styles.flex}>
-            <Text style={styles.name} numberOfLines={1}>{name}</Text>
+            <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
             <View style={styles.statusRow}>
               <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
               <Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
@@ -629,7 +635,9 @@ export default function LiveChat() {
 
           {(state === "waiting" || state === "active") && (
             <Pressable onPress={confirmEnd} style={styles.endButton}>
-              <Text style={styles.endText}>{state === "waiting" ? "Cancel" : "End"}</Text>
+              <Text style={styles.endText} numberOfLines={1}>
+                {state === "waiting" ? t("common.cancel") : t("chat.live.end")}
+              </Text>
             </Pressable>
           )}
         </View>
@@ -638,7 +646,9 @@ export default function LiveChat() {
         {state === "active" && (
           <View style={styles.timeBar}>
             <MaterialCommunityIcons name="clock-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.timeText}>Remaining time: {formatClock(remainingSeconds)}</Text>
+            <Text style={styles.timeText}>
+              {t("chat.remainingTime", { time: formatClock(remainingSeconds) })}
+            </Text>
           </View>
         )}
 
@@ -653,11 +663,11 @@ export default function LiveChat() {
             <View style={[styles.waitCard, { borderColor: theme.astroBorder, backgroundColor: theme.astroBg }]}>
               <ActivityIndicator color={C.plum} />
               <View style={styles.flex}>
-                <Text style={styles.waitTitle}>Waiting for {name} to accept</Text>
+                <Text style={styles.waitTitle}>{t("chat.live.waitingFor", { name: displayName })}</Text>
                 <Text style={styles.waitBody}>
                   {waitSeconds > 0
-                    ? `${waitSeconds}s left · You're not charged until they join.`
-                    : "Almost out of time…"}
+                    ? t("chat.live.waitLeft", { seconds: waitSeconds })
+                    : t("chat.live.almostOut")}
                 </Text>
               </View>
             </View>
@@ -672,7 +682,7 @@ export default function LiveChat() {
           {state === "loading" ? (
             <View style={styles.centered}>
               <ActivityIndicator size="small" color={C.plum} />
-              <Text style={styles.loadingText}>Loading your conversation...</Text>
+              <Text style={styles.loadingText}>{t("chat.loadingConversation")}</Text>
             </View>
           ) : (
             <ScrollView
@@ -684,7 +694,7 @@ export default function LiveChat() {
             >
               <ChatWelcome
                 type={(readingType as ReadingType) || "vedic"}
-                astrologerName={name}
+                astrologerName={displayName}
                 fresh={messages.length === 0}
                 bubbleColor={theme.astroBg}
                 borderColor={theme.astroBorder}
@@ -701,7 +711,9 @@ export default function LiveChat() {
                   <View key={m.id} style={[styles.row, isUser ? styles.rowEnd : styles.rowStart]}>
                     {showDivider && (
                       <Text style={styles.divider}>
-                        {chatId === sessionId ? "This chat" : `Previous chat · ${formatDay(m.at)}`}
+                        {chatId === sessionId
+                          ? t("chat.live.thisChat")
+                          : t("chat.live.previousChat", { date: formatDay(m.at) })}
                       </Text>
                     )}
 
@@ -710,7 +722,9 @@ export default function LiveChat() {
                         <CardBack width={54} height={92} />
                         <View style={styles.flex}>
                           <Text style={styles.tarotTitle}>
-                            {name} asked you to pick {m.tarot.count} tarot card{m.tarot.count > 1 ? "s" : ""}
+                            {m.tarot.count > 1
+                              ? t("chat.live.tarotAskMany", { name: displayName, count: m.tarot.count })
+                              : t("chat.live.tarotAskOne", { name: displayName })}
                           </Text>
                           {!!m.tarot.note && <Text style={styles.astroText}>{m.tarot.note}</Text>}
                           {m.tarot.picked.length < m.tarot.count ? (
@@ -723,13 +737,21 @@ export default function LiveChat() {
                               ]}
                             >
                               <Text style={styles.tarotButtonText}>
-                                {m.tarot.picked.length > 0 ? "Pick next card" : "Pick your card"}
-                                {m.tarot.count > 1 ? ` (${m.tarot.picked.length + 1}/${m.tarot.count})` : ""}
+                                {m.tarot.count > 1
+                                  ? t(
+                                      m.tarot.picked.length > 0
+                                        ? "chat.live.pickNextProgress"
+                                        : "chat.live.pickYourProgress",
+                                      { current: m.tarot.picked.length + 1, total: m.tarot.count }
+                                    )
+                                  : m.tarot.picked.length > 0
+                                    ? t("chat.tarot.pickNext")
+                                    : t("chat.tarot.pickYourCard")}
                               </Text>
                             </Pressable>
                           ) : (
                             <Text style={styles.tarotDone}>
-                              ✓ Card{m.tarot.count > 1 ? "s" : ""} picked
+                              {m.tarot.count > 1 ? t("chat.live.cardsPickedCheck") : t("chat.live.cardPickedCheck")}
                             </Text>
                           )}
                         </View>
@@ -763,7 +785,7 @@ export default function LiveChat() {
                 <View style={[styles.row, styles.rowStart]}>
                   <View style={[styles.bubble, styles.astroBubble, astroBubble, styles.typingBubble]}>
                     <ActivityIndicator size="small" color={C.plum} />
-                    <Text style={styles.typingText}>Typing...</Text>
+                    <Text style={styles.typingText}>{t("chat.typingShort")}</Text>
                   </View>
                 </View>
               )}
@@ -779,9 +801,9 @@ export default function LiveChat() {
               size={34}
               color={C.gold}
             />
-            <Text style={styles.endTitle}>{ended?.title ?? "Chat ended"}</Text>
+            <Text style={styles.endTitle}>{t(ended?.title ?? "chat.live.chatEnded")}</Text>
             <Text style={styles.endBody}>
-              {(ended?.body ?? "This chat has ended.").replace(/\{name\}/g, name)}
+              {t(ended?.body ?? "chat.live.end.defaultBody", { name: displayName })}
             </Text>
 
             {ended?.recharge && (
@@ -789,7 +811,7 @@ export default function LiveChat() {
                 style={[styles.panelButton, { backgroundColor: C.green }]}
                 onPress={() => router.push("/profile/wallet")}
               >
-                <Text style={styles.panelButtonText}>Recharge Wallet</Text>
+                <Text style={styles.panelButtonText}>{t("chat.rechargeWallet")}</Text>
               </Pressable>
             )}
 
@@ -802,13 +824,13 @@ export default function LiveChat() {
                 {reopening ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.panelButtonText}>Chat again with {name}</Text>
+                  <Text style={styles.panelButtonText}>{t("chat.live.chatAgain", { name: displayName })}</Text>
                 )}
               </Pressable>
             )}
 
             <Pressable style={[styles.panelButton, styles.panelButtonOutline]} onPress={leave}>
-              <Text style={[styles.panelButtonText, { color: C.plum }]}>Back to astrologers</Text>
+              <Text style={[styles.panelButtonText, { color: C.plum }]}>{t("chat.live.backToAstrologers")}</Text>
             </Pressable>
           </View>
         ) : (
@@ -828,10 +850,10 @@ export default function LiveChat() {
                 onChangeText={onChangeText}
                 placeholder={
                   state === "loading"
-                    ? "Connecting..."
+                    ? t("chat.connecting")
                     : state === "waiting"
-                      ? "Write your question..."
-                      : "Ask your question..."
+                      ? t("chat.live.writePlaceholder")
+                      : t("chat.askPlaceholder")
                 }
                 placeholderTextColor={C.placeholder}
                 multiline
@@ -844,7 +866,7 @@ export default function LiveChat() {
                 onPress={sendMessage}
                 disabled={sendDisabled}
                 style={[styles.sendButton, { backgroundColor: sendDisabled ? C.disabled : theme.send }]}
-                accessibilityLabel="Send"
+                accessibilityLabel={t("chat.send")}
               >
                 <MaterialCommunityIcons
                   name="arrow-up"
@@ -854,14 +876,14 @@ export default function LiveChat() {
               </Pressable>
             </View>
 
-            <Text style={styles.disclaimer}>Astrology guidance is for informational purposes.</Text>
+            <Text style={styles.disclaimer}>{t("chat.disclaimer")}</Text>
           </View>
         )}
 
         {picker && (
           <TarotPicker
             phase={picker.phase}
-            astrologerName={name}
+            astrologerName={displayName}
             cardNumber={Math.min(totalCards, pickedCount + (picker.phase === "pick" ? 1 : 0))}
             total={totalCards}
             revealCard={picker.revealCard}

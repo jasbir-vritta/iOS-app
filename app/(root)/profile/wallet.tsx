@@ -38,6 +38,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { metaEvents, track } from "../../../lib/analytics";
 import { useUserStore } from "../../../components/stores/userStore";
 import { API_URL, authHeaders } from "../../../lib/auth";
+import { translate, useT } from "../../../lib/i18n";
 import {
     getUpiApps,
     isRazorpayAvailable,
@@ -242,6 +243,7 @@ async function payInBrowser(
 }
 
 export default function WalletScreen() {
+  const t = useT();
   const user = useUserStore((state) => state.user);
   const updateUser = useUserStore((state) => state.updateUser);
 
@@ -292,7 +294,7 @@ export default function WalletScreen() {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-          throw new Error(data.detail || "Could not load plans.");
+          throw new Error(data.detail || translate("wallet.loadPlansFailed"));
         }
 
         if (!active) {
@@ -323,7 +325,7 @@ export default function WalletScreen() {
         if (active) {
           setNotice({
             kind: "error",
-            text: "Could not load recharge plans. Please try again.",
+            text: translate("wallet.loadFailed"),
           });
         }
       } finally {
@@ -344,7 +346,7 @@ export default function WalletScreen() {
     const vpa = upiId.trim();
 
     if (!UPI_ID_PATTERN.test(vpa)) {
-      setUpiCheck({ status: "invalid", message: "Enter a valid UPI ID, e.g. name@okicici." });
+      setUpiCheck({ status: "invalid", message: translate("wallet.upiInvalidFormat") });
       return;
     }
 
@@ -363,7 +365,7 @@ export default function WalletScreen() {
 
       if (!response.ok) {
         throw new Error(
-          typeof data?.detail === "string" ? data.detail : "Could not check the UPI ID."
+          typeof data?.detail === "string" ? data.detail : translate("wallet.upiCheckFailed")
         );
       }
 
@@ -377,12 +379,12 @@ export default function WalletScreen() {
       setUpiCheck(
         data.valid
           ? { status: "valid", vpa: data.vpa ?? vpa, name: data.customer_name ?? null, confirmed: true }
-          : { status: "invalid", message: "This UPI ID doesn't exist. Please check it." }
+          : { status: "invalid", message: translate("wallet.upiNotFound") }
       );
     } catch (error: any) {
       setUpiCheck({
         status: "invalid",
-        message: error?.message || "Could not check the UPI ID. Please try again.",
+        message: error?.message || translate("wallet.upiCheckRetry"),
       });
     }
   };
@@ -429,7 +431,7 @@ export default function WalletScreen() {
         }
         throw new Error(
           (typeof order.detail === "string" ? order.detail : order.detail?.message) ||
-            "Could not start the payment."
+            translate("wallet.startFailed")
         );
       }
 
@@ -443,7 +445,7 @@ export default function WalletScreen() {
         if (credits === null) {
           setNotice({
             kind: "error",
-            text: "Payment not completed. If money was deducted, your balance will update shortly.",
+            text: translate("wallet.notCompleted"),
           });
           return;
         }
@@ -458,7 +460,7 @@ export default function WalletScreen() {
 
         setNotice({
           kind: "success",
-          text: `₹${plan.credits} added to your wallet.`,
+          text: translate("wallet.added", { amount: plan.credits }),
         });
         return;
       }
@@ -478,7 +480,7 @@ export default function WalletScreen() {
       if (payByUpiId && verifiedUpiId) {
         setNotice({
           kind: "success",
-          text: `Payment request sent to ${verifiedUpiId}. Approve it in your UPI app.`,
+          text: translate("wallet.requestSent", { upiId: verifiedUpiId }),
         });
       }
 
@@ -511,7 +513,7 @@ export default function WalletScreen() {
       if (!verifyResponse.ok || !result.success) {
         throw new Error(
           result.detail ||
-            "Payment received but not confirmed yet. Your balance will update shortly."
+            translate("wallet.notConfirmed")
         );
       }
 
@@ -532,7 +534,7 @@ export default function WalletScreen() {
 
       setNotice({
         kind: "success",
-        text: `₹${plan.credits} added to your wallet.`,
+        text: translate("wallet.added", { amount: plan.credits }),
       });
     } catch (error: any) {
       console.error("Wallet top-up failed:", error);
@@ -541,7 +543,7 @@ export default function WalletScreen() {
       const text =
         error?.description ||
         error?.message ||
-        "Payment failed. Please try again.";
+        translate("wallet.failed");
 
       setNotice({ kind: "error", text });
     } finally {
@@ -576,14 +578,14 @@ export default function WalletScreen() {
             onPress={() => router.back()}
             hitSlop={12}
             style={styles.backButton}
-            accessibilityLabel="Go back"
+            accessibilityLabel={t("common.back")}
           >
             <Ionicons name="chevron-back" size={20} color={COLORS.ink} />
           </Pressable>
 
           <View style={styles.headerContent}>
-            <Text style={styles.title}>Add money</Text>
-            <Text style={styles.subtitle}>Recharge to chat, buy reports and more</Text>
+            <Text style={styles.title}>{t("wallet.title")}</Text>
+            <Text style={styles.subtitle}>{t("wallet.subtitle")}</Text>
           </View>
         </View>
 
@@ -595,9 +597,9 @@ export default function WalletScreen() {
           <Twinkle style={styles.sparkleTwo} size={8} delay={900} />
 
           <View style={{ flex: 1 }}>
-            <Text style={styles.balanceLabel}>WALLET BALANCE</Text>
+            <Text style={styles.balanceLabel}>{t("wallet.balanceLabel")}</Text>
             <CountUpBalance value={currentBalance} />
-            <Text style={styles.balanceHint}>Used for chats and reports</Text>
+            <Text style={styles.balanceHint}>{t("wallet.balanceHint")}</Text>
           </View>
 
           <Float>
@@ -616,7 +618,7 @@ export default function WalletScreen() {
           plan && (
             <>
               {/* Plans */}
-              <Animated.Text entering={FadeIn.delay(120)} style={styles.sectionTitle}>Choose an amount</Animated.Text>
+              <Animated.Text entering={FadeIn.delay(120)} style={styles.sectionTitle}>{t("wallet.chooseAmount")}</Animated.Text>
               <View style={styles.plansRow}>
                 {packs.map((item, index) => {
                   const active = item.id === plan.id;
@@ -638,7 +640,7 @@ export default function WalletScreen() {
                       {item.popular && (
                         <View style={styles.popularTag}>
                           <Text style={styles.popularText}>
-                            POPULAR
+                            {t("wallet.popular")}
                           </Text>
                         </View>
                       )}
@@ -650,7 +652,7 @@ export default function WalletScreen() {
                       {item.bonus > 0 && (
                         <View style={styles.bonusPill}>
                           <Text style={styles.bonusText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                            Extra ₹{item.bonus}
+                            {t("wallet.extraAmount", { amount: item.bonus })}
                           </Text>
                         </View>
                       )}
@@ -663,19 +665,19 @@ export default function WalletScreen() {
               {/* What the selected pack adds */}
               <Animated.Text key={plan.id} entering={FadeIn.duration(300)} style={styles.offerText}>
                 {plan.bonus > 0
-                  ? `Congratulations! ₹${plan.credits} will be added to your wallet.`
-                  : `₹${plan.credits} will be added to your wallet.`}
+                  ? t("wallet.offerBonus", { amount: plan.credits })
+                  : t("wallet.offer", { amount: plan.credits })}
               </Animated.Text>
 
               {/* Payment Summary */}
               <Animated.View entering={FadeInDown.delay(250).duration(450)} style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>
-                  Payment Summary
+                  {t("wallet.summary")}
                 </Text>
 
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    Recharge amount
+                    {t("wallet.rechargeAmount")}
                   </Text>
 
                   <Text style={styles.summaryValue}>
@@ -686,7 +688,7 @@ export default function WalletScreen() {
                 {plan.bonus > 0 && (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    Extra
+                    {t("wallet.extra")}
                   </Text>
 
                   <Text
@@ -706,7 +708,7 @@ export default function WalletScreen() {
 
                 <View style={styles.summaryRow}>
                   <Text style={styles.totalLabel}>
-                    Wallet credit
+                    {t("wallet.credit")}
                   </Text>
 
                   <Text style={styles.totalValue}>
@@ -721,12 +723,12 @@ export default function WalletScreen() {
         {/* Pay Using: UPI apps installed on this phone */}
         <View style={styles.methodSection}>
           <Text style={styles.methodSectionTitle}>
-            Pay using UPI
+            {t("wallet.payUsingUpi")}
           </Text>
 
           {!showUpiPicker ? (
             <Text style={styles.methodEmpty}>
-              You&apos;ll choose your UPI app on the secure Razorpay page.
+              {t("wallet.razorpayPage")}
             </Text>
           ) : (
             <>
@@ -787,7 +789,7 @@ export default function WalletScreen() {
                     <Text style={styles.methodTitle}>
                       {selected.name}
                       {!selected.installed && (
-                        <Text style={styles.notInstalled}>  · Not installed</Text>
+                        <Text style={styles.notInstalled}>{"  · "}{t("wallet.notInstalled")}</Text>
                       )}
                     </Text>
                     <Ionicons
@@ -818,7 +820,7 @@ export default function WalletScreen() {
                             <Text style={styles.methodTitle}>
                               {option.name}
                               {!option.installed && (
-                                <Text style={styles.notInstalled}>  · Not installed</Text>
+                                <Text style={styles.notInstalled}>{"  · "}{t("wallet.notInstalled")}</Text>
                               )}
                             </Text>
                             {active && (
@@ -833,7 +835,7 @@ export default function WalletScreen() {
                   {appChosen && !selected.installed && (
                     <View style={styles.installRow}>
                       <Text style={styles.installText}>
-                        {selected.name} isn&apos;t installed on this phone.
+                        {t("wallet.appNotInstalled", { app: selected.name })}
                       </Text>
                       <Pressable
                         onPress={() => {
@@ -852,7 +854,7 @@ export default function WalletScreen() {
                         }}
                         style={styles.installButton}
                       >
-                        <Text style={styles.installButtonText}>Install</Text>
+                        <Text style={styles.installButtonText}>{t("wallet.install")}</Text>
                       </Pressable>
                     </View>
                   )}
@@ -873,7 +875,7 @@ export default function WalletScreen() {
                 <MaterialCommunityIcons name="at" size={18} color={COLORS.plum} />
               </View>
 
-              <Text style={styles.methodTitle}>Pay with UPI ID</Text>
+              <Text style={styles.methodTitle}>{t("wallet.payWithUpiId")}</Text>
 
               <Ionicons
                 name={payByUpiId ? "radio-button-on" : "radio-button-off"}
@@ -921,7 +923,7 @@ export default function WalletScreen() {
                       <ActivityIndicator size="small" color={COLORS.card} />
                     ) : (
                       <Text style={styles.upiVerifyText}>
-                        {verifiedUpiId ? "Verified" : "Verify"}
+                        {verifiedUpiId ? t("wallet.verified") : t("wallet.verify")}
                       </Text>
                     )}
                   </Pressable>
@@ -932,14 +934,14 @@ export default function WalletScreen() {
                     <View style={styles.upiResult}>
                       <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
                       <Text style={styles.upiValid}>
-                        {upiCheck.name ? upiCheck.name : "UPI ID verified"}
+                        {upiCheck.name ? upiCheck.name : t("wallet.upiVerified")}
                       </Text>
                     </View>
                   ) : (
                     <View style={styles.upiResult}>
                       <Ionicons name="information-circle" size={16} color={COLORS.gold} />
                       <Text style={styles.upiUnconfirmed}>
-                        Couldn&apos;t confirm the name. Check the UPI ID is correct before paying.
+                        {t("wallet.nameUnconfirmed")}
                       </Text>
                     </View>
                   )
@@ -953,7 +955,7 @@ export default function WalletScreen() {
                 )}
 
                 <Text style={styles.upiHint}>
-                  You&apos;ll get a payment request in your UPI app — approve it there to finish.
+                  {t("wallet.upiHint")}
                 </Text>
               </View>
             )}
@@ -980,11 +982,11 @@ export default function WalletScreen() {
         {/* Google/Apple accounts: Razorpay needs a mobile number (asked once). */}
         {needsContact && (
           <View style={styles.contactBox}>
-            <Text style={styles.contactLabel}>Mobile number for UPI payment</Text>
+            <Text style={styles.contactLabel}>{t("wallet.contactLabel")}</Text>
             <TextInput
               value={contact}
               onChangeText={(value) => setContact(value.replace(/\D/g, "").slice(0, 10))}
-              placeholder="10-digit mobile number"
+              placeholder={t("wallet.contactPlaceholder")}
               placeholderTextColor={COLORS.secondary}
               keyboardType="number-pad"
               autoComplete="tel"
@@ -1012,21 +1014,19 @@ export default function WalletScreen() {
               />
 
               <Text style={styles.payText}>
-                Processing...
+                {t("wallet.processing")}
               </Text>
             </>
           ) : (
             <>
-              <Text style={styles.payText}>
+              <Text style={styles.payText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
                 {plan
-                  ? `Pay ₹${plan.price_inr}${
-                      payByUpiId
-                        ? " via UPI ID"
-                        : app
-                          ? ` with ${app.appName}`
-                          : ""
-                    }`
-                  : "Proceed to Pay"}
+                  ? payByUpiId
+                    ? t("wallet.payViaUpiId", { amount: plan.price_inr })
+                    : app
+                      ? t("wallet.payWithApp", { amount: plan.price_inr, app: app.appName })
+                      : t("wallet.pay", { amount: plan.price_inr })
+                  : t("wallet.proceed")}
               </Text>
 
               <Ionicons
